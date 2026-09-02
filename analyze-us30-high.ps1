@@ -7,6 +7,7 @@ param(
     [switch]$Bearish,
     [switch]$Break,
     [switch]$Reverse,
+    [switch]$Advanced,
     [Alias("Illustrate")]
     [switch]$Ilustrate,
     [string]$Ticker = ""

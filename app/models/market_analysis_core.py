@@ -176,7 +176,7 @@ def suggest_setup(
     elif direction != "NONE":
         red_flags.append("Sin 2 velas M5 de confirmación")
 
-    hard = [r for r in red_flags if "Fuera" in r or "NEUTRAL" in r or "Lejos" in r or "Sin 2" in r]
+    hard = [r for r in red_flags if "NEUTRAL" in r or "Lejos" in r or "Sin 2" in r]
     if direction != "NONE" and not hard and near_zone:
         verdict = "SETUP_A+"
     elif direction != "NONE" and len(hard) <= 1 and near_zone:

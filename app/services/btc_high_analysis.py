@@ -12,8 +12,8 @@ def _mode_bias_label(mode: str) -> str:
 def _mode_setup_label(mode: str) -> str:
     return {
         "auto": "AUTO",
-        "break": "BREAK (E1)",
-        "reverse": "REVERSE (E2 ctx)",
+        "break": "BREAK (breakout)",
+        "reverse": "REVERSE (E2)",
     }.get(mode, mode.upper())
 
 
@@ -43,7 +43,8 @@ def apply_forced_bias(data: dict, bias_mode: str) -> dict:
         setup["sl"], setup["tp"], setup["rr"] = sl, price - 2 * risk, 2.0
     near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
     confirm = out["confirm_long"] if direction == "LONG" else out["confirm_short"]
-    hard = [r for r in setup["red_flags"] if any(k in r for k in ("Fuera", "Lejos", "Sin 2"))]
+    # Sesión NY ya no es hard-block para SETUP_A+
+    hard = [r for r in setup["red_flags"] if any(k in r for k in ("Lejos", "Sin 2"))]
     if not hard and near and confirm:
         setup["verdict"] = "SETUP_A+"
     elif not hard and near:
@@ -55,25 +56,103 @@ def apply_forced_bias(data: dict, bias_mode: str) -> dict:
     return out
 
 
+def analyze_breakout(
+    price: float,
+    m5: list[dict],
+    zone: dict,
+    crt: dict,
+    data: dict,
+    direction: str,
+) -> dict:
+    """Breakout de nivel/estructura — distinto de Reverse (fakeout/reclaim).
+
+    Break válido = cierre más allá del nivel y precio que **mantiene** el break
+    (no reclaim). Fakeout = barrido + vuelta = NO es Break.
+    """
+    level = zone.get("level")
+    ztype = zone.get("type") or ""
+    pdh, pdl = data.get("pdh"), data.get("pdl")
+    confirm_long = data.get("confirm_long", False)
+    confirm_short = data.get("confirm_short", False)
+    held = False
+    broken_level = None
+    kind = "none"
+    note = "Sin breakout de nivel detectado"
+
+    # Prefer structure zone; fall back to PDH/PDL
+    if direction == "LONG":
+        target = level if ztype == "resistencia_debil" else (pdh or level)
+        if target and price > target:
+            # Held breakout: last 2 closes above level (not a wick fakeout)
+            recent = m5[-2:] if len(m5) >= 2 else m5
+            held = bool(recent) and all(c["close"] > target for c in recent)
+            broken_level = target
+            kind = "bullish_breakout"
+            note = (
+                f"Breakout alcista sostenido > {target:.0f}"
+                if held
+                else f"Precio > {target:.0f} pero sin hold de 2 cierres — no chase"
+            )
+        elif crt.get("fakeout_pdh"):
+            note = "Fakeout PDH (barrido + reclaim) — NO es Break; es contexto Reverse"
+            kind = "failed_break_fakeout"
+    elif direction == "SHORT":
+        target = level if ztype == "soporte_debil" else (pdl or level)
+        if target and price < target:
+            recent = m5[-2:] if len(m5) >= 2 else m5
+            held = bool(recent) and all(c["close"] < target for c in recent)
+            broken_level = target
+            kind = "bearish_breakout"
+            note = (
+                f"Breakout bajista sostenido < {target:.0f}"
+                if held
+                else f"Precio < {target:.0f} pero sin hold de 2 cierres — no chase"
+            )
+        elif crt.get("fakeout_pdl"):
+            note = "Fakeout PDL (barrido + reclaim) — NO es Break; es contexto Reverse"
+            kind = "failed_break_fakeout"
+
+    candles_ok = (
+        (direction == "LONG" and confirm_long)
+        or (direction == "SHORT" and confirm_short)
+    )
+    valid = held and candles_ok and kind.endswith("breakout")
+    return {
+        "valid": valid,
+        "held": held,
+        "kind": kind,
+        "level": broken_level,
+        "candles_ok": candles_ok,
+        "note": note,
+    }
+
+
 def adjust_crt_for_setup_mode(crt: dict, setup_mode: str, data: dict) -> dict:
-    """Emphasize continuation vs reversal CRT readings."""
+    """Emphasize breakout (Break) vs reversal/fakeout (Reverse)."""
     if setup_mode == "auto":
         return crt
     out = copy.copy(crt)
     notes: list[str] = []
+    direction = data.get("setup", {}).get("direction", "NONE")
     if setup_mode == "break":
+        bo = analyze_breakout(
+            data["price"], data.get("m5", []), data.get("zone", {}), out, data, direction,
+        )
+        out["breakout"] = bo
         out["crt_action_e1"] = (
-            out.get("crt_action_e1", "") + " | Modo BREAK: priorizar continuación E1 CRT"
+            out.get("crt_action_e1", "") + " | Modo BREAK: breakout de nivel/estructura (no reversión)"
         ).strip(" |")
-        if out.get("fakeout_pdh"):
-            notes.append("BREAK: fakeout PDH invalida long — buscar short continuación")
-        if out.get("fakeout_pdl"):
-            notes.append("BREAK: fakeout PDL — no chase long; esperar reclaim para E1")
-        if out.get("h1_state", "").startswith("COMPLETED"):
-            notes.append(f"BREAK: H1 {out['h1_state']} — continuación E1 alineada")
+        if bo.get("valid"):
+            notes.append(f"BREAK OK: {bo['note']}")
+        elif bo.get("kind") == "failed_break_fakeout":
+            notes.append(f"BREAK inválido: {bo['note']}")
+        else:
+            notes.append(f"BREAK pendiente: {bo['note']}")
+        if out.get("fakeout_pdh") or out.get("fakeout_pdl"):
+            notes.append("Fakeout ≠ Break — no tratar sweep+reclaim como breakout")
     elif setup_mode == "reverse":
         out["crt_action_e1"] = (
-            out.get("crt_action_e1", "") + " | Modo REVERSE: contexto turtle soup E2"
+            out.get("crt_action_e1", "") + " | Modo REVERSE: turtle soup / fakeout / sweep+reclaim"
         ).strip(" |")
         if out.get("fakeout_pdh"):
             notes.append("REVERSE: fakeout PDH — turtle soup bajista posible")
@@ -90,31 +169,60 @@ def adjust_crt_for_setup_mode(crt: dict, setup_mode: str, data: dict) -> dict:
     return out
 
 
-def adjust_e2_for_setup_mode(e2: dict, setup_mode: str) -> dict:
-    """Elevate or de-emphasize E2 watchlist per setup mode."""
+def adjust_e2_for_setup_mode(e2: dict, setup_mode: str, data: dict | None = None) -> dict:
+    """Elevate Reverse (operable con 2 velas alineadas) o despriorizar E2 en Break."""
     if setup_mode == "auto":
         return e2
     out = copy.copy(e2)
     checks = list(out.get("checks", []))
     score = out.get("score", 0)
+    data = data or {}
+    direction = data.get("setup", {}).get("direction", "NONE")
+    confirm = (
+        data.get("confirm_long", False) if direction == "LONG"
+        else data.get("confirm_short", False) if direction == "SHORT"
+        else False
+    )
+
     if setup_mode == "break":
         out["note"] = (
-            "Modo BREAK: E1 continuación primario — E2 solo contexto, NO operable"
+            "Modo BREAK: breakout de nivel — E2/reversión despriorizada, NO operable"
         )
         out["eligible"] = False
         out["verdict"] = "E2_NO"
+        out["winrate"] = None
     elif setup_mode == "reverse":
+        from app.models.btc_signal_categories import WR_BTC_E2, WR_E2_GLOBAL
+
         boosted = min(score + 1, out.get("max", 6))
         out["score"] = boosted
-        out["note"] = (
-            "Modo REVERSE: E2 watchlist elevada — default NO ENTRAR E2 (eval fondeo PROHIBIDO)"
-        )
-        if boosted >= 3:
-            out["verdict"] = "E2_WATCH"
-        out["eligible"] = False
+        # Operable si las últimas 2 velas van en la misma dirección del bando
+        operable = bool(confirm and direction in ("LONG", "SHORT"))
+        out["eligible"] = operable
+        if operable:
+            out["verdict"] = "E2_READY" if boosted >= 4 else "E2_WATCH"
+            out["note"] = (
+                f"Modo REVERSE operable — 2 velas M5 alineadas ({direction}); "
+                f"WR histórico E2 ~{WR_BTC_E2:.0f}% BTC / ~{WR_E2_GLOBAL:.0f}% global"
+            )
+        else:
+            out["verdict"] = "E2_WATCH" if boosted >= 3 else "E2_NO"
+            out["note"] = (
+                "Modo REVERSE: falta 2 velas M5 misma dirección del bando — "
+                f"no operable aún (WR E2 ~{WR_BTC_E2:.0f}% si se confirma)"
+            )
+        out["winrate"] = f"~{WR_BTC_E2:.0f}%"
+        out["winrate_source"] = f"histórico E2 BTC reversión (~{WR_E2_GLOBAL:.0f}% E2 global)"
         if checks:
             checks = list(checks)
-            checks.append(("7. Modo REVERSE CLI", True, "Watchlist E2 priorizada"))
+            checks.append(
+                (
+                    "7. 2 velas misma dirección",
+                    operable,
+                    f"{direction} confirmado" if operable else "Esperar 2 velas alineadas",
+                )
+            )
+            checks.append(("8. Winrate E2", True, out["winrate"]))
             out["checks"] = checks
     out["mode_setup"] = setup_mode
     return out
@@ -123,15 +231,16 @@ def adjust_e2_for_setup_mode(e2: dict, setup_mode: str) -> dict:
 def adjust_gallery_for_setup_mode(
     patterns: list[str], setup_mode: str, data: dict, crt: dict,
 ) -> list[str]:
-    """Weight gallery hints toward continuation or reversal."""
+    """Weight gallery hints toward breakout or reversal."""
     pats = list(patterns)
     if setup_mode == "break":
-        if data.get("confirm_long") and crt.get("pd_reading") == "BULLISH":
-            pats.insert(0, "WIN: BREAK continuación alcista E1 (pullback soporte)")
-        if data.get("confirm_short") and crt.get("pd_reading") == "BEARISH":
-            pats.insert(0, "WIN: BREAK continuación bajista E1 (rechazo resistencia)")
-        if crt.get("fakeout_pdh"):
-            pats.append("LOSS: fakeout PDH en modo BREAK — no long")
+        bo = crt.get("breakout") or {}
+        if bo.get("valid") and data.get("confirm_long"):
+            pats.insert(0, "WIN: BREAK breakout alcista + hold (continuación tras ruptura)")
+        if bo.get("valid") and data.get("confirm_short"):
+            pats.insert(0, "WIN: BREAK breakout bajista + hold (continuación tras ruptura)")
+        if bo.get("kind") == "failed_break_fakeout" or crt.get("fakeout_pdh"):
+            pats.append("LOSS: fakeout tratado como breakout — no es Break")
     elif setup_mode == "reverse":
         if crt.get("fakeout_pdl"):
             pats.insert(0, "WIN: REVERSE turtle soup PDL + reclaim")
@@ -139,6 +248,8 @@ def adjust_gallery_for_setup_mode(
             pats.insert(0, "WIN: REVERSE turtle soup PDH sweep")
         if crt.get("h1_state", "").startswith("PENDING"):
             pats.insert(0, "WIN: Sweep+reclaim (BTC-11-05-26, BTC-27-07-26)")
+        if data.get("confirm_long") or data.get("confirm_short"):
+            pats.insert(0, "WIN: REVERSE 2 velas alineadas al bando")
     return pats or patterns
 
 
@@ -154,12 +265,18 @@ def mode_reasoning_notes(bias_mode: str, setup_mode: str, data: dict, crt: dict,
         if data["bias_h1"] == "BULLISH":
             notes.append("⚠ H1 alcista vs bias forzado — confirmar en TV antes de entrar")
     if setup_mode == "break":
-        notes.append("Setup **BREAK** — foco E1 CRT continuación; E2 despriorizado")
-        if crt.get("fakeout_pdh") or crt.get("fakeout_pdl"):
-            notes.append("Fakeout activo — aplicar reglas continuación (no chase contra trampa)")
+        bo = crt.get("breakout") or {}
+        notes.append("Setup **BREAK** — breakout de nivel/estructura (no reversión/fakeout)")
+        notes.append(bo.get("note", "Evaluar hold post-ruptura en TV"))
+        if bo.get("valid"):
+            notes.append("Breakout válido + 2 velas en dirección — continuación post-ruptura")
     elif setup_mode == "reverse":
-        notes.append("Setup **REVERSE** — foco E2 turtle soup / PDH-PDL fakeout / sweep+reclaim")
-        notes.append(f"E2 watchlist: {e2.get('verdict', 'E2_NO')} ({e2.get('score', 0)}/{e2.get('max', 6)}) — NO ENTRAR E2 por defecto")
+        wr = e2.get("winrate", "~61%")
+        notes.append("Setup **REVERSE** — turtle soup / PDH-PDL fakeout / sweep+reclaim")
+        notes.append(
+            f"E2: {e2.get('verdict', 'E2_NO')} ({e2.get('score', 0)}/{e2.get('max', 6)}) · "
+            f"operable={'SÍ' if e2.get('eligible') else 'NO'} · WR {wr}"
+        )
     return notes
 
 
@@ -369,9 +486,11 @@ def format_executive_synthesis(
     lines.append(f"- {vtxt}")
 
     if setup_mode == "reverse":
+        wr = e2.get("winrate", "~61%")
         lines.append(
             f"- **E2 contexto:** {e2.get('verdict', 'E2_NO')} "
-            f"({e2.get('score', 0)}/{e2.get('max', 6)}) — default NO ENTRAR E2"
+            f"({e2.get('score', 0)}/{e2.get('max', 6)}) · "
+            f"operable={'SÍ' if e2.get('eligible') else 'NO'} · WR {wr}"
         )
 
     lines += ["", "---", ""]
@@ -506,11 +625,14 @@ def format_e2_expanded(e2: dict, crt: dict, setup_mode: str) -> list[str]:
         lines.append("- Sin fakeout macro activo — E2 requiere sweep+reclaim explícito")
 
     verdict = e2.get("verdict", "E2_NO")
-    action = (
-        "**Observar demo** — checklist incompleto pero señales parciales"
-        if verdict == "E2_WATCH"
-        else "**NO ENTRAR** — E2 prohibido en eval fondeo (TRADING_VISUAL §7)"
-    )
+    wr = e2.get("winrate")
+    wr_txt = f" · WR {wr}" if wr else ""
+    if e2.get("eligible"):
+        action = f"**OPERABLE** — 2 velas alineadas al bando{wr_txt}"
+    elif verdict in ("E2_WATCH", "E2_READY"):
+        action = f"**Observar** — falta confirmación 2 velas o checklist incompleto{wr_txt}"
+    else:
+        action = f"**NO ENTRAR** — setup Reverse incompleto{wr_txt}"
     lines += ["", f"### Decisión E2: {action}", "", "---", ""]
     return lines
 
@@ -588,18 +710,7 @@ def format_trading_plan_advanced(data: dict, ctx: dict, combined: float) -> list
             f"- **SL estructural:** {s['sl']:.0f} | **SL cuenta:** ~$9 (ajustar lotaje)",
             f"- **TP 1:2:** {s['tp']:.0f} | **BE:** mover a BE en 1:1",
         ]
-    lines += [
-        "- **Invalidación:** cierre M5 fuera zona / CRT invalid / fakeout contra dirección",
-        "- **Confluencias Notion sugeridas:** Continuación E1, Zona débil morada, "
-        "Sesión NY, CRT alineado",
-        "",
-        "### Pre-trade checklist (8 ítems)",
-        "",
-        "| # | Ítem | OK |",
-        "|---|------|----|",
-    ]
     checks = [
-        ("Sesión NY activa", data["session"]["in_ny_window"]),
         ("Bias H1 alineado", data["bias_h1"] in ("BULLISH", "BEARISH")),
         ("Zona ≤0.15%", zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15),
         ("2 velas M5 confirmación", data["confirm_long"] if direction == "LONG" else data["confirm_short"]),
@@ -607,6 +718,17 @@ def format_trading_plan_advanced(data: dict, ctx: dict, combined: float) -> list
         ("Extendidas ≥70%", ctx["ext_pct"] >= 70),
         ("Sin fakeout contra", not any("fakeout" in f.lower() for f in ctx["flags"][:3])),
         ("SL ~$9 definido", s.get("sl") is not None),
+        ("R:R 1:2", s.get("rr") is not None),
+    ]
+    lines += [
+        "- **Invalidación:** cierre M5 fuera zona / CRT invalid / fakeout contra dirección",
+        "- **Confluencias Notion sugeridas:** Continuación/Breakout E1, Zona débil morada, "
+        "CRT alineado",
+        "",
+        "### Pre-trade checklist (8 ítems)",
+        "",
+        "| # | Ítem | OK |",
+        "|---|------|----|",
     ]
     for i, (label, ok) in enumerate(checks, 1):
         lines.append(f"| {i} | {label} | {'✅' if ok else '❌'} |")
@@ -618,7 +740,7 @@ def format_psychology_guards(data: dict, categories: dict, combined: float) -> l
     """H) Psicología y guardas de sesión."""
     flags = []
     if not data["session"]["in_ny_window"]:
-        flags.append("⛔ Fuera ventana NY — regla dura NO_OPERAR")
+        flags.append("ℹ️ Fuera ventana NY — informativo (no fuerza NO_OPERAR en checklist)")
     flags.append("❓ ¿2 SL hoy? — confirmar trader (2 SL = fin sesión)")
     ml = categories.get("ml_prob_win")
     nw = categories.get("neural_prob_win")
@@ -644,16 +766,33 @@ def format_psychology_guards(data: dict, categories: dict, combined: float) -> l
     return lines
 
 
-def format_cursor_advanced_block() -> list[str]:
+def _high_asset_refs(asset: str | None = None) -> dict[str, str]:
+    """Protocolo + live MD según asset (BTC / US30)."""
+    label = (asset or "BTC").upper()
+    if label == "US30":
+        return {
+            "label": "US30",
+            "protocol": "docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md",
+            "live": "live/us30_m5_high_signal.md",
+        }
+    return {
+        "label": "BTC",
+        "protocol": "docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md",
+        "live": "live/btc_m5_high_signal.md",
+    }
+
+
+def format_cursor_advanced_block(asset: str | None = None) -> list[str]:
     """I) Bloque prompt Cursor ADVANCED en live file."""
+    refs = _high_asset_refs(asset)
     return [
         "## I) Cursor — prompt ADVANCED",
         "",
-        "Usar con `@docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md` sección **Modo Advanced**.",
+        f"Usar con `@{refs['protocol']}` sección **Modo Advanced**.",
         "",
         "```",
-        "Análisis E1 CRT ADVANCED — BTC M5 HIGH mode.",
-        "Lee TODAS las secciones A–H de live/btc_m5_high_signal.md.",
+        f"Análisis E1 CRT ADVANCED — {refs['label']} M5 HIGH mode.",
+        f"Lee TODAS las secciones A–H de {refs['live']}.",
         "NO acortar. Responde estructurado en español con síntesis ejecutiva,",
         "scorecard, CRT deep dive, E2 (si aplica), cruce ML×Neural, galería,",
         "plan (si ENTRAR), red flags y guardas psicológicas.",
@@ -692,7 +831,7 @@ def format_advanced_sections(
     lines += format_gallery_advanced(pats, categories)
     lines += format_trading_plan_advanced(data, ctx, combined)
     lines += format_psychology_guards(data, categories, combined)
-    lines += format_cursor_advanced_block()
+    lines += format_cursor_advanced_block(data.get("asset_label"))
     return lines
 
 
@@ -1048,7 +1187,8 @@ def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) ->
     if data.get("ilustrate"):
         from app.views.illustrate_high_entry import format_illustration_md
         ann = data.get("annotated_chart_file", "btc_m5_chart_annotated.png")
-        lines += format_illustration_md(ann)
+        abs_ann = data.get("annotated_chart_abs")
+        lines += format_illustration_md(ann, absolute_path=abs_ann)
     return lines
 
 
@@ -1110,7 +1250,7 @@ def format_2m5_valid_invalid(data: dict, direction: str) -> list[str]:
 
 
 def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -> list[str]:
-    """Markdown: checklist 5 ítems 2M5 con ✅/❌ live."""
+    """Markdown: checklist 2M5 con ✅/❌ live (sesión = info, no ítem bloqueante)."""
     zone = data["zone"]
     near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
     confirm = (
@@ -1139,7 +1279,6 @@ def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -
         crt_ok = False
 
     items = [
-        ("Sesión NY activa", session.get("in_ny_window", False)),
         (f"Cerca de zona ({zone.get('type', 'S/R')} @ {zone.get('level', 0):.0f})", near),
         (
             f"2 velas M5 confirman {direction}" if direction in ("LONG", "SHORT") else "2 velas M5 confirman",
@@ -1147,11 +1286,19 @@ def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -
         ),
         ("Bias H1 alineado o bias CLI forzado", bias_ok),
         ("RSI M5 + CRT premium/discount coherentes", rsi_ok and crt_ok),
+        (
+            "Estructura/CRT sin contradicción dura",
+            not (crt.get("fakeout_pdh") and direction == "LONG")
+            and not (crt.get("fakeout_pdl") and direction == "SHORT"),
+        ),
     ]
     all_ok = all(ok for _, ok in items)
+    ny_info = "DENTRO NY" if session.get("in_ny_window") else f"FUERA NY ({session.get('window', 'n/d')}) — info"
 
     lines = [
         "## Checklist 2M5",
+        "",
+        f"_Sesión: {ny_info}_",
         "",
     ]
     for label, ok in items:
@@ -1269,6 +1416,7 @@ def build_high_context(
     work = apply_forced_bias(data, bias_mode) if bias_mode in ("bullish", "bearish") else dict(data)
     work["mode_bias"] = bias_mode
     work["mode_setup"] = setup_mode
+    work["m5"] = m5
 
     crt = analyze_crt(work["price"], work.get("pdh"), work.get("pdl"), h1, m5)
     crt = adjust_crt_for_setup_mode(crt, setup_mode, work)
@@ -1276,7 +1424,7 @@ def build_high_context(
     dmi = dmi_proxy([c["close"] for c in m5])
     struct = structure_notes(work["swing_highs"], work["swing_lows"])
     e2 = analyze_turtle_soup_e2(work["price"], m5, crt, work["swing_lows"], div)
-    e2 = adjust_e2_for_setup_mode(e2, setup_mode)
+    e2 = adjust_e2_for_setup_mode(e2, setup_mode, work)
     rules_pct, rules_items = score_rules_pct(work, crt, div, dmi, e2)
     pats = match_gallery_pattern(work, crt)
     pats = adjust_gallery_for_setup_mode(pats, setup_mode, work, crt)
@@ -1298,6 +1446,12 @@ def write_high_signal(
     path: Path, data: dict, verdict_to_signal_fn, use_ml: bool = False, advanced: bool = False,
 ) -> None:
     from app.views.btc_e1_report import TIER_HIGH, build_report_context, format_e1_report
+    from app.models.btc_signal_categories import (
+        build_advanced_table_rows,
+        compute_confluencia_setup,
+        format_entrada_optima_cell,
+    )
+    from app.views.illustrate_high_entry import format_salidas_block
 
     crt = data["crt"]
     div = data["divergence"]
@@ -1319,28 +1473,58 @@ def write_high_signal(
             ctx["categories"]["segunda_indicacion"] = segunda
             ctx["categories"]["segunda_indicacion_sesgo"] = segunda["suggested"]
 
+    # Enrich Categories: Precio, Entrada óptima, Confluencia (+ Advanced rows)
+    cats = ctx["categories"]
+    direction = data["setup"]["direction"]
+    opt = compute_optimal_entry(data, direction, crt, data["zone"])
+    dec = int(opt.get("dec", data.get("price_decimals", 1)))
+    fmt = f".{dec}f"
+    cats["precio"] = f"{data['price']:{fmt}}"
+    cats["entrada_optima"] = format_entrada_optima_cell(opt, data)
+    conf_level, conf_detail = compute_confluencia_setup(cats, data, crt=crt, e2=e2)
+    cats["confluencia_setup"] = conf_level
+    cats["confluencia_detalle"] = conf_detail
+    if advanced:
+        cats["advanced"] = True
+        cats["advanced_rows"] = build_advanced_table_rows(
+            cats, data, opt=opt, ext_pct=ctx.get("ext_pct"), e2=e2,
+        )
+    else:
+        cats.pop("advanced", None)
+        cats.pop("advanced_rows", None)
+
     mode_header = ""
     if bias_mode != "auto" or setup_mode != "auto":
         parts = []
         if bias_mode != "auto":
             parts.append(_mode_bias_label(bias_mode))
         if setup_mode != "auto":
-            parts.append(_mode_setup_label(setup_mode).replace(" (E1)", "").replace(" (E2 ctx)", ""))
+            parts.append(
+                _mode_setup_label(setup_mode)
+                .replace(" (breakout)", "")
+                .replace(" (E2)", "")
+                .replace(" (E1)", "")
+                .replace(" (E2 ctx)", "")
+            )
         mode_header = f"> **Modo:** {' + '.join(parts)}"
         if data.get("mode_notes"):
             mode_header += " — " + data["mode_notes"][0]
 
     asset = data.get("asset_label", "BTC")
     chart_file = data.get("chart_file", "btc_m5_chart.png")
+    asset_refs = _high_asset_refs(asset)
+    price_hdr = f"{data['price']:{fmt}}"
     lines = [
         f"# {asset} M5 High Signal — CRT + Turtle Soup (Deep Analysis)",
         "",
-        f"> {data['generated']} UTC | NY {data['session']['ny_local']} | {data['session']['window']}",
-        f"> Precio **{data['price']:.2f}** | HIGH mode | PF E1=4.77 | E2 max 10%",
+        f"> {data['generated']} UTC | NY {data['session'].get('ny_local', 'n/a')} | {data['session']['window']}",
+        f"> Precio **{price_hdr}** | HIGH mode | PF E1=4.77 | E2 max 10%",
         f"> Plan refs: TRADING_VISUAL SS1.1-1.2 SS7 | TRADING_INDICATORS_RULES SS3-6",
     ]
     if mode_header:
         lines.append(mode_header)
+    if advanced:
+        lines.append("> Modo **ADVANCED** — Categories ampliada + secciones A–I")
     lines += [
         "",
         "| Campo | Valor |",
@@ -1374,8 +1558,10 @@ def write_high_signal(
         "## M5 detalle",
         "",
     ]
-    if data.get("rsi_m5"):
-        lines.append(f"- RSI M5/H1: {data['rsi_m5']:.1f} / {data['rsi_h1']:.1f}")
+    if data.get("rsi_m5") is not None:
+        rsi_h1 = data.get("rsi_h1")
+        rsi_h1_s = f"{rsi_h1:.1f}" if rsi_h1 is not None else "n/a"
+        lines.append(f"- RSI M5/H1: {data['rsi_m5']:.1f} / {rsi_h1_s}")
     lines += [
         f"- Zona: {data['zone'].get('type', '')} @ {data['zone'].get('level', 0):.0f}",
         f"- 2M5 LONG: {'SÍ' if data['confirm_long'] else 'NO'} | SHORT: {'SÍ' if data['confirm_short'] else 'NO'}",
@@ -1409,18 +1595,26 @@ def write_high_signal(
     ]
     if advanced:
         lines += [
-            "Modo **ADVANCED** — usar prompt completo en `docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md` §Modo Advanced.",
-            "Leer secciones A–I arriba. **NO acortar** vs light mode.",
+            f"Modo **ADVANCED** — usar prompt completo en `{asset_refs['protocol']}` §Modo Advanced.",
+            "Leer Categories (incl. Entrada óptima + Confluencia + Advanced) y secciones A–I. **NO acortar** vs light mode.",
         ]
     else:
         lines += [
-            "1. Usar **Veredicto** + tablas CRT/E1/E2 arriba.",
+            "1. Usar **Veredicto** + tabla Categories (Precio · Entrada óptima · Confluencia setup).",
             "2. Leer **Entrada optimizada (E1)** + **Checklist 2M5** + **2M5 Válido/Inválido**.",
             "3. Citar CRT pending/completed/invalid + RSI TORYS.",
             "4. Galería WIN match. 5. E2 solo watch. 6. Confirmar TV.",
+            "7. En resumen chat: **Salidas** con path `live/..._chart_annotated.png` si hay Ilustrate.",
         ]
     lines += [""]
     if data.get("chart"):
         lines.append(f"![Chart]({chart_file})")
+    # Salidas: paths fáciles para abrir chart/MD (sin base64)
+    ann_name = data.get("annotated_chart_file") if data.get("ilustrate") else None
+    lines += format_salidas_block(
+        signal_md=path,
+        annotated_file=ann_name,
+        annotated_abs=data.get("annotated_chart_abs") if ann_name else None,
+    )
     lines += ["", f"---\n*high signal | {data['generated']} UTC*\n"]
     path.write_text("\n".join(lines), encoding="utf-8")

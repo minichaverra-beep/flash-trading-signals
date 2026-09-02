@@ -18,16 +18,29 @@ from app.controllers.analyze_btc_m5 import two_candle_confirm  # noqa: E402
 from app.services.btc_high_analysis import (  # noqa: E402
     _candle_color,
     _last_n_colors,
+    adjust_crt_for_setup_mode,
+    adjust_e2_for_setup_mode,
+    analyze_breakout,
     compute_optimal_entry,
     compute_second_indication,
     format_2m5_checklist,
     format_2m5_valid_invalid,
     format_optimal_entry_md,
 )
-from app.models.btc_signal_categories import format_augmented_categories_md  # noqa: E402
+from app.models.btc_signal_categories import (  # noqa: E402
+    build_advanced_table_rows,
+    compute_confluencia_setup,
+    format_augmented_categories_md,
+    format_entrada_optima_cell,
+    format_recomendacion,
+    score_e1_rules_8,
+    winrate_estimate,
+)
+from app.views.btc_e1_report import collect_red_flags, derive_e1_verdict  # noqa: E402
 from app.views.illustrate_high_entry import (  # noqa: E402
     create_annotated_entry_chart,
     format_illustration_md,
+    format_salidas_block,
 )
 
 
@@ -294,16 +307,24 @@ class TestFormat2m5Checklist:
         text = self._joined(format_2m5_checklist(data, "SHORT", data["session"], crt))
         assert text.count("✅") >= 5
         assert "Las 5 ✅" in text or "2M5 OK" in text
+        assert "Sesión NY activa" not in text
         assert "❌" not in text.replace("## Checklist 2M5", "")
 
-    def test_session_outside_ny_fails(self):
+    def test_session_outside_ny_is_info_not_blocking_row(self):
+        """Sesión fuera NY = info; no fila bloqueante en checklist 2M5."""
         data = make_data(in_ny=False, direction="SHORT", confirm_short=True, dist_pct=0.05)
+        m5 = [
+            _c(100_040, 100_055, 100_030, 100_035),
+            _c(100_035, 100_045, 100_020, 100_025),
+        ]
+        data["m5"] = m5
         text = self._joined(
             format_2m5_checklist(data, "SHORT", data["session"], make_crt())
         )
-        assert "Sesión NY activa" in text
-        assert "❌] Sesión NY" in text or "[❌] Sesión NY activa" in text
-        assert "Falta al menos 1" in text
+        assert "Sesión NY activa" not in text
+        assert "FUERA NY" in text or "info" in text.lower()
+        assert "[❌] Sesión NY" not in text
+        assert "[❌] Sesión NY activa" not in text
 
     def test_missing_2m5_fails_item(self):
         data = make_data(confirm_short=False, direction="SHORT", dist_pct=0.05, in_ny=True)
@@ -344,6 +365,149 @@ class TestFormat2m5Checklist:
             format_2m5_checklist(data, "LONG", data["session"], make_crt("DISCOUNT", "BULLISH"))
         )
         assert text.count("✅") >= 5
+
+
+# ---------------------------------------------------------------------------
+# 3b. Session no longer blocks status/recomendación
+# ---------------------------------------------------------------------------
+
+class TestSessionNotBlockingStatus:
+    def test_score_e1_rules_omits_sesion_ny(self):
+        data = make_data(in_ny=False, direction="SHORT", confirm_short=True, dist_pct=0.05)
+        ok, total, pct, items = score_e1_rules_8(data, make_crt(), None, None, None)
+        labels = [lab for lab, _, _ in items]
+        assert "Sesión NY" not in labels
+        assert total == 7
+        assert ok >= 1
+
+    def test_format_recomendacion_ignores_fuera_ny(self):
+        rec = format_recomendacion("ESPERAR", "LONG", session_in_ny=False)
+        assert "fin sesión" not in rec
+        assert rec == "ESPERAR LONG"
+        rec2 = format_recomendacion("ENTRAR", "SHORT", session_in_ny=False)
+        assert rec2 == "ENTRAR SHORT"
+
+    def test_derive_verdict_not_forced_by_fuera_ny(self):
+        data = make_data(
+            in_ny=False,
+            direction="SHORT",
+            bias_h1="BEARISH",
+            confirm_short=True,
+            dist_pct=0.05,
+        )
+        data["setup"]["verdict"] = "SETUP_A+"
+        data["setup"]["rr"] = 2.0
+        cats = {"rules_pct": 85, "rules_ok": 6, "rules_total": 7}
+        crt = make_crt()
+        flags = collect_red_flags(data, crt)
+        assert any("info" in f.lower() for f in flags)
+        assert not any(f == "Fuera ventana NY — NO_OPERAR" for f in flags)
+        v = derive_e1_verdict(data, cats, crt=crt)
+        # Fuera NY ya no fuerza NO_OPERAR; con rules altos + confirm puede ENTRAR/ESPERAR
+        assert v in ("ENTRAR", "ESPERAR")
+
+
+# ---------------------------------------------------------------------------
+# 3c. Break vs Reverse
+# ---------------------------------------------------------------------------
+
+class TestBreakVsReverse:
+    def test_break_detects_held_breakout_not_fakeout(self):
+        # Precio por encima de resistencia + 2 verdes = breakout hold
+        level = 100_000.0
+        m5 = [_green(level + 10), _green(level + 20)]
+        data = make_data(
+            price=level + 25,
+            direction="LONG",
+            bias_h1="BULLISH",
+            zone_level=level,
+            zone_type="resistencia_debil",
+            confirm_long=True,
+            confirm_short=False,
+            m5=m5,
+        )
+        crt = make_crt("DISCOUNT", "BULLISH")
+        crt["fakeout_pdh"] = False
+        bo = analyze_breakout(data["price"], m5, data["zone"], crt, data, "LONG")
+        assert bo["valid"] is True
+        assert "breakout" in bo["kind"]
+
+        # Fakeout: wick above then close back below = NOT break
+        data_f = make_data(
+            price=level - 50,
+            direction="LONG",
+            zone_level=level,
+            zone_type="resistencia_debil",
+            confirm_long=True,
+            m5=m5,
+        )
+        crt_f = make_crt()
+        crt_f["fakeout_pdh"] = True
+        bo_f = analyze_breakout(data_f["price"], m5, data_f["zone"], crt_f, data_f, "LONG")
+        assert bo_f["valid"] is False
+        assert bo_f["kind"] == "failed_break_fakeout"
+
+    def test_break_crt_notes_distinct_from_reverse(self):
+        data = make_data(direction="SHORT", confirm_short=True, m5=[_red(), _red()])
+        data["m5"] = data["m5"]
+        crt = make_crt()
+        crt["fakeout_pdl"] = True
+        br = adjust_crt_for_setup_mode(crt, "break", data)
+        rev = adjust_crt_for_setup_mode(crt, "reverse", data)
+        assert "breakout" in (br.get("crt_action_e1") or "").lower() or "BREAK" in (br.get("fakeout_note") or "")
+        assert "turtle" in (rev.get("crt_action_e1") or "").lower() or "REVERSE" in (rev.get("fakeout_note") or "")
+        assert br.get("breakout") is not None
+        assert rev.get("breakout") is None
+
+    def test_reverse_operable_with_two_same_direction_candles(self):
+        data = make_data(
+            direction="SHORT",
+            bias_h1="BEARISH",
+            confirm_short=True,
+            confirm_long=False,
+            m5=[_red(), _red()],
+            mode_bias="bearish",
+        )
+        data["mode_setup"] = "reverse"
+        e2 = {
+            "checks": [("1. x", False, "d")],
+            "score": 2,
+            "max": 6,
+            "eligible": False,
+            "verdict": "E2_NO",
+            "note": "base",
+        }
+        out = adjust_e2_for_setup_mode(e2, "reverse", data)
+        assert out["eligible"] is True
+        assert out["winrate"] is not None
+        assert "61" in out["winrate"] or "~" in out["winrate"]
+        assert any("2 velas" in c[0] for c in out["checks"])
+
+    def test_reverse_not_operable_without_two_candles(self):
+        data = make_data(
+            direction="SHORT",
+            confirm_short=False,
+            confirm_long=False,
+            m5=[_green(), _red()],
+        )
+        data["mode_setup"] = "reverse"
+        e2 = {"checks": [], "score": 2, "max": 6, "eligible": False, "verdict": "E2_NO", "note": ""}
+        out = adjust_e2_for_setup_mode(e2, "reverse", data)
+        assert out["eligible"] is False
+        assert out["winrate"] is not None
+
+    def test_break_keeps_e2_not_operable(self):
+        data = make_data(direction="LONG", confirm_long=True)
+        e2 = {"checks": [], "score": 4, "max": 6, "eligible": True, "verdict": "E2_WATCH", "note": ""}
+        out = adjust_e2_for_setup_mode(e2, "break", data)
+        assert out["eligible"] is False
+        assert out["verdict"] == "E2_NO"
+        assert "breakout" in out["note"].lower() or "BREAK" in out["note"]
+
+    def test_reverse_winrate_estimate(self):
+        wr, src = winrate_estimate(80, setup_mode="reverse")
+        assert "61" in wr or "~61" in wr
+        assert "E2" in src or "revers" in src.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -565,10 +729,13 @@ class TestIlustrate:
         data = make_data(direction="SHORT", dist_pct=0.05, confirm_short=True)
         data["ilustrate"] = True
         data["annotated_chart_file"] = "btc_m5_chart_annotated.png"
+        data["annotated_chart_abs"] = r"D:\Danilo\Trading\Cursor Trading\live\btc_m5_chart_annotated.png"
         opt = compute_optimal_entry(data, "SHORT", make_crt(), data["zone"])
         md = "\n".join(format_optimal_entry_md(opt, data, "SHORT", make_crt()))
         assert "## Ilustración entrada (2M5 + óptima)" in md
-        assert "![annotated](btc_m5_chart_annotated.png)" in md
+        assert "![chart](btc_m5_chart_annotated.png)" in md
+        assert "live/btc_m5_chart_annotated.png" in md
+        assert "Salidas" in md
 
     def test_ilustrate_false_omits_illustration_section(self):
         data = make_data(direction="SHORT", dist_pct=0.05, confirm_short=True)
@@ -578,10 +745,30 @@ class TestIlustrate:
         assert "Ilustración entrada" not in md
 
     def test_format_illustration_md_relative_link(self):
-        lines = format_illustration_md("live/us30_m5_chart_annotated.png")
+        lines = format_illustration_md(
+            "live/us30_m5_chart_annotated.png",
+            absolute_path=r"D:\tmp\us30_m5_chart_annotated.png",
+        )
         text = "\n".join(lines)
-        assert "![annotated](us30_m5_chart_annotated.png)" in text
+        assert "![chart](us30_m5_chart_annotated.png)" in text
+        assert "live/us30_m5_chart_annotated.png" in text
         assert "## Ilustración entrada" in text
+        assert "Salidas" in text
+        assert "Ruta absoluta" in text
+
+    def test_format_salidas_block_paths(self):
+        text = "\n".join(
+            format_salidas_block(
+                signal_md=Path("live/btc_m5_high_signal.md"),
+                annotated_file="btc_m5_chart_annotated.png",
+                annotated_abs=r"D:\Danilo\Trading\Cursor Trading\live\btc_m5_chart_annotated.png",
+            )
+        )
+        assert "## Salidas" in text
+        assert "live/btc_m5_high_signal.md" in text
+        assert "live/btc_m5_chart_annotated.png" in text
+        assert "![chart](btc_m5_chart_annotated.png)" in text
+        assert "Chart (abs)" in text
 
     def test_create_annotated_entry_chart_writes_png(self, tmp_path):
         """Synthetic M5 + optimal entry → PNG file exists."""
@@ -625,6 +812,205 @@ class TestIlustrate:
         path = create_annotated_entry_chart(data, opt, out, asset="US30")
         assert path.exists()
         assert path.stat().st_size > 200
+
+
+# ---------------------------------------------------------------------------
+# 9. Categories: Entrada óptima, Confluencia, Advanced
+# ---------------------------------------------------------------------------
+
+class TestCategoriesEntradaConfluenciaAdvanced:
+    def _base_cats(self, **extra) -> dict:
+        cats = {
+            "bando_usado": "BEARISH",
+            "bando_mercado": "BEARISH",
+            "recomendacion": "ESPERAR SHORT",
+            "signal_e1": "ESPERAR",
+            "direction": "SHORT",
+            "rules_ok": 6,
+            "rules_total": 7,
+            "rules_pct": 85,
+            "winrate": "~82%",
+            "winrate_source": "histórico E1 BTC",
+            "precio": "100040.0",
+            "entrada_optima": "100023.6",
+            "confluencia_setup": "MEDIA",
+            "confluencia_detalle": "70% · Rules 85%",
+        }
+        cats.update(extra)
+        return cats
+
+    def test_entrada_optima_immediately_after_precio(self):
+        md = "\n".join(format_augmented_categories_md(self._base_cats()))
+        assert "| Precio |" in md
+        assert "| Entrada óptima |" in md
+        precio_i = md.index("| Precio |")
+        entrada_i = md.index("| Entrada óptima |")
+        bando_i = md.index("| Bando usado |")
+        assert precio_i < entrada_i < bando_i
+
+    def test_confluencia_is_last_status_row(self):
+        cats = self._base_cats(
+            neural_prob_win=0.53,
+            neural_grade="B",
+            neural_confidence="low",
+            neural_gallery_aligned=False,
+        )
+        md = "\n".join(format_augmented_categories_md(cats, hide_ml=True))
+        assert "| Confluencia setup | **MEDIA**" in md
+        # última fila de datos de la tabla (antes del blank final)
+        table_lines = [ln for ln in md.splitlines() if ln.startswith("| ") and "Campo" not in ln and "---" not in ln]
+        assert table_lines[-1].startswith("| Confluencia setup |")
+
+    def test_advanced_extras_only_when_advanced_true(self):
+        lean = "\n".join(format_augmented_categories_md(self._base_cats()))
+        assert "— Advanced —" not in lean
+        assert "Dist. a Entry" not in lean
+
+        adv_cats = self._base_cats(
+            advanced=True,
+            advanced_rows=[
+                ("R:R", "1:2"),
+                ("Dist. a Entry", "+10.0 pts (0.010%)"),
+                ("Estado 2M5", "En zona · falta 2M5"),
+            ],
+        )
+        adv = "\n".join(format_augmented_categories_md(adv_cats))
+        assert "— Advanced —" in adv
+        assert "Dist. a Entry" in adv
+        assert "R:R" in adv
+        # Confluencia sigue última
+        table_lines = [ln for ln in adv.splitlines() if ln.startswith("| ") and "Campo" not in ln and "---" not in ln]
+        assert table_lines[-1].startswith("| Confluencia setup |")
+
+    def test_format_entrada_optima_prefers_entry_number(self):
+        opt = {"entry": 77449.3, "opti_zone": "77373.8–77490.0", "dec": 1}
+        assert format_entrada_optima_cell(opt) == "77449.3"
+        assert format_entrada_optima_cell({"opti_zone": "100–101", "dec": 1}) == "Retest 100–101"
+        assert format_entrada_optima_cell(None) == "n/d"
+
+    def test_compute_confluencia_alta_media_nula(self):
+        data = make_data(
+            direction="SHORT",
+            bias_h1="BEARISH",
+            mode_bias="bearish",
+            dist_pct=0.05,
+            confirm_short=True,
+        )
+        data["mode_setup"] = "break"
+        cats = {
+            "rules_pct": 85,
+            "neural_prob_win": 0.80,
+            "neural_gallery_aligned": True,
+        }
+        level, detail = compute_confluencia_setup(cats, data, crt=make_crt(), e2={"eligible": False})
+        assert level in ("ALTA", "MEDIA", "BAJA", "NULA")
+        assert level == "ALTA"
+        assert "%" in detail
+
+        weak = make_data(direction="NONE", bias_h1="NEUTRAL", dist_pct=0.5, confirm_short=False)
+        weak["mode_setup"] = "auto"
+        level2, _ = compute_confluencia_setup({"rules_pct": 20}, weak, crt=make_crt(), e2=None)
+        assert level2 in ("BAJA", "NULA")
+
+    def test_build_advanced_table_rows_real_metrics_only(self):
+        data = make_data(direction="SHORT", dist_pct=0.05, confirm_short=True, price=100_040.0)
+        opt = compute_optimal_entry(data, "SHORT", make_crt(), data["zone"])
+        cats = {
+            "rules_ok": 6,
+            "rules_total": 7,
+            "rules_pct": 85,
+            "winrate": "~82%",
+            "winrate_source": "E1",
+            "bando_usado": "BEARISH",
+            "bando_mercado": "BEARISH",
+            "neural_prob_win": 0.53,
+            "neural_grade": "B",
+            "neural_confidence": "low",
+        }
+        rows = build_advanced_table_rows(cats, data, opt=opt, ext_pct=72, e2={"eligible": False, "verdict": "E2_NO"})
+        labels = [r[0] for r in rows]
+        assert "R:R" in labels
+        assert "Dist. a Entry" in labels
+        assert "Estado 2M5" in labels
+        assert "Neural grade/conf" in labels
+        assert "Score Rules extendido" in labels
+        # no inventar ATR si no existe
+        assert "ATR" not in labels
+
+    def test_write_high_signal_us30_categories_advanced_salidas(self, tmp_path):
+        """US30 High: Precio→Entrada óptima, Confluencia última, Advanced, Salidas us30 paths."""
+        from app.services.btc_high_analysis import write_high_signal
+        from app.models.btc_signal_categories import verdict_to_signal
+
+        data = make_data(
+            price=42_145.0,
+            zone_level=42_180.0,
+            dist_pct=0.08,
+            direction="SHORT",
+            bias_h1="BEARISH",
+            confirm_short=True,
+            mode_bias="bearish",
+            price_decimals=1,
+            m5=[_red(42_160), _red(42_145)],
+        )
+        data.update({
+            "generated": "2026-09-02 12:00",
+            "asset_label": "US30",
+            "chart_file": "us30_m5_chart.png",
+            "mode_setup": "break",
+            "rsi_h1": 48.0,
+            "pdh": 42_500.0,
+            "pdl": 41_800.0,
+            "swing_highs": [42_200.0],
+            "swing_lows": [41_900.0],
+            "last_m5_12": ["12:00 O=42160.0 H=42170.0 L=42140.0 C=42145.0 [R]"],
+            "session": {
+                "in_ny_window": True,
+                "window": "NY AM",
+                "ny_local": "08:00",
+            },
+            "crt": make_crt(),
+            "divergence": {"type": "NONE", "note": "sin divergencia"},
+            "dmi": {"bias": "BEARISH", "note": "DI- > DI+"},
+            "structure": {"hl": "LH", "lh": "LL"},
+            "e2": {
+                "checks": [],
+                "score": 1,
+                "max": 6,
+                "eligible": False,
+                "verdict": "E2_NO",
+                "note": "Break mode",
+                "mode_setup": "break",
+            },
+            "gallery_patterns": ["WIN: BREAK breakout bajista + hold"],
+            "ilustrate": True,
+            "annotated_chart_file": "us30_m5_chart_annotated.png",
+            "annotated_chart_abs": str(tmp_path / "us30_m5_chart_annotated.png"),
+        })
+        out = tmp_path / "us30_m5_high_signal.md"
+        write_high_signal(out, data, verdict_to_signal, use_ml=False, advanced=True)
+        text = out.read_text(encoding="utf-8")
+        assert "# US30 M5 High Signal" in text
+        assert "| Precio |" in text
+        assert "| Entrada óptima |" in text
+        assert text.index("| Precio |") < text.index("| Entrada óptima |")
+        assert "| Confluencia setup |" in text
+        # Confluencia es la última fila de la tabla Categories (antes de blank/sección)
+        cats_block = text.split("## Categories")[1].split("##")[0]
+        table_rows = [
+            ln for ln in cats_block.splitlines()
+            if ln.startswith("| ") and "Campo" not in ln and "---" not in ln
+        ]
+        assert table_rows[-1].startswith("| Confluencia setup |")
+        assert "— Advanced —" in text or "Dist. a Entry" in text
+        assert "Modo **ADVANCED**" in text
+        assert "TRADING_LIVE_US30_HIGH_SIGNAL.md" in text
+        assert "## Salidas" in text
+        assert "live/us30_m5_high_signal.md" in text
+        assert "live/us30_m5_chart_annotated.png" in text
+        assert "![chart](us30_m5_chart_annotated.png)" in text
+        # Sesión no es fila de status Categories
+        assert "| Sesión |" not in cats_block
 
 
 # ---------------------------------------------------------------------------

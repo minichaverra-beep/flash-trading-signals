@@ -186,7 +186,7 @@ def extract_features(
         "dmi_bear": 1.0 if dmi.get("bias") == "BEAR" else 0.0,
         "rsi_div_bull": 1.0 if div.get("type") == "BULLISH" else 0.0,
         "rsi_div_bear": 1.0 if div.get("type") == "BEARISH" else 0.0,
-        "rule_ny_session": rule_map.get("Sesión NY", 0.0),
+        "rule_ny_session": 1.0 if data.get("session", {}).get("in_ny_window") else 0.0,
         "rule_e1_only": rule_map.get("Solo E1", 0.0),
         "rule_h1_bias": rule_map.get("Tendencia H1 alineada", 0.0),
         "rule_near_zone": rule_map.get("Cerca de zona clave", 0.0),

@@ -4,17 +4,21 @@ from __future__ import annotations
 
 
 
-E1_RULES_TOTAL = 8
+E1_RULES_TOTAL = 7  # sin Sesión NY (info en header/Categories, no bloquea checklist)
 
 
 
-# TRADING_WINRATE_STATS.md — E1 continuación BTC proxy
+# TRADING_WINRATE_STATS.md — E1 continuación / E2 reversión
 
 WR_BTC_E1 = 82.0
 
 WR_BTC_GLOBAL = 69.0
 
 WR_GLOBAL = 67.0
+
+WR_BTC_E2 = 61.1  # E2 BTC proxy
+
+WR_E2_GLOBAL = 63.1  # E2 global proxy
 
 
 
@@ -44,12 +48,12 @@ def format_recomendacion(
     *,
     session_in_ny: bool = True,
 ) -> str:
-    """Recomendación legible con dirección explícita (ENTRAR SHORT, ESPERAR LONG, etc.)."""
-    if not session_in_ny and verdict in ("ENTRAR", "ESPERAR", "NO_OPERAR"):
-        if direction in ("LONG", "SHORT"):
-            return f"NO_OPERAR — fin sesión ({direction})"
-        return "NO_OPERAR — fin sesión"
+    """Recomendación legible con dirección explícita (ENTRAR SHORT, ESPERAR LONG, etc.).
 
+    session_in_ny se acepta por compatibilidad pero ya no fuerza NO_OPERAR;
+    la sesión es informativa (header/Categories), no bloquea la recomendación.
+    """
+    _ = session_in_ny  # info-only; no altera recomendación
     dir_u = direction if direction in ("LONG", "SHORT") else None
 
     if verdict == "ENTRAR":
@@ -80,8 +84,259 @@ def enrich_categories_bando(categories: dict, data: dict, verdict: str) -> None:
     categories["recomendacion"] = format_recomendacion(
         verdict,
         data["setup"]["direction"],
-        session_in_ny=data["session"]["in_ny_window"],
     )
+
+
+def format_entrada_optima_cell(opt: dict | None, data: dict | None = None) -> str:
+    """Valor de celda Entrada óptima: preferir Entry numérico; si falta, zona retest."""
+    if not opt:
+        return "n/d"
+    dec = int(opt.get("dec", (data or {}).get("price_decimals", 1)))
+    fmt = f".{dec}f"
+    entry = opt.get("entry")
+    if entry is not None:
+        return f"{entry:{fmt}}"
+    zone = opt.get("opti_zone")
+    if zone and zone != "n/d":
+        return f"Retest {zone}"
+    return "n/d"
+
+
+def compute_confluencia_setup(
+    categories: dict,
+    data: dict,
+    crt: dict | None = None,
+    e2: dict | None = None,
+) -> tuple[str, str]:
+    """Confluencia setup: ALTA / MEDIA / BAJA / NULA.
+
+    Alinea Rules %, Neural (si hay), validez 2M5, operabilidad Break/Reverse
+    y bias H1 vs bando CLI. Score normalizado sobre puntos disponibles.
+    """
+    score = 0.0
+    max_pts = 0.0
+    notes: list[str] = []
+
+    rules_pct = int(categories.get("rules_pct", 0) or 0)
+    max_pts += 3
+    if rules_pct >= 75:
+        score += 3
+        notes.append(f"Rules {rules_pct}%")
+    elif rules_pct >= 63:
+        score += 2
+        notes.append(f"Rules {rules_pct}%")
+    elif rules_pct >= 50:
+        score += 1
+        notes.append(f"Rules {rules_pct}%")
+    else:
+        notes.append(f"Rules {rules_pct}% bajo")
+
+    if "neural_prob_win" in categories and categories.get("neural_prob_win") is not None:
+        max_pts += 3
+        nw = float(categories["neural_prob_win"])
+        aligned = bool(categories.get("neural_gallery_aligned"))
+        if nw >= 0.70 and aligned:
+            score += 3
+            notes.append(f"Neural {nw * 100:.0f}% alineado")
+        elif nw >= 0.70:
+            score += 2
+            notes.append(f"Neural {nw * 100:.0f}%")
+        elif nw >= 0.50:
+            score += 1
+            notes.append(f"Neural {nw * 100:.0f}%")
+        else:
+            notes.append(f"Neural {nw * 100:.0f}% débil")
+
+    direction = data.get("setup", {}).get("direction", "NONE")
+    near = (
+        data.get("zone", {}).get("dist_pct") is not None
+        and data["zone"]["dist_pct"] <= 0.15
+    )
+    confirm = (
+        data.get("confirm_long", False) if direction == "LONG"
+        else data.get("confirm_short", False) if direction == "SHORT"
+        else False
+    )
+    max_pts += 2
+    if confirm and near:
+        score += 2
+        notes.append("2M5+zona OK")
+    elif confirm or near:
+        score += 1
+        notes.append("2M5 o zona parcial")
+    else:
+        notes.append("2M5/zona no listos")
+
+    setup_mode = (data.get("mode_setup") or "auto").lower()
+    max_pts += 2
+    if setup_mode == "reverse":
+        if e2 and e2.get("eligible"):
+            score += 2
+            notes.append("E2 operable")
+        elif e2 and e2.get("verdict") in ("E2_WATCH", "E2_READY"):
+            score += 1
+            notes.append("E2 watch")
+        else:
+            notes.append("E2 no operable")
+    elif setup_mode == "break":
+        hard = False
+        if crt:
+            if direction == "LONG" and (crt.get("fakeout_pdh") or crt.get("pd_reading") == "BEARISH"):
+                hard = True
+            if direction == "SHORT" and (crt.get("fakeout_pdl") or crt.get("pd_reading") == "BULLISH"):
+                hard = True
+        if direction in ("LONG", "SHORT") and not hard:
+            score += 2
+            notes.append("Break operable")
+        elif direction in ("LONG", "SHORT"):
+            score += 1
+            notes.append("Break con fricción CRT")
+        else:
+            notes.append("Break sin dirección")
+    else:
+        if direction in ("LONG", "SHORT"):
+            score += 1
+            notes.append("Setup auto con dirección")
+        else:
+            notes.append("Setup auto sin dirección")
+
+    max_pts += 2
+    bias = data.get("bias_h1", "NEUTRAL")
+    mode_bias = (data.get("mode_bias") or "auto").lower()
+    aligned_h1 = (
+        (direction == "LONG" and bias == "BULLISH")
+        or (direction == "SHORT" and bias == "BEARISH")
+    )
+    aligned_cli = (
+        (direction == "LONG" and mode_bias == "bullish")
+        or (direction == "SHORT" and mode_bias == "bearish")
+    )
+    if aligned_h1:
+        score += 2
+        notes.append("H1 alineado")
+    elif aligned_cli:
+        score += 1
+        notes.append("CLI alineado / H1 no")
+    elif bias == "NEUTRAL":
+        notes.append("H1 NEUTRAL")
+    else:
+        notes.append("Bias vs bando en conflicto")
+
+    pct = int(score / max_pts * 100) if max_pts else 0
+    if pct >= 75:
+        level = "ALTA"
+    elif pct >= 50:
+        level = "MEDIA"
+    elif pct >= 25:
+        level = "BAJA"
+    else:
+        level = "NULA"
+    detail = f"{pct}% · " + "; ".join(notes[:4])
+    return level, detail
+
+
+def build_advanced_table_rows(
+    categories: dict,
+    data: dict,
+    opt: dict | None = None,
+    ext_pct: int | None = None,
+    e2: dict | None = None,
+) -> list[tuple[str, str]]:
+    """Filas extra (español) para Categories cuando advanced=True. Solo métricas reales."""
+    rows: list[tuple[str, str]] = []
+    dec = int((opt or {}).get("dec", data.get("price_decimals", 1)))
+    fmt = f".{dec}f"
+    price = data.get("price")
+    direction = data.get("setup", {}).get("direction", "NONE")
+
+    if opt and opt.get("rr") is not None:
+        rows.append(("R:R", f"1:{opt['rr']:.0f}"))
+    elif data.get("setup", {}).get("rr") is not None:
+        rows.append(("R:R", f"1:{data['setup']['rr']:.0f}"))
+
+    if opt and price is not None and opt.get("entry") is not None:
+        entry = float(opt["entry"])
+        dist = entry - float(price)
+        dist_pct = abs(dist) / float(price) * 100 if price else 0.0
+        rows.append(
+            ("Dist. a Entry", f"{dist:+{fmt}} pts ({dist_pct:.3f}%)"),
+        )
+    if opt and price is not None and opt.get("sl") is not None:
+        sl = float(opt["sl"])
+        dist = sl - float(price)
+        dist_pct = abs(dist) / float(price) * 100 if price else 0.0
+        rows.append(("Dist. a SL", f"{dist:+{fmt}} pts ({dist_pct:.3f}%)"))
+    if opt and price is not None and opt.get("tp") is not None:
+        tp = float(opt["tp"])
+        dist = tp - float(price)
+        dist_pct = abs(dist) / float(price) * 100 if price else 0.0
+        rows.append(("Dist. a TP", f"{dist:+{fmt}} pts ({dist_pct:.3f}%)"))
+
+    if opt and opt.get("risk_pts") is not None:
+        rows.append(("Riesgo (pts)", f"{opt['risk_pts']:{fmt}}"))
+
+    wr = categories.get("winrate")
+    if wr:
+        rows.append(("Winrate setup", f"{wr} — {categories.get('winrate_source', '')}".rstrip(" —")))
+
+    if ext_pct is not None:
+        rows.append(("Score Rules extendido", f"**{ext_pct}%**"))
+
+    near = (
+        data.get("zone", {}).get("dist_pct") is not None
+        and data["zone"]["dist_pct"] <= 0.15
+    )
+    confirm = (
+        data.get("confirm_long", False) if direction == "LONG"
+        else data.get("confirm_short", False) if direction == "SHORT"
+        else False
+    )
+    if direction in ("LONG", "SHORT"):
+        if confirm and near:
+            m5_state = f"VÁLIDO {direction} (2M5+zona)"
+        elif confirm:
+            m5_state = f"2M5 sí · lejos zona ({data.get('zone', {}).get('dist_pct', 0):.2f}%)"
+        elif near:
+            m5_state = "En zona · falta 2M5"
+        else:
+            m5_state = "Inválido / esperar"
+        rows.append(("Estado 2M5", m5_state))
+
+    rows.append((
+        "Bias H1 vs bando",
+        f"H1 **{categories.get('bando_mercado', data.get('bias_h1', 'n/d'))}** · "
+        f"CLI **{categories.get('bando_usado', 'AUTO')}**",
+    ))
+
+    setup_mode = (data.get("mode_setup") or "auto").lower()
+    if setup_mode == "reverse":
+        if e2 and e2.get("eligible"):
+            br_q = f"REVERSE operable ({e2.get('score', 0)}/{e2.get('max', 6)})"
+        else:
+            br_q = f"REVERSE watch ({(e2 or {}).get('verdict', 'E2_NO')})"
+    elif setup_mode == "break":
+        br_q = "BREAK (continuación E1)"
+    else:
+        br_q = "AUTO"
+    rows.append(("Calidad break/reverse", br_q))
+
+    if "neural_prob_win" in categories:
+        nw = categories["neural_prob_win"] * 100
+        rows.append((
+            "Neural grade/conf",
+            f"**{categories.get('neural_grade', '?')}** · "
+            f"conf. {categories.get('neural_confidence', '?')} · {nw:.0f}% WIN",
+        ))
+
+    rules_ok = categories.get("rules_ok")
+    rules_total = categories.get("rules_total")
+    if rules_ok is not None and rules_total is not None:
+        rows.append((
+            "Rules E1 detalle",
+            f"**{rules_ok}/{rules_total}** ({categories.get('rules_pct', 0)}%)",
+        ))
+
+    return rows
 
 
 def label_signal(sig: str) -> str:
@@ -564,13 +819,15 @@ def score_e1_rules_8(
 
     rsi_ok, rsi_note = _rsi_favor(data, div)
 
-
+    setup_mode = (data.get("mode_setup") or "auto").lower()
+    if setup_mode == "reverse":
+        solo_ok, solo_note = True, "Modo REVERSE — E2 permitido"
+    else:
+        solo_ok, solo_note = (not e2_eligible), "Operar solo E1"
 
     items = [
 
-        ("Sesión NY", data["session"]["in_ny_window"], data["session"]["window"]),
-
-        ("Solo E1", not e2_eligible, "Operar solo E1"),
+        ("Solo E1", solo_ok, solo_note),
 
         ("Tendencia H1 alineada", bias_ok, label_direction(effective_bias)),
 
@@ -586,11 +843,13 @@ def score_e1_rules_8(
 
     ]
 
+    total = len(items)
+
     ok = sum(1 for _, passed, _ in items if passed)
 
-    pct = int(ok / E1_RULES_TOTAL * 100)
+    pct = int(ok / total * 100) if total else 0
 
-    return ok, E1_RULES_TOTAL, pct, items
+    return ok, total, pct, items
 
 
 
@@ -636,9 +895,16 @@ def winrate_estimate(
 
     gallery_patterns: list[str] | None = None,
 
+    setup_mode: str = "auto",
+
 ) -> tuple[str, str]:
 
     """Retorna (valor mostrado, fuente/nota). No inventa WR sin base."""
+
+    reverse = (setup_mode or "auto").lower() == "reverse"
+    wr_top = WR_BTC_E2 if reverse else WR_BTC_E1
+    wr_mid = WR_E2_GLOBAL if reverse else WR_BTC_GLOBAL
+    src_tag = "E2 reversión BTC" if reverse else "E1 BTC"
 
     if gallery_patterns:
 
@@ -648,7 +914,7 @@ def winrate_estimate(
 
         if wins and not losses:
 
-            return f"~{WR_BTC_E1:.0f}%", "patrón ganador similar · histórico E1 BTC"
+            return f"~{wr_top:.0f}%", f"patrón ganador similar · histórico {src_tag}"
 
         if losses and not wins:
 
@@ -662,11 +928,11 @@ def winrate_estimate(
 
     if rules_pct >= 75:
 
-        return f"~{WR_BTC_E1:.0f}%", f"histórico E1 BTC ({rules_pct}% reglas OK)"
+        return f"~{wr_top:.0f}%", f"histórico {src_tag} ({rules_pct}% reglas OK)"
 
     if rules_pct >= 63:
 
-        return f"~{WR_BTC_GLOBAL:.0f}%", f"histórico BTC ({rules_pct}% reglas OK)"
+        return f"~{wr_mid:.0f}%", f"histórico {src_tag} ({rules_pct}% reglas OK)"
 
     if rules_pct >= 50:
 
@@ -706,7 +972,9 @@ def build_categories(
 
     signal_dir = derive_signal_direction(data, crt, dmi)
 
-    wr_val, wr_src = winrate_estimate(rules_pct, gallery_patterns)
+    wr_val, wr_src = winrate_estimate(
+        rules_pct, gallery_patterns, setup_mode=data.get("mode_setup", "auto"),
+    )
 
     mode_bias = data.get("mode_bias", "auto")
 
@@ -938,7 +1206,7 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
         )
 
-    lines += ["", "### Reglas cumplidas (8)", "", "| Regla | OK | Detalle |", "|-------|----|---------|"]
+    lines += ["", f"### Reglas cumplidas ({c['rules_total']})", "", "| Regla | OK | Detalle |", "|-------|----|---------|"]
 
     for label, passed, note in c["rules_items"]:
 
@@ -953,11 +1221,21 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
 
 def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -> list[str]:
-    """Bloque Categories: bando + recomendación + filas Neural (ML opcional oculto en high)."""
+    """Bloque Categories: Precio → Entrada óptima → bando/Neural → Advanced → Confluencia.
+
+    Orden fijo: Precio e Entrada óptima justo al inicio; Confluencia setup siempre última.
+    Con advanced=True (categories['advanced']) se insertan stats trader antes de Confluencia.
+    """
     has_ml = "ml_prob_win" in categories and not hide_ml
     has_neural = "neural_prob_win" in categories
     has_bando = "bando_usado" in categories
-    if not has_ml and not has_neural and not has_bando and "segunda_indicacion_sesgo" not in categories:
+    has_precio = "precio" in categories or "entrada_optima" in categories
+    has_conf = "confluencia_setup" in categories
+    if (
+        not has_ml and not has_neural and not has_bando
+        and "segunda_indicacion_sesgo" not in categories
+        and not has_precio and not has_conf
+    ):
         return []
     lines = [
         "## Categories",
@@ -965,6 +1243,11 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
         "| Campo | Valor |",
         "|-------|-------|",
     ]
+    # Precio + Entrada óptima inmediatamente después (contrato UX high)
+    if "precio" in categories:
+        lines.append(f"| Precio | **{categories['precio']}** |")
+    if "entrada_optima" in categories:
+        lines.append(f"| Entrada óptima | **{categories['entrada_optima']}** |")
     if has_bando:
         rec = categories.get(
             "recomendacion",
@@ -995,6 +1278,19 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
             f"| Neural galería | **{nw:.0f}% WIN** — grade **{categories.get('neural_grade', '?')}** "
             f"({align_note}; conf. {categories.get('neural_confidence', '?')}) |"
         )
+    # Advanced: stats trader en español (solo si flag activo)
+    if categories.get("advanced"):
+        adv_rows = categories.get("advanced_rows") or []
+        if adv_rows:
+            lines.append("| **— Advanced —** | |")
+        for label, value in adv_rows:
+            lines.append(f"| {label} | {value} |")
+    # Última fila de status: Confluencia setup
+    if "confluencia_setup" in categories:
+        conf = categories["confluencia_setup"]
+        detail = categories.get("confluencia_detalle", "")
+        suffix = f" — {detail}" if detail else ""
+        lines.append(f"| Confluencia setup | **{conf}**{suffix} |")
     lines.append("")
     return lines
 

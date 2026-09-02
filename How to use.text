@@ -133,10 +133,10 @@ No es para la rutina diaria — solo cuando tengas captura concreta.
 cd "D:\Danilo\Trading\Cursor Trading"
 
 # BTC High
-.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
 # US30 High
-.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
 Luego @ el live + el protocolo en Cursor → Categories primero → decide.
 ============================================================

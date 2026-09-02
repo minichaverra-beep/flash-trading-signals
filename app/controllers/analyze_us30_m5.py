@@ -233,6 +233,11 @@ def main() -> int:
     parser.add_argument("--bias", choices=("auto", "bullish", "bearish"), default="auto")
     parser.add_argument("--setup", choices=("auto", "break", "reverse"), default="auto")
     parser.add_argument(
+        "--advanced",
+        action="store_true",
+        help="High mode: Categories stats + deep sections (auto with --ml --neural)",
+    )
+    parser.add_argument(
         "--ilustrate",
         action="store_true",
         help="High mode: annotated PNG (2M5 + zona + Entry/SL/TP); works with --no-chart",
@@ -303,6 +308,7 @@ def main() -> int:
         "mode_setup": args.setup,
         "asset_label": SYMBOL_LABEL,
         "chart_file": CHART_FILE,
+        "price_decimals": PRICE_DECIMALS,
         "data_source": data_source,
         "data_notes": fetch_meta.get("notes", []),
         "sl_points_std": 9.0,
@@ -386,10 +392,16 @@ def main() -> int:
                 create_annotated_entry_chart(high_data, opt, ann_path, asset="US30")
                 high_data["ilustrate"] = True
                 high_data["annotated_chart_file"] = ann_name
-                print(f"Ilustrate: {ann_path}")
+                high_data["annotated_chart_abs"] = str(ann_path.resolve())
+                print(f"Ilustrate: {ann_path.resolve()}")
             except Exception as e:
                 print(f"WARN --ilustrate: {e}")
-        write_high_signal(high, high_data, verdict_to_signal, use_ml=use_ml or use_neural)
+        use_advanced = bool(args.advanced) or (use_ml and use_neural)
+        write_high_signal(
+            high, high_data, verdict_to_signal,
+            use_ml=use_ml or use_neural,
+            advanced=use_advanced,
+        )
 
     sig_label = verdict_to_signal(data["setup"])
     print("=" * 56)
@@ -405,6 +417,20 @@ def main() -> int:
         print(f"Light:    {signal}")
     if args.mode in ("high", "all"):
         print(f"High:     {high}")
+        if args.bias != "auto" or args.setup != "auto":
+            print(f"Modo:     bias={args.bias} setup={args.setup}")
+        if args.advanced or (use_ml and use_neural):
+            print("Modo:     ADVANCED (análisis profundo)")
+        print("Salidas:")
+        print(f"  Reporte:  {high.resolve()}")
+        print(f"  Relativo: live/{high.name}")
+        if high_data.get("ilustrate") and high_data.get("annotated_chart_file"):
+            ann_abs = high_data.get("annotated_chart_abs") or str(
+                (OUT_DIR / high_data["annotated_chart_file"]).resolve()
+            )
+            print(f"  Chart:    {ann_abs}")
+            print(f"  Chart rel: live/{high_data['annotated_chart_file']}")
+            print(f"  Preview:  ![chart]({high_data['annotated_chart_file']})")
     if chart_ok:
         print(f"Chart:    {chart_path}")
     print("=" * 56)

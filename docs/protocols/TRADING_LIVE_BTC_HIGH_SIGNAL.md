@@ -25,8 +25,8 @@ Disponibles en **todos los launchers** (`scripts/analyze/analyze-btc-light.ps1`,
 |---------|--------|--------|
 | `-Bullish` | Sesgo alcista forzado — re-puntúa setup como **LONG** | `--bias bullish` |
 | `-Bearish` | Sesgo bajista forzado — re-puntúa setup como **SHORT** | `--bias bearish` |
-| `-Break` | Modo **continuación E1** CRT — fakeout como filtro continuación | `--setup break` |
-| `-Reverse` | Modo **reversión E2** — turtle soup, PDH/PDL fakeout, sweep+reclaim | `--setup reverse` |
+| `-Break` | Modo **breakout** — ruptura de nivel/estructura sostenida (no fakeout/reversión) | `--setup break` |
+| `-Reverse` | Modo **reversión E2** — turtle soup, PDH/PDL fakeout, sweep+reclaim; operable con 2 velas alineadas + winrate | `--setup reverse` |
 | `-Ilustrate` / `-Illustrate` | PNG anotado 2M5 + zona + Entry/SL/TP (`live/btc_m5_chart_annotated.png`); **sí se genera aunque uses `-NoChart`** | `--ilustrate` |
 
 Sin flags → `bias=auto` y `setup=auto` (comportamiento anterior).
@@ -112,9 +112,11 @@ Ver protocolo completo: [`TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md`](TRADING_LIVE_B
 
 Solo E1 90%+ · NY only · SL ~$9 · R:R 1:2 · máx. 3 ops/día · **2 SL = fin sesión** · BE 1:1 · **Rules >70%**
 
-### 8 reglas E1 del script
+### 7 reglas E1 del script (checklist / status signal)
 
-Sesión NY · Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente
+Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente
+
+> **Sesión NY** ya no es fila de la tabla de status signal ni fuerza `NO_OPERAR` en la recomendación ligada a esa tabla. Sigue como info en header/Categories.
 
 **Jerarquía:** script refuerza → TradingView (CRT MTF + RSI TORYS) decide. Auto-veredicto **NO es señal final**.
 
@@ -131,7 +133,7 @@ Sesión NY · Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI 
 5. **Fakeout PDL** - NO E1 chase; contexto E2 turtle soup si reclaim.
 6. **2 velas M5** - Sin confirmacion = ESPERAR (regla dura).
 7. **RSI TORYS** - Filtro a favor; nunca entrada sola por divergencia.
-8. **Sesion NY** - Fuera = NO_OPERAR (salvo demo).
+8. **Sesión NY** — informativa en header/Categories; **no** bloquea el checklist de status signal ni fuerza `NO_OPERAR` por sí sola.
 
 ---
 
@@ -158,7 +160,7 @@ Referencia: TRADING_VISUAL SS1.2, SS7 | PF E1=4.77 vs mixto 3.16
 | **50–62%** | **C** | ESPERAR — setup insuficiente |
 | **<50%** | inválido | **NO_OPERAR** |
 
-Score extendido (High): 8 reglas E1 + 10 reglas extendidas (DMI, 2SL/3ops, SL $9) — meta **>70%** en extendidas.
+Score extendido (High): 7 reglas E1 + extendidas (DMI, 2SL/3ops, SL $9) — meta **>70%** en extendidas.
 
 **Galería WIN:** cruzar siempre con `../strategy/TRADING_OPERATIONS_DESKTOP_CONTEXT.md` §5.1 cuando aplique — citar match `BTC-xx-xx-xx` o "sin match".
 
@@ -279,7 +281,7 @@ PASO 3 — CRT deep dive (sección C)
 - Timeline H1 (últimas 3 velas)
 - Matriz acción E1 §3.2 — qué fila aplica HOY
 
-PASO 4 — Checklist E1 (8 reglas) + extendidas (10)
+PASO 4 — Checklist E1 (7 reglas) + extendidas
 - Tabla completa con ✅/❌
 - Meta extendidas >70%
 
@@ -367,7 +369,7 @@ TURTLE SOUP (E2) — SOLO WATCHLIST:
 - E2 = reversión macro, SL grande, max 1/semana — NO mezclar con E1 $9
 
 SCORE:
-- 8 reglas E1 (Categories) + 10 reglas extendidas (DMI, 2SL/3ops, SL $9)
+- 7 reglas E1 (Categories) + reglas extendidas (DMI, 2SL/3ops, SL $9)
 - Rules ≥75% → setup A+ histórico E1 (~82% WR)
 - Rules 63-74% → B, WR global ~67%
 - Rules <50% → NO_OPERAR
@@ -401,7 +403,7 @@ Responde SIN acortar vs light:
 ### CRT
 - PD reading / H1 state / fakeout / premium-discount 0.5
 
-### Checklist E1 (tabla 8 reglas)
+### Checklist E1 (tabla 7 reglas)
 | Regla | OK | Nota |
 
 ### Turtle Soup E2

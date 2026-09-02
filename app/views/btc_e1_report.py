@@ -81,7 +81,7 @@ def collect_red_flags(
     direction = s["direction"]
 
     if not data["session"]["in_ny_window"]:
-        flags.append("Fuera ventana NY — NO_OPERAR")
+        flags.append("Fuera ventana NY (info — no bloquea checklist)")
 
     if crt:
         if crt.get("fakeout_pdh"):
@@ -126,10 +126,10 @@ def derive_e1_verdict(
     div: dict | None = None,
     e2: dict | None = None,
 ) -> str:
-    """ENTRAR | ESPERAR | NO_OPERAR según reglas CRT E1."""
-    if not data["session"]["in_ny_window"]:
-        return "NO_OPERAR"
+    """ENTRAR | ESPERAR | NO_OPERAR según reglas CRT E1.
 
+    La sesión NY ya no fuerza NO_OPERAR aquí (info en header/Categories).
+    """
     rules_pct = categories["rules_pct"]
     if rules_pct < 50:
         return "NO_OPERAR"
@@ -141,7 +141,7 @@ def derive_e1_verdict(
     hard_no = any(
         k in f.lower()
         for f in flags
-        for k in ("fuera ventana", "fakeout pdh", "no long contra", "no short contra", "pending bear", "pending bull")
+        for k in ("fakeout pdh", "no long contra", "no short contra", "pending bear", "pending bull")
     )
     if hard_no:
         return "NO_OPERAR"
@@ -171,6 +171,8 @@ def derive_e1_verdict(
 
 def e1_e2_label(e2: dict | None) -> str:
     if e2 and e2.get("verdict") in ("E2_WATCH", "E2_READY"):
+        if e2.get("mode_setup") == "reverse" and e2.get("eligible"):
+            return "E2 REVERSE operable"
         return "E1 primario | E2 watch only"
     return "E1 primario"
 
@@ -285,11 +287,18 @@ def format_checklist_e1(rules_items: list[tuple[str, bool, str]], tier: str) -> 
 def format_e2_block(e2: dict | None, tier: str) -> list[str]:
     if not e2 or tier == TIER_LIGHT:
         return []
-    operable = "SÍ demo only" if e2.get("eligible") else "NO"
+    eligible = bool(e2.get("eligible"))
+    setup_mode = e2.get("mode_setup", "auto")
+    if setup_mode == "reverse":
+        operable = "SÍ" if eligible else "NO"
+    else:
+        operable = "SÍ demo only" if eligible else "NO"
+    wr = e2.get("winrate")
+    wr_line = f" | Winrate: **{wr}**" if wr else ""
     lines = [
         "### Turtle Soup E2",
         "",
-        f"Score **{e2.get('score', 0)}/{e2.get('max', 6)}** | Operable: **{operable}** (default NO)",
+        f"Score **{e2.get('score', 0)}/{e2.get('max', 6)}** | Operable: **{operable}**{wr_line}",
         f"_{e2.get('note', 'E2 watchlist only')}_",
         "",
     ]
@@ -360,9 +369,16 @@ def build_report_context(
     verdict = derive_e1_verdict(data, categories, crt, div, e2)
     categories["signal_e1"] = verdict
     enrich_categories_bando(categories, data, verdict)
-    wr_val, wr_src = winrate_estimate(categories["rules_pct"], gallery_patterns)
+    wr_val, wr_src = winrate_estimate(
+        categories["rules_pct"],
+        gallery_patterns,
+        setup_mode=data.get("mode_setup", "auto"),
+    )
     categories["winrate"] = wr_val
     categories["winrate_source"] = wr_src
+    if e2 and e2.get("winrate") and data.get("mode_setup") == "reverse":
+        categories["winrate"] = e2["winrate"]
+        categories["winrate_source"] = e2.get("winrate_source", "histórico E2 reversión")
     ext_pct, _, ext_items = score_extended_rules(data, crt, div, dmi, e2)
     flags = collect_red_flags(data, crt, div)
     _, _, _, rules_items = score_e1_rules_8(data, crt, div, dmi, e2)

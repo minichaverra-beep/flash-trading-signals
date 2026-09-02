@@ -175,14 +175,63 @@ def create_annotated_entry_chart(
     return out
 
 
-def format_illustration_md(annotated_file: str) -> list[str]:
-    """Markdown section with relative image link (for live/*.md)."""
+def format_illustration_md(
+    annotated_file: str,
+    *,
+    absolute_path: str | Path | None = None,
+) -> list[str]:
+    """Markdown: chart link relativo a live/ + rutas fáciles de abrir (sin base64)."""
     name = Path(annotated_file).name
-    return [
+    rel = f"live/{name}"
+    lines = [
         "## Ilustración entrada (2M5 + óptima)",
         "",
-        f"![annotated]({name})",
+        f"![chart]({name})",
         "",
-        "---",
+        "### Salidas (chart)",
+        "",
+        f"- **Abrir (relativo):** `{rel}`",
+        f"- **Markdown:** `![chart]({name})` (desde `live/`)",
+    ]
+    if absolute_path:
+        abs_s = str(Path(absolute_path).resolve())
+        lines.append(f"- **Ruta absoluta:** `{abs_s}`")
+    lines += ["", "---", ""]
+    return lines
+
+
+def format_salidas_block(
+    *,
+    signal_md: str | Path | None = None,
+    annotated_file: str | None = None,
+    annotated_abs: str | Path | None = None,
+) -> list[str]:
+    """Bloque Salidas al final del reporte: paths clickable-friendly para chat/Cursor."""
+    lines = [
+        "## Salidas",
         "",
     ]
+    if signal_md:
+        sp = Path(signal_md)
+        rel = f"live/{sp.name}" if sp.name else str(signal_md)
+        lines.append(f"- **Reporte:** `{rel}`")
+        try:
+            lines.append(f"- **Reporte (abs):** `{sp.resolve()}`")
+        except OSError:
+            lines.append(f"- **Reporte (abs):** `{signal_md}`")
+    if annotated_file:
+        name = Path(annotated_file).name
+        rel = f"live/{name}"
+        lines.append(f"- **Chart anotado:** `{rel}`")
+        lines.append(f"- **Preview:** `![chart]({name})`")
+        if annotated_abs:
+            try:
+                lines.append(f"- **Chart (abs):** `{Path(annotated_abs).resolve()}`")
+            except OSError:
+                lines.append(f"- **Chart (abs):** `{annotated_abs}`")
+        else:
+            lines.append(f"- **Chart (abs):** _(mismo folder que el MD · `{rel}`)_")
+    if len(lines) <= 2:
+        return []
+    lines.append("")
+    return lines

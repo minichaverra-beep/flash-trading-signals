@@ -1,14 +1,29 @@
-# US30 M5 HIGH - analisis profundo CRT + Turtle Soup
+# US30 M5 HIGH - analisis profundo CRT + Turtle Soup (max tokens)
 
 # Uso:
 
 #   .\scripts\analyze\analyze-us30-high.ps1
 
-#   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -ML -Neural
+#   .\scripts\analyze\analyze-us30-high.ps1 -NoChart
+
+#   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -ML -Neural          # auto-activa Advanced
+#   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Advanced -ML -Neural
 
 #   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break
 
+#   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse
+
 #   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+
+#
+
+# Bias (mutuamente excluyente): -Bullish | -Bearish  ->  --bias bullish|bearish|neutral
+
+# Setup (mutuamente excluyente): -Break | -Reverse   ->  --setup break|reverse|auto
+
+#   break   = E1 CRT continuacion / breakout
+
+#   reverse = E2 turtle soup / reversal (operable con 2 velas + winrate)
 
 # -Ilustrate / -Illustrate: PNG anotado 2M5+OPTI (aunque -NoChart)
 
@@ -29,6 +44,8 @@ param(
     [switch]$Break,
 
     [switch]$Reverse,
+
+    [switch]$Advanced,
 
     [Alias("Illustrate")]
     [switch]$Ilustrate,
@@ -75,7 +92,9 @@ if ($Neural) { $argsList += "--neural" }
 
 if ($Ilustrate) { $argsList += "--ilustrate" }
 
-
+# Advanced: explicit flag, or auto when ML + Neural both set
+$useAdvanced = $Advanced -or ($ML -and $Neural)
+if ($useAdvanced) { $argsList += "--advanced" }
 
 if ($Bullish) { $argsList += @("--bias", "bullish") }
 
@@ -93,7 +112,22 @@ else { $argsList += @("--setup", "auto") }
 
 
 
-Write-Host ">> US30 M5 HIGH - CRT + Turtle Soup..." -ForegroundColor Magenta
+$modeHint = @()
+
+if ($Bullish) { $modeHint += "BULLISH" }
+
+elseif ($Bearish) { $modeHint += "BEARISH" }
+
+if ($Break) { $modeHint += "BREAK" }
+
+elseif ($Reverse) { $modeHint += "REVERSE" }
+
+$modeLabel = if ($modeHint.Count -gt 0) { " [" + ($modeHint -join " + ") + "]" } else { "" }
+
+
+
+$advLabel = if ($useAdvanced) { " [ADVANCED]" } else { "" }
+Write-Host ">> US30 M5 HIGH$modeLabel$advLabel - CRT + Turtle Soup..." -ForegroundColor Magenta
 
 python @argsList
 
@@ -111,5 +145,8 @@ Write-Host ""
 
 Write-Host "Cursor HIGH (max contexto):" -ForegroundColor Green
 
-Write-Host '  @live/us30_m5_high_signal.md @docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md analisis E1 CRT' -ForegroundColor Yellow
-
+if ($useAdvanced) {
+    Write-Host '  @live/us30_m5_high_signal.md @docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md analisis ADVANCED E1 CRT' -ForegroundColor Yellow
+} else {
+    Write-Host '  @live/us30_m5_high_signal.md @docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md analisis E1 CRT' -ForegroundColor Yellow
+}
