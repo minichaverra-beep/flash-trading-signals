@@ -1,0 +1,10 @@
+# Neural / deep learning — desktop vision (E1 gallery)
+# Install: pip install -r "training neuronal/requirements-neural.txt"
+torch>=2.0.0
+torchvision>=0.15.0
+Pillow>=10.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+tqdm>=4.65.0
+joblib>=1.3.0

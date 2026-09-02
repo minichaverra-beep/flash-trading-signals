@@ -1,0 +1,65 @@
+---
+description: Protocolo de señales live BTC/US30 — Light/Full/High/Super High, flags y Categories
+alwaysApply: true
+---
+
+# Señales live — BTC / US30
+
+Cómo comportarse al analizar outputs live. Guía humana: `How to use.text`. Reglas E1 inmutables → `trading.mdc` (no duplicar el plan).
+
+## Comandos
+
+Preferir `scripts/analyze/`. Stubs raíz solo High.
+
+```powershell
+# BTC High (recomendado)
+.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish|-Bullish -Break|-Reverse -ML -Neural -Ilustrate
+.\analyze-btc-high.ps1 ...   # stub raíz
+
+# US30 High
+.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish|-Bullish -Break|-Reverse -ML -Neural -Ilustrate
+.\analyze-us30-high.ps1 ...
+```
+
+| Flag | Uso |
+|------|-----|
+| `-NoChart` | Sin PNG embebido en el MD |
+| `-Bearish` / `-Bullish` | Bando forzado (sin flag = AUTO) |
+| `-Break` / `-Reverse` | Continuación E1 vs reversión E2 |
+| `-ML` | ML tabular (oculto en High Categories; visible en Light) |
+| `-Neural` | Neural galería en Categories |
+| `-Ilustrate` | PNG anotado 2M5+OPTI (también con `-NoChart`) |
+
+Light / Full / Super High: mismos flags en `analyze-*-light.ps1`, `analyze-*.ps1`, `analyze-*-superhigh.ps1`.
+
+## Outputs y protocolos
+
+| Tier | Live | Protocolo |
+|------|------|-----------|
+| Light | `live/btc_m5_signal.md`, `live/us30_m5_signal.md` | `docs/protocols/TRADING_LIVE_*_SIGNAL_LIGHT.md` |
+| Full | `live/btc_m5_snapshot.md`, `live/us30_m5_snapshot.md` | `docs/protocols/TRADING_LIVE_*_M5_ANALYSIS.md` |
+| High | `live/btc_m5_high_signal.md`, `live/us30_m5_high_signal.md` | `docs/protocols/TRADING_LIVE_*_HIGH_SIGNAL.md` |
+| Super High | `live/btc_super_high_signal.md` | `docs/protocols/TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md` |
+
+En Cursor: `@live/...` + `@docs/protocols/...` del tier usado.
+
+## Orden de lectura (Categories primero)
+
+1. **Bando usado** — Bullish / Bearish / AUTO  
+2. **Bando mercado H1** — si **NEUTRAL** → leer **Segunda indicación**  
+3. **Recomendación**  
+4. **Neural** (si `-Neural`) — complementa, no decide solo  
+5. **Entrada optimizada** — AHORA vs OPTI + plan  
+6. **Checklist 2M5** — las 5 ✅ = OK; falta una → ESPERAR  
+7. **Ilustración** — solo si `-Ilustrate` / PNG presente  
+
+## Jerarquía de decisión
+
+**Reglas E1 + sesión NY + Checklist 2M5 > Neural.**  
+ML no aparece en Categories High (puede existir en Light). Auto-veredicto del script **no** es señal final.
+
+## Veredicto (español)
+
+Usar exactamente: **ENTRAR LONG** | **ENTRAR SHORT** | **ESPERAR** | **NO_OPERAR**.
+
+Justificar con Categories + 2M5 + sesión. **No inventar reglas**; citar `docs/strategy/` solo si hace falta detalle del plan.

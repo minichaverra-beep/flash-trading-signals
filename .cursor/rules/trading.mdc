@@ -1,0 +1,122 @@
+---
+description: Contexto operativo de trading Danilo — E1/E2, reglas inmutables y stack de archivos MD
+alwaysApply: true
+---
+
+# Trading — Danilo (Cursor Trading)
+
+Cuando trabajes en esta carpeta, trata los **archivos de contexto** como fuente autoritativa del plan. **No inventes reglas** ni contradigas lo documentado. Lee el archivo relevante antes de analizar setups, validar trades o ayudar con Notion. Señales live (comandos, Categories, veredicto) → `signals.mdc`.
+
+## Estructura del proyecto (MVC)
+
+```
+Cursor Trading/
+├── app/
+│   ├── config.py           # PROJECT_ROOT, LIVE_DIR, DOCS_*, MODELS_DIR, TRAINING_*
+│   ├── models/             # datos mercado, ML, neural, categorías E1
+│   ├── services/           # btc_high_analysis, btc_super_high_analysis
+│   ├── views/              # btc_e1_report, illustrate_high_entry
+│   └── controllers/        # analyze_*, train_* (python -m app.controllers.*)
+├── scripts/
+│   ├── analyze/            # launchers analyze-*.ps1 → python -m app.controllers.*
+│   └── *.py                # annotate chart, winrate images, token meter
+├── docs/
+│   ├── protocols/          # TRADING_LIVE_* (protocolos analyzers)
+│   └── strategy/           # plan E1, visual, indicadores, stats, ops desktop
+├── live/                   # outputs generados (@ refs Cursor)
+├── data/                   # parquet ML cache
+├── models/                 # .joblib ML tabular (≠ app/models package)
+├── tests/
+├── analyze-btc-high.ps1    # stub raíz opcional → scripts/analyze/
+├── analyze-us30-high.ps1   # stub raíz opcional → scripts/analyze/
+└── .cursor/rules/
+```
+
+**Rutas Cursor:** protocolos en `@docs/protocols/...`, estrategia en `@docs/strategy/...`, señales en `@live/...`.
+
+## Archivos de contexto (rutas relativas a esta carpeta)
+
+| Archivo | Cuándo consultarlo |
+|---------|-------------------|
+| `docs/strategy/TRADING_STRATEGY_CONTEXT.md` | Plan operativo, sesión, gestión, campos Notion, checklist |
+| `docs/strategy/TRADING_VISUAL_CONTEXT.md` | Diagramas E1/E2, PDH/PDL, psicología, 8 reglas inmutables |
+| `docs/strategy/TRADING_OPERATIONS_DESKTOP_CONTEXT.md` | Galería real (112 capturas), patrones WIN/LOSS, validación visual |
+| `docs/strategy/TRADING_WINRATE_STATS.md` | WR por activo/estrategia, datos Notion y desktop |
+| `docs/strategy/TRADING_PROFESSIONAL_STATS.md` | KPI consolidado: PF, expectativa R, benchmarks, WR mensual |
+| `docs/strategy/TRADING_INDICATORS_RULES.md` | Stack TradingView Legacy Pro, CRT + RSI TORYS, confluencias |
+| `docs/protocols/TRADING_LIVE_BTC_M5_ANALYSIS.md` | Protocolo análisis live BTC M5 + `scripts/analyze/analyze-btc.ps1` (full) |
+| `docs/protocols/TRADING_LIVE_BTC_SIGNAL_LIGHT.md` | Protocolo mínimo tokens + `scripts/analyze/analyze-btc-light.ps1` |
+| `docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md` | Protocolo HIGH CRT+Turtle + `scripts/analyze/analyze-btc-high.ps1` |
+| `docs/protocols/TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md` | Protocolo Super High captura entry/SL/TP + `scripts/analyze/analyze-btc-superhigh.ps1` |
+| `docs/protocols/TRADING_LIVE_US30_M5_ANALYSIS.md` | Protocolo análisis live US30 M5 + `scripts/analyze/analyze-us30.ps1` (full) |
+| `docs/protocols/TRADING_LIVE_US30_SIGNAL_LIGHT.md` | Protocolo mínimo tokens US30 + `scripts/analyze/analyze-us30-light.ps1` |
+| `docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md` | Protocolo HIGH CRT+Turtle US30 + `scripts/analyze/analyze-us30-high.ps1` |
+| `live/btc_m5_snapshot.md` | Snapshot full BTC (`analyze-btc.ps1`) |
+| `live/btc_m5_signal.md` | Señal light (`analyze-btc-light.ps1`) |
+| `live/btc_m5_high_signal.md` | Señal HIGH CRT (`analyze-btc-high.ps1`) |
+| `live/btc_super_high_signal.md` | Señal Super High (`analyze-btc-superhigh.ps1`) |
+| `live/us30_m5_snapshot.md` | Snapshot full US30 (`analyze-us30.ps1`) |
+| `live/us30_m5_signal.md` | Señal light US30 (`analyze-us30-light.ps1`) |
+| `live/us30_m5_high_signal.md` | Señal HIGH CRT US30 (`analyze-us30-high.ps1`) |
+| `live/super_high_entry.png` | Captura TradingView entry/SL/TP (input Super High) |
+| `docs/strategy/TRADING_ANALYZER_TOKEN_USAGE.md` | Consumo tokens Light/Full/High/Super High (`python -m scripts.measure_analyzer_tokens`) |
+| `docs/strategy/TRADING_DAILY_ROUTINE_4X.md` | Rutina 4×/día — prompts por bloque NY AM/PM |
+| `docs/strategy/TRADING_ML_TRAINING.md` | Entrenamiento ML tabular |
+| `docs/strategy/TRADING_2M5_SHORT_VISUAL.md` | Visual 2M5 short / entry OPTI |
+| `app/services/learning/training neuronal/README.md` | ML visión desktop — WIN/LOSS galería, entrenamiento e inferencia |
+| `app/services/learning/training neuronal/TRADING_NEURAL_STRATEGY.md` | Arquitectura deep learning + patrones visuales E1 |
+| `app/services/learning/training neuronal/TRADING_NEURAL_DESKTOP_ANALYSIS.md` | Protocolo análisis `operaciones - desktop` + inferencia live |
+
+**Orden sugerido para validar un setup E1:** estrategia → visual → desktop → indicadores → stats (si aplica).
+
+**Live BTC full:** `.\scripts\analyze\analyze-btc.ps1` → `@live/btc_m5_snapshot.md`  
+**Live BTC light:** `.\scripts\analyze\analyze-btc-light.ps1` → `@live/btc_m5_signal.md`  
+**Live BTC high:** `.\scripts\analyze\analyze-btc-high.ps1` → `@live/btc_m5_high_signal.md` `@docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md`  
+**Live BTC super high:** `.\scripts\analyze\analyze-btc-superhigh.ps1` → `@live/btc_super_high_signal.md` `@docs/protocols/TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md` (requiere `live/super_high_entry.png`)
+
+**Flags ML / Neural:** `-ML` / `--ml` añade **ML prob** tabular en Categories; `-Neural` / `--neural` añade **Neural galería** (similitud WIN vs `operaciones - desktop` desde chart PNG). Combinar: `.\scripts\analyze\analyze-btc.ps1 -All -NoChart -ML -Neural`.
+
+**Flag Ilustrate (high):** `-Ilustrate` / `--ilustrate` genera PNG anotado 2M5+OPTI (`live/btc_m5_chart_annotated.png` / `live/us30_m5_chart_annotated.png`) aunque uses `-NoChart`.
+
+**Live US30 full:** `.\scripts\analyze\analyze-us30.ps1` → `@live/us30_m5_snapshot.md`  
+**Live US30 light:** `.\scripts\analyze\analyze-us30-light.ps1` → `@live/us30_m5_signal.md`  
+**Live US30 high:** `.\scripts\analyze\analyze-us30-high.ps1` → `@live/us30_m5_high_signal.md` `@docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md`  
+**US30 datos:** yfinance `YM=F` / `^DJI` — ver `docs/protocols/TRADING_LIVE_US30_M5_ANALYSIS.md`  
+**US30 ML:** `python -m app.controllers.train_us30_signals` → `models/us30_signal_model.joblib`
+
+**Stubs raíz (high):** `.\analyze-btc-high.ps1` y `.\analyze-us30-high.ps1` reenvían a `scripts/analyze/`.
+
+**Flags bias / setup (todos los tiers):** `-Bullish|-Bearish` y `-Break|-Reverse` en cualquier launcher — Categories muestra **Bando usado** + **Recomendación** explícita. Ver `docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md`.
+
+## Reglas inmutables (resumen)
+
+- **E1 (CRT / scalping):** **90%+** del volumen — identidad del trader.
+- **E2 (Turtle Soup / reversión macro):** **≤10%** — ocasional, demo o mes favorable.
+- **Activos:** solo **BTC** y **US30** (máx. 1 mercado a la vez).
+- **Sesión:** **Nueva York** (Asia solo demo).
+- **SL:** ~**$9** fijo en cuenta — **nunca expandir**.
+- **R:R mínimo:** **1:2** — calcular antes de entrar.
+- **2 SL = fin de sesión** — sin excepciones ni reactivar con indicadores.
+- **Entrada E1:** zona de reacción (S/R débil) + **2 velas M5** de confirmación + sesgo HTF alineado.
+
+## Indicadores (núcleo)
+
+- **CRT MTF + HTF Candles** y **RSI Divergence [TORYS]** = núcleo (★★★).
+- DMI Adaptive, Swing H/L, Swing Profile = soporte/confluencia.
+- **Regla madre:** los indicadores **refuerzan** el edge E1; **nunca** sustituyen zona + 2 velas M5 + SL fijo.
+- Rechazar entrada si un indicador contradice macro H1, PDH/PDL o las reglas inmutables.
+
+## Comportamiento del asistente
+
+1. **Analizar trades** contra el plan y la galería WIN — citar incumplimientos concretos.
+2. **Notion:** usar campos y lenguaje de `docs/strategy/TRADING_STRATEGY_CONTEXT.md` (Historial de Trades).
+3. **Setup propuesto:** checklist pre-trade + comparar con `operaciones - desktop/` y visual context.
+4. **Post 2 SL o trade #3 tras día rojo:** recordar fin de sesión / no sobreoperar.
+5. **Idioma:** responder en **español** cuando Danilo escriba en español.
+
+## Frases guía
+
+> *"E1 es mi edge. Solo ejecuto."*  
+> *"2 SL = cierro. El mercado estará mañana."*
+
+Para detalle operativo, psicología, WR y configuración de indicadores → consultar los MD arriba; no duplicar aquí.

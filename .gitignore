@@ -1,0 +1,39 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.venv/
+venv/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vs/
+*.suo
+
+# Temp / cache (regenerable)
+*.tmp
+*.log
+
+# Env / secrets (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+
+# Market data (regenerable / bulky)
+data/*.csv
+data/*.parquet
+
+# Neural desktop vision weights & local lists (keep folder structure via .gitkeep)
+app/services/learning/training neuronal/models/*.pt
+app/services/learning/training neuronal/reports/*.md
+app/services/learning/training neuronal/data/desktop_image_list.json
+
+# Live charts are regenerable; keep live/*.md for @ Cursor / ops notes
+live/*.png
