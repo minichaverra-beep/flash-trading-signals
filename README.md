@@ -2,7 +2,9 @@
 
 Sistema de señales **BTC / US30** (estrategia E1) para trabajar en **Cursor**.
 
-**Owner:** Danilo
+**Owner:** Danilo (minichaverra@gmail.com)
+
+**Estrategia:** https://app.notion.com/p/jolunto/Bit-cora-trading-v2-1ee58354488080d0af44e687146f2838?source=copy_link
 
 **Versión:** [1.1.0](VERSION) · tag `v1.1.0`
 
