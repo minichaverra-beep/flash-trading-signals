@@ -6,6 +6,18 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Coverage / Sonar
+.coverage
+coverage.xml
+htmlcov/
+.scannerwork/
+.sonar/
 
 # OS
 .DS_Store
@@ -15,6 +27,10 @@ desktop.ini
 # Editor
 .vs/
 *.suo
+.idea/
+
+# SonarLint local bind (copy from connectedMode.json.example)
+.sonarlint/connectedMode.json
 
 # Temp / cache (regenerable)
 *.tmp
@@ -25,8 +41,9 @@ desktop.ini
 .env.*
 !.env.example
 *.pem
+*.key
 
-# Market data (regenerable / bulky)
+# Market data (regenerable / bulky) — keep reports / .gitkeep tracked
 data/*.csv
 data/*.parquet
 

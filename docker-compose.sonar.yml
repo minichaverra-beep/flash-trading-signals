@@ -1,0 +1,33 @@
+# Optional local SonarQube Community (Docker Desktop required).
+# Not needed for SonarCloud CI. Skip if Docker is unavailable.
+#
+# Usage (PowerShell, from repo root):
+#   docker compose -f docker-compose.sonar.yml up -d
+#   # Wait ~1–2 min, then open http://localhost:9000
+#   # Default login: admin / admin (change on first login)
+#   # Create project key: flash-trading-signals → generate token → set $env:SONAR_TOKEN
+#   .\scripts\analyze\run-sonar-local.ps1
+#
+# Stop:
+#   docker compose -f docker-compose.sonar.yml down
+#
+# Data persists in named volume sonarqube_data.
+
+services:
+  sonarqube:
+    image: sonarqube:community
+    container_name: cursor-trading-sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    # First start can take 1–2 minutes before http://localhost:9000 responds.
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:

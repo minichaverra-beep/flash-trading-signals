@@ -183,6 +183,31 @@ cd "D:\Danilo\Trading\Cursor Trading"
 .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
 Luego @ el live + el protocolo en Cursor → Categories primero → decide.
+
+
+9) CALIDAD / SONAR (antes de push)
+------------------------------------------------------------
+• Tests mínimos:
+    pip install -r requirements-dev.txt
+    pytest tests/test_high_signal_rules.py
+
+• Coverage (XML para Sonar):
+    pytest tests/ --cov=app --cov-report=xml
+
+• Sonar LOCAL (PowerShell) — preferido para analizar en tu PC:
+    1) Java 17+ y sonar-scanner.bat en PATH
+    2) SonarQube en http://localhost:9000 (o Docker: docker-compose.sonar.yml)
+    3) Token de la UI → $env:SONAR_TOKEN = "<token>"  (nunca al repo)
+    4) .\scripts\analyze\run-sonar-local.ps1
+  Detalle: docs\QUALITY.md
+
+• SonarCloud / CI: crear proyecto en la UI; alinear projectKey/organization
+  en sonar-project.properties; secreto SONAR_TOKEN.
+  Workflow: .github\workflows\sonarcloud.yml
+
+• History-review ≠ señal High (no escribe historial; solo P&L).
+• No commitear .env, tokens, live/*.png ni *_signal_history.json.
+
 ============================================================
 Licencia: CC BY-NC-ND 4.0 (ver LICENSE) — uso no comercial, sin modificaciones.
 ============================================================

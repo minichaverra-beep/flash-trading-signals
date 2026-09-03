@@ -1,28 +1,20 @@
 cd "D:\Danilo\Trading\Cursor Trading"
 
+# BTC Mejor señal
+.\analyze-btc-high.ps1 -Bullish -Break -ML -Neural -Advanced
 
+# US30 Mejor señal
+.\analyze-us30-high.ps1 -Bearish -Break -ML -Neural -Advanced
+
+
+---------------------------------------------------
+# Analizar cierre de operación
 # ---------------------------------------------------------------------------
-# BTC High — mañana (Bearish Break Advanced + ML/Neural/Ilustrate)
-# ---------------------------------------------------------------------------
-.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
-# BTC High — Bullish Break Advanced (guarda Entry en historial)
-.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Advanced
+# BTC cierre OP
+.\scripts\analyze\analyze-us30-high.ps1 -Bullish -Break -ML -Neural -Ilustrate -Advanced
 
 
-# BTC Historial — revisión P&L de última Entry (NO es señal; NO append)
-.\scripts\analyze\analyze-btc-history.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+# US30 cierre OP
+.\scripts\analyze\analyze-btc-high.ps1 -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
-# ---------------------------------------------------------------------------
-# US30 High — tarde (Bearish Break Advanced + ML/Neural/Ilustrate)
-# ---------------------------------------------------------------------------
-.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
-
-
-# US30 Historial — revisión P&L de última Entry (NO es señal; NO append)
-.\scripts\analyze\analyze-us30-history.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
-
-
-# Revisar P&L de la última Entry guardada (solo lectura)
-#   .\scripts\analyze\analyze-btc-history.ps1
-#   .\scripts\analyze\analyze-us30-history.ps1

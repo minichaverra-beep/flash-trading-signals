@@ -1,0 +1,25 @@
+[project]
+name = "flash-trading-signals"
+version = "1.1.0"
+description = "Señales BTC/US30 (E1) — Cursor Trading"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+  "*/__pycache__/*",
+  "app/services/learning/training neuronal/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.coverage.xml]
+output = "coverage.xml"

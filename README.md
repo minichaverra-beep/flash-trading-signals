@@ -72,6 +72,18 @@ La estrategia E1 carga sola vía `.cursor/rules/` (**Trading — Danilo** / **Se
 
 Semver en `VERSION` + tags `vMAJOR.MINOR.PATCH`. Detalle: [docs/VERSIONING.md](docs/VERSIONING.md).
 
+## Calidad y SonarQube
+
+- Prácticas Git/tests/history vs High: [docs/QUALITY.md](docs/QUALITY.md)
+- Config scanner: `sonar-project.properties` · tests/coverage: `pyproject.toml` · deps: `requirements-dev.txt`
+- CI (opcional): `.github/workflows/sonarcloud.yml` — secret `SONAR_TOKEN` en GitHub; crear el proyecto en SonarCloud antes del primer scan
+
+```powershell
+pip install -r requirements-dev.txt
+pytest tests/test_high_signal_rules.py
+pytest --cov=app --cov-report=xml tests/
+```
+
 ## Licencia
 
 Licencia: [CC BY-NC-ND 4.0](LICENSE) — Copyright (c) 2026 Danilo.

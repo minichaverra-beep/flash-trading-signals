@@ -26,5 +26,7 @@ git push --tags
 
 ## Qué no versionar
 
-Ver `.gitignore`: parquet/CSV en `data/`, pesos `.pt` neural, charts `live/*.png`, `__pycache__`, `.env`.
+Ver `.gitignore`: parquet/CSV en `data/`, pesos `.pt` neural, charts `live/*.png`, historial `live/*_signal_history.json`, `__pycache__`, `.env`, `coverage.xml`, `.scannerwork/`.
 Los `models/*.joblib` pequeños y `live/*.md` sí pueden ir al repo.
+
+Prácticas de calidad / Sonar: [QUALITY.md](QUALITY.md).
