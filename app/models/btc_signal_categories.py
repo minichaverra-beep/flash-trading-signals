@@ -1223,18 +1223,26 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -> list[str]:
     """Bloque Categories: Precio → Entrada óptima → bando/Neural → Advanced → Confluencia.
 
-    Orden fijo: Precio e Entrada óptima justo al inicio; Confluencia setup siempre última.
+    Orden fijo (High): Precio e Entrada óptima justo al inicio; Confluencia setup siempre última.
+    history_mode: Revisión última Entry + P&L (no señal nueva; sin Entrada óptima / ENTRAR).
     Con advanced=True (categories['advanced']) se insertan stats trader antes de Confluencia.
     """
+    history_mode = bool(categories.get("history_mode"))
     has_ml = "ml_prob_win" in categories and not hide_ml
     has_neural = "neural_prob_win" in categories
     has_bando = "bando_usado" in categories
     has_precio = "precio" in categories or "entrada_optima" in categories
     has_conf = "confluencia_setup" in categories
+    has_review = bool(
+        categories.get("revision_ultima_entry")
+        or categories.get("pnl_vs_precio")
+        or categories.get("calificacion_entrada")
+        or categories.get("ultima_senal_entrada")
+    )
     if (
         not has_ml and not has_neural and not has_bando
         and "segunda_indicacion_sesgo" not in categories
-        and not has_precio and not has_conf
+        and not has_precio and not has_conf and not has_review
     ):
         return []
     lines = [
@@ -1243,11 +1251,59 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
         "| Campo | Valor |",
         "|-------|-------|",
     ]
+
+    if history_mode:
+        # Revisión P&L — no es señal de entrada
+        lines.append("| **— Revisión última Entry —** | *(no es señal nueva)* |")
+        if categories.get("revision_ultima_entry") or categories.get("ultima_senal_entrada"):
+            rev = categories.get("revision_ultima_entry") or categories["ultima_senal_entrada"]
+            lines.append(f"| Revisión última Entry | {rev} |")
+        if categories.get("pnl_vs_precio"):
+            lines.append(f"| P&L vs precio actual | {categories['pnl_vs_precio']} |")
+        calif = categories.get("calificacion_entrada") or categories.get("vs_ultima_entrada")
+        if calif:
+            lines.append(f"| Calificación Entry | {calif} |")
+        if "precio" in categories:
+            lines.append(f"| Precio actual | **{categories['precio']}** |")
+        if has_bando:
+            lines.append(f"| Bando usado (lado asumido) | **{categories['bando_usado']}** |")
+            lines.append(f"| Bando mercado (H1) | **{categories.get('bando_mercado', 'NEUTRAL')}** |")
+        if has_neural:
+            nw = categories["neural_prob_win"] * 100
+            align_note = (
+                "alineado con patrones WIN desktop"
+                if categories.get("neural_gallery_aligned")
+                else "baja similitud con galería WIN"
+            )
+            lines.append(
+                f"| Neural galería | **{nw:.0f}% WIN** — grade **{categories.get('neural_grade', '?')}** "
+                f"({align_note}; conf. {categories.get('neural_confidence', '?')}) |"
+            )
+        if categories.get("advanced"):
+            adv_rows = categories.get("advanced_rows") or []
+            if adv_rows:
+                lines.append("| **— Advanced —** | |")
+            for label, value in adv_rows:
+                lines.append(f"| {label} | {value} |")
+        if "confluencia_setup" in categories:
+            conf = categories["confluencia_setup"]
+            detail = categories.get("confluencia_detalle", "")
+            suffix = f" — {detail}" if detail else ""
+            lines.append(f"| Confluencia setup | **{conf}**{suffix} |")
+        lines.append("")
+        return lines
+
     # Precio + Entrada óptima inmediatamente después (contrato UX high)
     if "precio" in categories:
         lines.append(f"| Precio | **{categories['precio']}** |")
     if "entrada_optima" in categories:
         lines.append(f"| Entrada óptima | **{categories['entrada_optima']}** |")
+    # Reflexión: última Entry del mismo par + calificación (High)
+    if categories.get("ultima_senal_entrada"):
+        lines.append(f"| Última señal | {categories['ultima_senal_entrada']} |")
+    calif = categories.get("calificacion_entrada") or categories.get("vs_ultima_entrada")
+    if calif:
+        lines.append(f"| Calificación entrada | {calif} |")
     if has_bando:
         rec = categories.get(
             "recomendacion",

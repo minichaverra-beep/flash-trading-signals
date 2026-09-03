@@ -242,6 +242,11 @@ def main() -> int:
         action="store_true",
         help="High mode: annotated PNG (2M5 + zona + Entry/SL/TP); works with --no-chart",
     )
+    parser.add_argument(
+        "--history-review",
+        action="store_true",
+        help="High: review P&L of last Entry only (no new signal framing; do not append history)",
+    )
     args = parser.parse_args()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -306,6 +311,7 @@ def main() -> int:
         "chart": chart_ok,
         "mode_bias": args.bias,
         "mode_setup": args.setup,
+        "history_mode": bool(args.history_review),
         "asset_label": SYMBOL_LABEL,
         "chart_file": CHART_FILE,
         "price_decimals": PRICE_DECIMALS,
@@ -421,6 +427,8 @@ def main() -> int:
             print(f"Modo:     bias={args.bias} setup={args.setup}")
         if args.advanced or (use_ml and use_neural):
             print("Modo:     ADVANCED (análisis profundo)")
+        if args.history_review:
+            print("Modo:     HISTORY-REVIEW (P&L última Entry; sin append)")
         print("Salidas:")
         print(f"  Reporte:  {high.resolve()}")
         print(f"  Relativo: live/{high.name}")

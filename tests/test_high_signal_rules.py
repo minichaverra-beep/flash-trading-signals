@@ -986,6 +986,7 @@ class TestCategoriesEntradaConfluenciaAdvanced:
             "ilustrate": True,
             "annotated_chart_file": "us30_m5_chart_annotated.png",
             "annotated_chart_abs": str(tmp_path / "us30_m5_chart_annotated.png"),
+            "signal_history_dir": str(tmp_path),
         })
         out = tmp_path / "us30_m5_high_signal.md"
         write_high_signal(out, data, verdict_to_signal, use_ml=False, advanced=True)
@@ -994,6 +995,10 @@ class TestCategoriesEntradaConfluenciaAdvanced:
         assert "| Precio |" in text
         assert "| Entrada óptima |" in text
         assert text.index("| Precio |") < text.index("| Entrada óptima |")
+        assert "| Última señal |" in text
+        assert "| Calificación entrada |" in text
+        assert "SIN HISTORIAL" in text
+        assert (tmp_path / "us30_signal_history.json").exists()
         assert "| Confluencia setup |" in text
         # Confluencia es la última fila de la tabla Categories (antes de blank/sección)
         cats_block = text.split("## Categories")[1].split("##")[0]
@@ -1011,6 +1016,462 @@ class TestCategoriesEntradaConfluenciaAdvanced:
         assert "![chart](us30_m5_chart_annotated.png)" in text
         # Sesión no es fila de status Categories
         assert "| Sesión |" not in cats_block
+
+
+# ---------------------------------------------------------------------------
+# 10. Signal history + calificación entrada vs última Entrada óptima
+# ---------------------------------------------------------------------------
+
+class TestSignalHistoryReflection:
+    def test_append_minimal_schema_and_cap(self, tmp_path):
+        from app.models.signal_history import (
+            append_signal_history,
+            history_path_for_asset,
+            load_signal_history,
+        )
+
+        path = history_path_for_asset("BTC", tmp_path)
+        for i in range(5):
+            append_signal_history(
+                path,
+                asset="BTC",
+                time_str=f"2026-09-0{i + 1} 10:00 NY",
+                optimal_entry=77_000.0 + i,
+                cap=3,
+            )
+        hist = load_signal_history(path)
+        assert len(hist) == 3
+        assert set(hist[0].keys()) == {"id", "time", "optimal_entry"}
+        assert hist[-1]["optimal_entry"] == 77_004.0
+        assert hist[-1]["id"].startswith("btc-")
+        # IDs monotónicos pese al trim
+        assert hist[0]["id"] == "btc-003"
+        assert hist[-1]["id"] == "btc-005"
+
+        # Con side opcional
+        append_signal_history(
+            path, asset="BTC", time_str="t-side", optimal_entry=77_010.0, side="SHORT", cap=3,
+        )
+        hist2 = load_signal_history(path)
+        assert hist2[-1]["side"] == "SHORT"
+        assert set(hist2[-1].keys()) == {"id", "time", "optimal_entry", "side"}
+
+    def test_us30_separate_file(self, tmp_path):
+        from app.models.signal_history import append_signal_history, history_path_for_asset
+
+        btc = history_path_for_asset("BTC", tmp_path)
+        us30 = history_path_for_asset("US30", tmp_path)
+        append_signal_history(btc, asset="BTC", time_str="t1", optimal_entry=1.0)
+        append_signal_history(us30, asset="US30", time_str="t2", optimal_entry=42_000.0)
+        assert btc.name == "btc_signal_history.json"
+        assert us30.name == "us30_signal_history.json"
+        assert btc.read_text(encoding="utf-8") != us30.read_text(encoding="utf-8")
+
+    def test_pair_isolation_reflect_uses_only_own_last(self, tmp_path):
+        """BTC refleja solo btc_signal_history; US30 solo us30 — nunca mezcla."""
+        from app.models.signal_history import (
+            append_signal_history,
+            history_path_for_asset,
+            persist_and_reflect_entry,
+        )
+
+        btc_path = history_path_for_asset("BTC", tmp_path)
+        us30_path = history_path_for_asset("US30", tmp_path)
+        append_signal_history(btc_path, asset="BTC", time_str="t-btc", optimal_entry=100_000.0)
+        append_signal_history(us30_path, asset="US30", time_str="t-us30", optimal_entry=42_000.0)
+
+        data_btc = {
+            "asset_label": "BTC",
+            "price": 100_010.0,
+            "price_decimals": 1,
+            "signal_history_dir": str(tmp_path),
+            "setup": {"direction": "SHORT"},
+            "zone": {"dist_pct": 0.05, "level": 100_050.0},
+            "confirm_short": True,
+            "bias_h1": "BEARISH",
+            "mode_bias": "bearish",
+            "mode_setup": "break",
+            "session": {"ny_local": "08:00"},
+        }
+        opt_btc = {"entry": 100_020.0, "dec": 1, "ahora_action": "ENTRAR SHORT", "direction": "SHORT"}
+        ref_btc = persist_and_reflect_entry(data_btc, opt_btc, history_dir=tmp_path)
+        assert ref_btc["last_id"] == "btc-001"
+        assert ref_btc["last_entry"] == 100_000.0
+        assert ref_btc["grade"] in ("BUENA", "REGULAR", "MALA", "EVITAR")
+
+        data_us30 = {
+            "asset_label": "US30",
+            "price": 42_100.0,
+            "price_decimals": 1,
+            "signal_history_dir": str(tmp_path),
+            "setup": {"direction": "LONG"},
+            "zone": {"dist_pct": 0.8, "level": 41_500.0},
+            "confirm_long": False,
+            "bias_h1": "BEARISH",
+            "mode_bias": "auto",
+            "mode_setup": "auto",
+            "session": {"ny_local": "09:00"},
+        }
+        opt_us30 = {"entry": 41_800.0, "dec": 1, "ahora_action": "ESPERAR LONG", "direction": "LONG"}
+        ref_us30 = persist_and_reflect_entry(data_us30, opt_us30, history_dir=tmp_path)
+        assert ref_us30["last_id"] == "us30-001"
+        assert ref_us30["last_entry"] == 42_000.0
+        # No debe haber leído el last de BTC
+        assert ref_us30["last_id"] != "btc-001"
+        assert "btc-" not in (ref_us30.get("cell_ultima") or "")
+
+    def test_reflect_sin_historial_mas_cerca_lejos_misma_zona(self):
+        from app.models.signal_history import reflect_last_entry
+
+        empty = reflect_last_entry(None, price=100.0, current_entry=100.0)
+        assert empty["status"] == "SIN HISTORIAL"
+        assert empty["grade"] == "SIN HISTORIAL"
+        assert "SIN HISTORIAL" in empty["cell_vs"]
+
+        last = {"id": "btc-001", "time": "2026-09-01 10:00 NY", "optimal_entry": 100_000.0}
+        # Entry casi igual → MISMA ZONA
+        same = reflect_last_entry(last, price=100_010.0, current_entry=100_020.0, dec=1)
+        assert same["status"] == "MISMA ZONA"
+
+        # Precio mucho más cerca de entry actual que de la última → MÁS CERCA
+        last_far = {"id": "btc-002", "time": "t", "optimal_entry": 99_000.0}
+        closer = reflect_last_entry(last_far, price=100_000.0, current_entry=100_050.0, dec=1)
+        assert closer["status"] == "MÁS CERCA"
+        assert closer["delta_entry_pts"] is not None
+        assert closer["grade"] in ("BUENA", "REGULAR", "MALA", "EVITAR")
+
+        # Precio más cerca de la última entry que de la actual → MÁS LEJOS
+        last_near = {"id": "btc-003", "time": "t", "optimal_entry": 100_000.0}
+        farther = reflect_last_entry(last_near, price=100_500.0, current_entry=102_000.0, dec=1)
+        assert farther["status"] == "MÁS LEJOS"
+
+    def test_reflect_califica_buena_cerca_2m5(self):
+        """Precio cerca de última Entry + 2M5 + zona + bando → BUENA."""
+        from app.models.signal_history import reflect_last_entry
+
+        last = {"id": "btc-010", "time": "t", "optimal_entry": 100_000.0}
+        data = {
+            "setup": {"direction": "SHORT"},
+            "zone": {"dist_pct": 0.05, "level": 100_050.0},
+            "confirm_short": True,
+            "bias_h1": "BEARISH",
+            "mode_bias": "bearish",
+            "mode_setup": "break",
+        }
+        opt = {
+            "entry": 100_020.0,
+            "dec": 1,
+            "ahora_action": "ENTRAR SHORT",
+            "direction": "SHORT",
+        }
+        ref = reflect_last_entry(
+            last, price=100_010.0, current_entry=100_020.0, dec=1, data=data, opt=opt,
+        )
+        assert ref["grade"] == "BUENA"
+        assert ref["revisited_last"] is True
+        assert "2M5" in ref["grade_reason"] or "última Entry" in ref["grade_reason"]
+        assert "**BUENA**" in ref["cell_calificacion"]
+
+    def test_reflect_califica_evitar_lejos_sin_confirm(self):
+        from app.models.signal_history import reflect_last_entry
+
+        last = {"id": "btc-011", "time": "t", "optimal_entry": 100_000.0}
+        data = {
+            "setup": {"direction": "SHORT"},
+            "zone": {"dist_pct": 1.2, "level": 100_050.0},
+            "confirm_short": False,
+            "bias_h1": "BULLISH",
+            "mode_bias": "auto",
+            "mode_setup": "auto",
+        }
+        opt = {
+            "entry": 99_500.0,
+            "dec": 1,
+            "ahora_action": "ESPERAR SHORT",
+            "direction": "SHORT",
+        }
+        # Precio lejos de última (105k vs 100k) y de actual
+        ref = reflect_last_entry(
+            last, price=105_000.0, current_entry=99_500.0, dec=1, data=data, opt=opt,
+        )
+        assert ref["grade"] == "EVITAR"
+        assert "**EVITAR**" in ref["cell_calificacion"]
+
+    def test_categories_md_shows_reflection_after_entrada(self):
+        cats = {
+            "precio": "100040.0",
+            "entrada_optima": "100023.6",
+            "ultima_senal_entrada": "**btc-001** · 2026-09-01 10:00 NY · Entry **100000.0**",
+            "calificacion_entrada": (
+                "**BUENA** — precio cerca de última Entry + 2M5 OK · (MISMA ZONA)"
+            ),
+            "bando_usado": "BEARISH",
+            "bando_mercado": "BEARISH",
+            "recomendacion": "ESPERAR SHORT",
+            "confluencia_setup": "MEDIA",
+        }
+        md = "\n".join(format_augmented_categories_md(cats))
+        assert "| Última señal |" in md
+        assert "| Calificación entrada |" in md
+        assert "| vs última |" not in md
+        assert md.index("| Entrada óptima |") < md.index("| Última señal |")
+        assert md.index("| Última señal |") < md.index("| Calificación entrada |")
+        assert md.index("| Calificación entrada |") < md.index("| Bando usado |")
+        table_rows = [
+            ln for ln in md.splitlines()
+            if ln.startswith("| ") and "Campo" not in ln and "---" not in ln
+        ]
+        assert table_rows[-1].startswith("| Confluencia setup |")
+
+    def test_categories_md_history_review_mode(self):
+        """history_mode: Revisión P&L — sin Entrada óptima ni Recomendación ENTRAR."""
+        cats = {
+            "history_mode": True,
+            "precio": "100150.0",
+            "revision_ultima_entry": (
+                "**btc-001** · 2026-09-01 10:00 NY · Entry **100000.0** · SHORT"
+            ),
+            "pnl_vs_precio": "**+150.0 pts (+0.150%)** · **EN BENEFICIO** · SHORT",
+            "calificacion_entrada": "**BUENA** — Entry SHORT en beneficio",
+            "bando_usado": "BEARISH",
+            "bando_mercado": "BEARISH",
+            "recomendacion": "ENTRAR SHORT",  # no debe mostrarse en history_mode
+            "entrada_optima": "100023.6",  # tampoco
+            "confluencia_setup": "MEDIA",
+        }
+        md = "\n".join(format_augmented_categories_md(cats))
+        assert "| Revisión última Entry |" in md
+        assert "| P&L vs precio actual |" in md
+        assert "| Calificación Entry |" in md
+        assert "Revisión última Entry" in md
+        assert "| Entrada óptima |" not in md
+        assert "| Recomendación |" not in md
+        assert "ENTRAR SHORT" not in md
+        assert "| Precio actual |" in md
+
+    def test_history_review_pnl_long_short_and_no_append(self, tmp_path):
+        from app.models.signal_history import (
+            append_signal_history,
+            history_path_for_asset,
+            load_signal_history,
+            persist_and_reflect_entry,
+            review_last_entry_pnl,
+        )
+
+        path = history_path_for_asset("BTC", tmp_path)
+        append_signal_history(
+            path,
+            asset="BTC",
+            time_str="2026-09-01 10:00 NY",
+            optimal_entry=100_000.0,
+            side="SHORT",
+        )
+
+        # SHORT: precio bajó → beneficio
+        last = load_signal_history(path)[-1]
+        short_win = review_last_entry_pnl(last, price=99_500.0, dec=1)
+        assert short_win["side"] == "SHORT"
+        assert short_win["pnl_pts"] == pytest.approx(500.0)
+        assert short_win["pnl_status"] == "EN_BENEFICIO"
+        assert short_win["grade"] in ("EN_BENEFICIO", "BUENA")
+        assert "EN BENEFICIO" in short_win["cell_pnl"]
+
+        # LONG sin side en JSON → CLI bullish
+        long_ref = review_last_entry_pnl(
+            {"id": "btc-009", "time": "t", "optimal_entry": 100_000.0},
+            price=100_300.0,
+            dec=1,
+            data={"mode_bias": "bullish"},
+        )
+        assert long_ref["side"] == "LONG"
+        assert long_ref["side_source"] == "CLI -Bullish"
+        assert long_ref["pnl_pts"] == pytest.approx(300.0)
+        assert long_ref["pnl_status"] == "EN_BENEFICIO"
+
+        # CERCA_BE
+        be = review_last_entry_pnl(
+            {"id": "btc-010", "time": "t", "optimal_entry": 100_000.0, "side": "LONG"},
+            price=100_020.0,
+            dec=1,
+        )
+        assert be["grade"] == "CERCA_BE"
+        assert be["pnl_status"] == "NEUTRO"
+
+        # history_mode: NO append
+        data = {
+            "asset_label": "BTC",
+            "price": 99_400.0,
+            "price_decimals": 1,
+            "signal_history_dir": str(tmp_path),
+            "history_mode": True,
+            "mode_bias": "bearish",
+            "setup": {"direction": "SHORT"},
+            "zone": {"dist_pct": 0.1},
+            "session": {"ny_local": "2026-09-02 08:00"},
+        }
+        opt = {"entry": 99_000.0, "dec": 1, "direction": "SHORT"}
+        before = len(load_signal_history(path))
+        ref = persist_and_reflect_entry(data, opt, history_dir=tmp_path, history_mode=True)
+        after = load_signal_history(path)
+        assert len(after) == before
+        assert ref["mode"] == "history_review"
+        assert ref["last_id"] == "btc-001"
+        assert ref["pnl_status"] == "EN_BENEFICIO"
+
+    def test_write_high_signal_history_review_no_append(self, tmp_path):
+        from app.services.btc_high_analysis import write_high_signal
+        from app.models.btc_signal_categories import verdict_to_signal
+        from app.models.signal_history import (
+            append_signal_history,
+            history_path_for_asset,
+            load_signal_history,
+        )
+
+        hist_dir = tmp_path / "hist"
+        hist_dir.mkdir()
+        path_hist = history_path_for_asset("BTC", hist_dir)
+        append_signal_history(
+            path_hist,
+            asset="BTC",
+            time_str="2026-09-01 09:00 NY",
+            optimal_entry=100_000.0,
+            side="SHORT",
+        )
+
+        data = make_data(
+            price=99_700.0,
+            zone_level=100_050.0,
+            dist_pct=0.05,
+            direction="SHORT",
+            bias_h1="BEARISH",
+            confirm_short=True,
+            mode_bias="bearish",
+            m5=[_red(100_060), _red(99_700)],
+        )
+        data.update({
+            "generated": "2026-09-02 12:00",
+            "asset_label": "BTC",
+            "chart_file": "btc_m5_chart.png",
+            "mode_setup": "auto",
+            "history_mode": True,
+            "signal_history_dir": str(hist_dir),
+            "rsi_h1": 48.0,
+            "pdh": 101_000.0,
+            "pdl": 99_000.0,
+            "swing_highs": [100_200.0],
+            "swing_lows": [99_800.0],
+            "last_m5_12": ["12:00 O=100060 H=100070 L=99600 C=99700 [R]"],
+            "session": {
+                "in_ny_window": True,
+                "window": "NY AM",
+                "ny_local": "2026-09-02 08:00",
+            },
+            "crt": make_crt(),
+            "divergence": {"type": "NONE", "note": "sin divergencia"},
+            "dmi": {"bias": "BEARISH", "note": "DI- > DI+"},
+            "structure": {"hl": "LH", "lh": "LL"},
+            "e2": {
+                "checks": [],
+                "score": 1,
+                "max": 6,
+                "eligible": False,
+                "verdict": "E2_NO",
+                "note": "n/a",
+                "mode_setup": "auto",
+            },
+            "gallery_patterns": [],
+        })
+        out = tmp_path / "btc_m5_high_signal.md"
+        write_high_signal(out, data, verdict_to_signal, use_ml=False, advanced=False)
+        text = out.read_text(encoding="utf-8")
+        assert "| Revisión última Entry |" in text
+        assert "| P&L vs precio actual |" in text
+        assert "| Calificación Entry |" in text
+        assert "| Entrada óptima |" not in text
+        assert "btc-001" in text
+        assert "EN BENEFICIO" in text or "EN PÉRDIDA" in text or "NEUTRO" in text
+        # Sin append
+        hist = load_signal_history(path_hist)
+        assert len(hist) == 1
+        assert hist[-1]["id"] == "btc-001"
+
+    def test_write_high_signal_persists_and_reflects(self, tmp_path):
+        from app.services.btc_high_analysis import write_high_signal
+        from app.models.btc_signal_categories import verdict_to_signal
+        from app.models.signal_history import (
+            append_signal_history,
+            history_path_for_asset,
+            load_signal_history,
+        )
+
+        hist_dir = tmp_path / "hist"
+        hist_dir.mkdir()
+        path_hist = history_path_for_asset("BTC", hist_dir)
+        append_signal_history(
+            path_hist,
+            asset="BTC",
+            time_str="2026-09-01 09:00 NY",
+            optimal_entry=100_000.0,
+        )
+
+        data = make_data(
+            price=100_040.0,
+            zone_level=100_050.0,
+            dist_pct=0.05,
+            direction="SHORT",
+            bias_h1="BEARISH",
+            confirm_short=True,
+            mode_bias="bearish",
+            m5=[_red(100_060), _red(100_040)],
+        )
+        data.update({
+            "generated": "2026-09-02 12:00",
+            "asset_label": "BTC",
+            "chart_file": "btc_m5_chart.png",
+            "mode_setup": "auto",
+            "signal_history_dir": str(hist_dir),
+            "rsi_h1": 48.0,
+            "pdh": 101_000.0,
+            "pdl": 99_000.0,
+            "swing_highs": [100_200.0],
+            "swing_lows": [99_800.0],
+            "last_m5_12": ["12:00 O=100060 H=100070 L=100030 C=100040 [R]"],
+            "session": {
+                "in_ny_window": True,
+                "window": "NY AM",
+                "ny_local": "2026-09-02 08:00",
+            },
+            "crt": make_crt(),
+            "divergence": {"type": "NONE", "note": "sin divergencia"},
+            "dmi": {"bias": "BEARISH", "note": "DI- > DI+"},
+            "structure": {"hl": "LH", "lh": "LL"},
+            "e2": {
+                "checks": [],
+                "score": 1,
+                "max": 6,
+                "eligible": False,
+                "verdict": "E2_NO",
+                "note": "n/a",
+                "mode_setup": "auto",
+            },
+            "gallery_patterns": [],
+        })
+        out = tmp_path / "btc_m5_high_signal.md"
+        write_high_signal(out, data, verdict_to_signal, use_ml=False, advanced=False)
+        text = out.read_text(encoding="utf-8")
+        assert "| Última señal |" in text
+        assert "btc-001" in text
+        assert "| Calificación entrada |" in text
+        assert any(g in text for g in ("BUENA", "REGULAR", "MALA", "EVITAR"))
+        # Tras el write hay 2 registros (previo + actual)
+        hist = load_signal_history(path_hist)
+        assert len(hist) == 2
+        assert hist[-1]["id"] == "btc-002"
+        assert "optimal_entry" in hist[-1]
+        # High guarda side cuando se puede inferir
+        assert hist[-1].get("side") == "SHORT"
+        assert set(hist[-1].keys()) == {"id", "time", "optimal_entry", "side"}
+        assert "NY" in hist[-1]["time"]
 
 
 # ---------------------------------------------------------------------------

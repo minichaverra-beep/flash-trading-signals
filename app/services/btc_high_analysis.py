@@ -1480,7 +1480,31 @@ def write_high_signal(
     dec = int(opt.get("dec", data.get("price_decimals", 1)))
     fmt = f".{dec}f"
     cats["precio"] = f"{data['price']:{fmt}}"
-    cats["entrada_optima"] = format_entrada_optima_cell(opt, data)
+    history_mode = bool(data.get("history_mode"))
+    # Historial: High append+reflexión; history_mode = solo revisión P&L (sin append)
+    from app.models.signal_history import persist_and_reflect_entry
+    reflection = persist_and_reflect_entry(data, opt, history_mode=history_mode)
+    if history_mode:
+        cats["history_mode"] = True
+        cats["revision_ultima_entry"] = reflection.get(
+            "cell_revision", reflection.get("cell_ultima", "—"),
+        )
+        cats["pnl_vs_precio"] = reflection.get("cell_pnl", "—")
+        cats["ultima_senal_entrada"] = cats["revision_ultima_entry"]
+        cats["calificacion_entrada"] = reflection.get(
+            "cell_calificacion", reflection.get("cell_vs", "—"),
+        )
+        # No enfatizar Entrada óptima / señal nueva en revisión
+        cats.pop("entrada_optima", None)
+    else:
+        cats["entrada_optima"] = format_entrada_optima_cell(opt, data)
+        cats["ultima_senal_entrada"] = reflection["cell_ultima"]
+        cats["calificacion_entrada"] = reflection.get(
+            "cell_calificacion", reflection["cell_vs"],
+        )
+    cats["vs_ultima_entrada"] = cats["calificacion_entrada"]  # alias compat
+    cats["vs_ultima_status"] = reflection["status"]
+    cats["calificacion_grade"] = reflection.get("grade", reflection["status"])
     conf_level, conf_detail = compute_confluencia_setup(cats, data, crt=crt, e2=e2)
     cats["confluencia_setup"] = conf_level
     cats["confluencia_detalle"] = conf_detail

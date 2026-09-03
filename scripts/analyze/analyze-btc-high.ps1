@@ -50,6 +50,8 @@ param(
     [Alias("Illustrate")]
     [switch]$Ilustrate,
 
+    [switch]$HistoryReview,
+
     [string]$Symbol = "BTCUSDT"
 
 )
@@ -90,6 +92,8 @@ if ($Neural) { $argsList += "--neural" }
 
 if ($Ilustrate) { $argsList += "--ilustrate" }
 
+if ($HistoryReview) { $argsList += "--history-review" }
+
 # Advanced: explicit flag, or auto when ML + Neural both set
 $useAdvanced = $Advanced -or ($ML -and $Neural)
 if ($useAdvanced) { $argsList += "--advanced" }
@@ -125,7 +129,8 @@ $modeLabel = if ($modeHint.Count -gt 0) { " [" + ($modeHint -join " + ") + "]" }
 
 
 $advLabel = if ($useAdvanced) { " [ADVANCED]" } else { "" }
-Write-Host ">> BTC M5 HIGH ($Symbol)$modeLabel$advLabel - CRT + Turtle Soup..." -ForegroundColor Magenta
+$histLabel = if ($HistoryReview) { " [HISTORY-REVIEW]" } else { "" }
+Write-Host ">> BTC M5 HIGH ($Symbol)$modeLabel$advLabel$histLabel - CRT + Turtle Soup..." -ForegroundColor Magenta
 
 python @argsList
 

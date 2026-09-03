@@ -37,3 +37,5 @@ app/services/learning/training neuronal/data/desktop_image_list.json
 
 # Live charts are regenerable; keep live/*.md for @ Cursor / ops notes
 live/*.png
+# Runtime High signal entry history (per-asset JSON)
+live/*_signal_history.json

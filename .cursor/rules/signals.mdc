@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Señales live — BTC / US30
 
-Cómo comportarse al analizar outputs live. Guía humana: `How to use.text`. Reglas E1 inmutables → `trading.mdc` (no duplicar el plan).
+Cómo comportarse al analizar outputs live. Guía humana: `how_to_use.txt`. Reglas E1 inmutables → `trading.mdc` (no duplicar el plan).
 
 ## Comandos
 
@@ -52,6 +52,7 @@ En Cursor: `@live/...` + `@docs/protocols/...` del tier usado.
 5. **Entrada optimizada** — AHORA vs OPTI + plan  
 6. **Checklist 2M5** — las 5 ✅ = OK; falta una → ESPERAR  
 7. **Ilustración** — solo si `-Ilustrate` / PNG presente  
+8. **Última señal** / **Calificación entrada** — vs último historial del mismo par (High; ver `how_to_use.txt` §4b)  
 
 ## Jerarquía de decisión
 

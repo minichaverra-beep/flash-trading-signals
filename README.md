@@ -57,7 +57,7 @@ cd "D:\Danilo\Trading\Cursor Trading"
 
 Cambia `-Bearish`/`-Bullish` y `-Break`/`-Reverse` según tu plan. Preferí siempre `scripts\analyze\...`; los stubs raíz solo cubren High.
 
-Guía completa (Light / Full / Super High, Categories, reglas de sesión): [How to use.text](How%20to%20use.text).
+Guía completa (Light / Full / Super High, Categories, reglas de sesión): [how_to_use.txt](how_to_use.txt).
 
 ## Cursor
 

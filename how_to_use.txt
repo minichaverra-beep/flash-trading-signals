@@ -70,10 +70,54 @@ Lee en este orden:
   6. Entrada optimizada → AHORA vs OPTI + plan (Trigger, Entry, SL, TP 1:2)
   7. Checklist 2M5      → las 5 ✅ = OK; falta una = ESPERAR
   8. Ilustración        → PNG anotado si usaste -Ilustrate
+  9. Última señal       → id · time · Entry del último High del mismo par (High)
+ 10. Calificación entrada → (High) vs última Entry; history runners → ver §4b P&L
 
 Archivos live generados:
   BTC High  → live\btc_m5_high_signal.md
   US30 High → live\us30_m5_high_signal.md
+  Historial → live\btc_signal_history.json | live\us30_signal_history.json
+  (append solo desde High; history = revisión P&L, sin escritura)
+
+
+4b) REVISIÓN P&L — última Entry (history runners; NO es señal)
+------------------------------------------------------------
+Qué es:
+  Revisa SOLO el último registro del mismo par (BTC↔BTC, US30↔US30)
+  contra el precio en vivo: ¿esa Entry previa está en beneficio o pérdida?
+  NO propone Entrada óptima nueva ni ENTRAR. NO es “señal de entrada”.
+
+Cómo corre:
+  Wrappers history pasan --history-review a High.
+  NO escriben historial nuevo (append solo desde analyze-*-high.ps1).
+
+Dónde mirar (Categories):
+  Revisión última Entry → id · time · Entry previa · lado (LONG/SHORT)
+  P&L vs precio actual  → +/− pts, % · EN BENEFICIO / EN PÉRDIDA / NEUTRO
+  Calificación Entry    → EN_BENEFICIO | EN_PERDIDA | CERCA_BE | BUENA | MALA
+                         | SIN_HISTORIAL | SIN_LADO
+
+Lado (side) para P&L:
+  1) `side` guardado en el JSON (High lo escribe al append)
+  2) si falta → -Bullish = LONG / -Bearish = SHORT
+  3) si no hay lado → SIN_LADO (muestra distancia, sin P&L direccional)
+
+Archivos / esquema:
+  BTC  → live\btc_signal_history.json
+  US30 → live\us30_signal_history.json
+  Cada registro: { id, time, optimal_entry [, side] }
+
+Quién escribe historial:
+  analyze-btc-high.ps1 / analyze-us30-high.ps1 → append Entry
+  analyze-*-history.ps1 → solo lectura / revisión P&L
+
+Ejemplos revisión (no señal):
+  .\scripts\analyze\analyze-btc-history.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+  .\scripts\analyze\analyze-us30-history.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+
+High (sí escribe historial + señal):
+  .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+  .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
 
 
 5) EN CURSOR (@ archivos)
