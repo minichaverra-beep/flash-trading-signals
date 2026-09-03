@@ -1,14 +1,14 @@
 # SonarCloud analysis — requires repo secret SONAR_TOKEN
 # Create project in SonarCloud first; match sonar.organization / sonar.projectKey
-# in sonar-project.properties.
+# in sonar-project.properties. See docs/QUALITY.md.
 
 name: SonarCloud
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -35,8 +35,17 @@ jobs:
       - name: Run tests with coverage
         run: pytest --cov=app --cov-report=xml tests/
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+      - name: Require SONAR_TOKEN
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::Falta el secreto SONAR_TOKEN. Crea el proyecto en SonarCloud y añade el token en GitHub → Settings → Secrets and variables → Actions. Ver docs/QUALITY.md."
+            exit 1
+          fi
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
