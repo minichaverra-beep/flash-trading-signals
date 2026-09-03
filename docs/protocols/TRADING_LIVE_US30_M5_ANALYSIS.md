@@ -1,7 +1,7 @@
 # Análisis Live US30 M5 — Contexto para Cursor
 
 > Protocolo para analizar el **Dow Jones (US30)** en **M5** según el plan E1 (CRT / Flopy-Scalping).
-> Paralelo a `TRADING_LIVE_BTC_M5_ANALYSIS.md` — mismas 8 reglas inmutables y ventanas NY.
+> Paralelo a `TRADING_LIVE_BTC_M5_ANALYSIS.md` — mismas reglas E1; sesión NY = reloj info (no gate).
 > **Última actualización:** 2026-09-01
 
 ---
@@ -114,7 +114,7 @@ Salida: `models/us30_signal_model.joblib` + `data/us30_ml_training_report.md`
 
 ## 7. Jerarquía de decisión
 
-1. **8 reglas inmutables** + sesión NY
+1. **7 reglas E1** (sesión NY = reloj info, no gate)
 2. **Rules %** del script (8 reglas E1)
 3. **CRT / PDH-PDL** en TradingView
 4. **ML prob** (complemento)

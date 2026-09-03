@@ -4,6 +4,9 @@
 > **Mas tokens que snapshot** - analisis CRT completo, E2 watchlist, score reglas, galeria WIN.
 > Alineado a: `../strategy/TRADING_STRATEGY_CONTEXT.md`, `../strategy/TRADING_VISUAL_CONTEXT.md` SS1.1-1.2 SS7,
 > `../strategy/TRADING_INDICATORS_RULES.md` SS3-6, `../strategy/TRADING_OPERATIONS_DESKTOP_CONTEXT.md` SS5.1
+>
+> **Roles:** High = **señales** (append historial). Revisión P&L = `analyze-btc-history.ps1` (no es High).
+> Super High = captura TV anotada con `analyze-btc-superhigh.ps1` — **no** se integra en High.
 
 ---
 
@@ -99,7 +102,7 @@ Ver protocolo completo: [`TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md`](TRADING_LIVE_B
 |---------|-----------|
 | **Entrada optimizada (E1)** | Tabla AHORA vs ENTRADA OPTIMIZADA (precio, 2M5, acción) + Plan concreto (Trigger, Confirmación, Entry, SL, TP 1:2, R:R, Invalidación, Plan B) |
 | **2M5 — Válido vs Inválido** | Patrones válidos (ej. ✅ SHORT OK: [R][R] en resistencia) vs inválidos ([G][R], [R][R]…[G][R]) |
-| **Checklist 2M5** | 5 ítems live (NY, zona, 2M5, bias, RSI/CRT) — *Las 5 ✅ → 2M5 OK. Si falta una → ESPERAR.* |
+| **Checklist 2M5** | 5 ítems live (zona, 2M5, bias, RSI/CRT, estructura) — *Las 5 ✅ → 2M5 OK. Si falta una → ESPERAR.* Reloj NY = info opcional. |
 | **Segunda indicación** | Solo si **Bando mercado (H1) = NEUTRAL** — sesgo auxiliar desde DMI, CRT PD y estructura M5 |
 
 > **ML prob:** el flag `-ML`/`--ml` sigue ejecutando el modelo internamente, pero **no se muestra** en Categories ni scorecard del high signal. **Neural galería** sí se muestra con `-Neural`.
@@ -110,13 +113,13 @@ Ver protocolo completo: [`TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md`](TRADING_LIVE_B
 
 ### 8 inmutables del plan
 
-Solo E1 90%+ · NY only · SL ~$9 · R:R 1:2 · máx. 3 ops/día · **2 SL = fin sesión** · BE 1:1 · **Rules >70%**
+Solo E1 90%+ · SL ~$9 · R:R 1:2 · máx. 3 ops/día · **2 SL = límite riesgo diario** · BE 1:1 · **Rules >70%**
 
 ### 7 reglas E1 del script (checklist / status signal)
 
 Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente
 
-> **Sesión NY** ya no es fila de la tabla de status signal ni fuerza `NO_OPERAR` en la recomendación ligada a esa tabla. Sigue como info en header/Categories.
+> **Sesión NY** no es fila de status signal ni fuerza `NO_OPERAR`. Puede aparecer como reloj informativo (header/Reloj); **no** es requisito para calcular ni operar.
 
 **Jerarquía:** script refuerza → TradingView (CRT MTF + RSI TORYS) decide. Auto-veredicto **NO es señal final**.
 
@@ -133,7 +136,7 @@ Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice 
 5. **Fakeout PDL** - NO E1 chase; contexto E2 turtle soup si reclaim.
 6. **2 velas M5** - Sin confirmacion = ESPERAR (regla dura).
 7. **RSI TORYS** - Filtro a favor; nunca entrada sola por divergencia.
-8. **Sesión NY** — informativa en header/Categories; **no** bloquea el checklist de status signal ni fuerza `NO_OPERAR` por sí sola.
+8. **Reloj / Sesión NY** — informativo solamente; **no** bloquea checklist ni fuerza `NO_OPERAR`.
 
 ---
 
@@ -306,7 +309,7 @@ PASO 8 — Plan (sección G, solo si ENTRAR candidato)
 - Pre-trade checklist 8 ítems
 
 PASO 9 — Red flags + Psicología (sección H)
-- Fuera NY, 2 SL hoy (preguntar), FOMO risk
+- 2 SL hoy (preguntar), FOMO risk (sesión NY no es gate)
 - Frase guía del plan
 
 FORMATO RESPUESTA (completo, sin omitir secciones):
@@ -339,7 +342,7 @@ FORMATO RESPUESTA (completo, sin omitir secciones):
 ### Red flags y psicología
 (incumplimientos + guardas sesión)
 
-Recuerda: 2 SL = fin sesión · 3 ops max · confirmar TradingView antes de ejecutar.
+Recuerda: 2 SL = límite riesgo diario · 3 ops max · confirmar TradingView antes de ejecutar.
 No inventes datos fuera del high signal file.
 ```
 
@@ -360,7 +363,7 @@ APLICAR BEST PRACTICES CRT (E1):
 5. Fakeout PDL → NO chase E1; contexto E2 turtle soup si reclaim
 6. Sin 2 velas M5 → ESPERAR (regla dura)
 7. RSI TORYS = filtro a favor, nunca entrada sola
-8. Fuera NY → NO_OPERAR
+8. Reloj NY → info solamente (no gate / no NO_OPERAR)
 
 TURTLE SOUP (E2) — SOLO WATCHLIST:
 - Score X/6 del high signal
@@ -417,7 +420,7 @@ Responde SIN acortar vs light:
 ### Red flags
 - (incumplimientos concretos + psicología si aplica: FOMO, contra macro, zona enemiga)
 
-Recuerda: 2 SL = fin sesión · 3 ops max · confirmar en TradingView antes de ejecutar.
+Recuerda: 2 SL = límite riesgo diario · 3 ops max · confirmar en TradingView antes de ejecutar.
 Responde en español. No inventes datos fuera del high signal file.
 ```
 

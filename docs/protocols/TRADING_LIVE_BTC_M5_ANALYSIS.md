@@ -124,8 +124,7 @@ ORDEN DE LECTURA:
 
 REGLAS DE DECISIÓN (aplicar en orden):
 | Condición | Veredicto |
-| Fuera NY | NO_OPERAR |
-| 2 SL hoy (preguntar si no consta) | NO_OPERAR — fin sesión |
+| 2 SL hoy (preguntar si no consta) | NO_OPERAR — límite riesgo diario |
 | 3 ops hoy | NO_OPERAR |
 | Bias H1 NEUTRAL + lateral | ESPERAR |
 | Bias contradice dirección | NO_OPERAR |
@@ -133,7 +132,7 @@ REGLAS DE DECISIÓN (aplicar en orden):
 | Sin 2 velas M5 | ESPERAR |
 | Rules <50% | NO_OPERAR |
 | Rules 50–69% | ESPERAR (setup insuficiente) |
-| NY + bias + zona + 2M5 + R:R + Rules ≥70% | ENTRAR A+ — confirmar TV |
+| bias + zona + 2M5 + R:R + Rules ≥70% | ENTRAR A+ — confirmar TV |
 
 ML (si Categories incluye ML prob — flag `--ml`):
 | ML prob | WR real test | Combinado con Rules % |
@@ -163,14 +162,13 @@ Responde en este formato:
 
 **Dirección:** LONG / SHORT / —
 **Calidad:** A+ / B / C / inválido
-**Sesión:** NY OK / FUERA NY
-**Reglas:** X de 8 (XX%) — meta >70%
+**Reloj:** (info opcional — no gate)
+**Reglas:** X de 7 (XX%) — meta >70%
 **ML prob:** XX% (si `--ml`) — bucket según §5.3
 **Neural galería:** XX% WIN (si `--neural`) — bucket según §5.5
 
-### Checklist E1 (8 reglas del script)
+### Checklist E1 (7 reglas del script)
 | Regla | Estado | Nota |
-| Sesión NY | ✅/❌ | |
 | Solo E1 | ✅/❌ | |
 | Tendencia H1 alineada | ✅/❌ | |
 | Cerca de zona clave | ✅/❌ | |
@@ -217,7 +215,7 @@ Responde en español.
 | **Swings M5** | Pivots lookback 3 | Proxy de zonas débiles (moradas en TV) |
 | **RSI M5/H1** | RSI 14 clásico | Filtro TORYS-like (no entrada sola) |
 | **2 velas M5** | Últimas 2 verdes o 2 rojas | Confirmación obligatoria E1 |
-| **Sesión NY** | 08:00–11:00 y 14:00–17:00 (UTC-4) | Regla 2 — fuera = NO OPERAR salvo demo |
+| **Reloj NY** | 08:00–11:00 y 14:00–17:00 (UTC-4) | Info opcional — **no** fuerza NO_OPERAR |
 
 **Limitaciones (importante):**
 
@@ -234,9 +232,9 @@ Cuando Danilo pida análisis live, Cursor **debe**:
 
 ### 5.0 Reglas compartidas
 
-**8 inmutables del plan** (`../strategy/TRADING_VISUAL_CONTEXT.md` §4): Solo E1 90%+ · NY only · SL ~$9 · R:R 1:2 · máx. 3 ops/día · 2 SL = fin sesión · BE 1:1 · Rules >70%.
+**Inmutables del plan** (`../strategy/TRADING_VISUAL_CONTEXT.md` §4): Solo E1 90%+ · SL ~$9 · R:R 1:2 · máx. 3 ops/día · 2 SL = límite riesgo diario · BE 1:1 · Rules >70%. Sesión NY = reloj info (no gate).
 
-**8 reglas E1 del script** (`btc_signal_categories.py`): Sesión NY · Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente.
+**7 reglas E1 del script** (`btc_signal_categories.py`): Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente.
 
 **Jerarquía:** script refuerza → TradingView (CRT MTF + RSI TORYS) decide. Auto-veredicto **NO es señal final**. E2 solo watchlist — default NO ENTRAR E2.
 
@@ -257,14 +255,13 @@ Leer primero la sección **Veredicto** y **Categories** del snapshot (auto-gener
 
 **Dirección:** LONG / SHORT / —
 **Calidad:** A+ / B / C / inválido
-**Sesión:** NY OK / FUERA NY
-**Reglas:** X de 8 (XX%) — meta >70%
+**Reloj:** (info opcional — no gate)
+**Reglas:** X de 7 (XX%) — meta >70%
 **ML prob:** XX% (si `--ml`) — bucket según §5.3
 **Neural galería:** XX% WIN (si `--neural`) — bucket según §5.5
 
-### Checklist E1 (8 reglas del script)
+### Checklist E1 (7 reglas del script)
 | Regla | Estado | Nota |
-| Sesión NY | ✅/❌ | |
 | Solo E1 | ✅/❌ | |
 | Tendencia H1 alineada | ✅/❌ | |
 | Cerca de zona clave | ✅/❌ | |
@@ -304,8 +301,7 @@ Ver **Prompt optimizado** en §3 para el bloque copy-paste completo.
 
 | Condición | Veredicto |
 |-----------|-----------|
-| Fuera NY | **NO_OPERAR** |
-| 2 SL hoy | **NO_OPERAR** — fin sesión |
+| 2 SL hoy | **NO_OPERAR** — límite riesgo diario |
 | 3 ops hoy | **NO_OPERAR** |
 | Reglas <50% | **NO_OPERAR** |
 | Fakeout PDH + long | **NO_OPERAR** |
@@ -315,7 +311,7 @@ Ver **Prompt optimizado** en §3 para el bloque copy-paste completo.
 | Lejos de zona (>0.15%) | **ESPERAR** |
 | PDH/PDL NEUTRAL + bias NEUTRAL | **ESPERAR** |
 | Reglas 50–69% | **ESPERAR** (setup insuficiente) |
-| Reglas ≥75% + NY + bias + zona + 2 velas | **ENTRAR** (A+) — confirmar TV |
+| Reglas ≥75% + bias + zona + 2 velas | **ENTRAR** (A+) — confirmar TV |
 | Reglas 70–74% + resto OK | **ENTRAR** (B) — confirmar TV |
 | Reglas 63–69% | **ESPERAR** (B) |
 

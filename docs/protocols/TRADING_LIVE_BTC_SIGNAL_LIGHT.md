@@ -42,24 +42,23 @@ El script escribe **Veredicto + Categories compacto + CRT resumen + red flags** 
 ### 8 inmutables del plan (`../strategy/TRADING_VISUAL_CONTEXT.md` §4)
 
 1. Solo E1 (90%+) — E2 solo watchlist/demo, ≤10%
-2. Sesión NY (08–11 y 14–17 UTC-4) — fuera = NO_OPERAR
+2. Reloj NY (08–11 y 14–17 UTC-4) — **informativo**; no bloquea ni fuerza NO_OPERAR
 3. SL ~$9 fijo — nunca expandir
 4. R:R mínimo 1:2
 5. Máx. 3 ops/día
-6. **2 SL = fin de sesión** — sin excepciones
+6. **2 SL = límite de riesgo diario** — sin excepciones
 7. BE en 1:1 si el precio respiró
 8. **Rules ≥70%** siempre (ideal A+ con ≥75%)
 
-### 8 reglas E1 del script (`btc_signal_categories.py`)
+### 7 reglas E1 del script (`btc_signal_categories.py`)
 
-1. Sesión NY
-2. Solo E1 (no E2)
-3. Tendencia H1 alineada
-4. Cerca de zona clave (≤0.15%)
-5. 2 velas M5 confirman
-6. R:R mínimo 1:2
-7. RSI no contradice
-8. Rango CRT coherente
+1. Solo E1 (no E2)
+2. Tendencia H1 alineada
+3. Cerca de zona clave (≤0.15%)
+4. 2 velas M5 confirman
+5. R:R mínimo 1:2
+6. RSI no contradice
+7. Rango CRT coherente
 
 **Jerarquía:** el auto-veredicto del script **NO es señal final** — TradingView (CRT MTF + RSI TORYS) decide.
 
@@ -74,7 +73,7 @@ El script escribe **Veredicto + Categories compacto + CRT resumen + red flags** 
 5. **Fakeout PDL** → NO chase E1; E2 turtle soup context
 6. **Sin 2 velas M5** → ESPERAR (regla dura)
 7. **RSI TORYS** = filtro only
-8. **Fuera NY** → NO_OPERAR
+8. **Reloj NY** → info solamente (no gate)
 
 ### Tabla de decisión (Rules %)
 
@@ -82,8 +81,8 @@ El script escribe **Veredicto + Categories compacto + CRT resumen + red flags** 
 |---------|-----------|
 | **<50%** | **NO_OPERAR** |
 | **50–69%** | **ESPERAR** |
-| **≥70%** + NY + bias + zona + 2M5 | **ENTRAR** — confirmar TV |
-| **2 SL hoy** | **NO_OPERAR** — fin sesión (sin importar setup) |
+| **≥70%** + bias + zona + 2M5 | **ENTRAR** — confirmar TV |
+| **2 SL hoy** | **NO_OPERAR** — límite riesgo diario (sin importar setup) |
 
 Scoring histórico: ≥75% → A+ (~82% WR) · 63–74% → B (~67%) · <50% → NO_OPERAR
 
@@ -134,18 +133,19 @@ Señal E1 BTC M5 — análisis light.
 Lee PRIMERO la sección Categories del signal file (**Bando usado**, **Recomendación**, acción, tendencia, reglas X/8, prob. histórica, calidad, ML prob y Neural galería si están).
 
 Aplica estas reglas del plan (sin repetir el plan completo):
-- NY only · E1 only · Bias H1 alineado · Zona ≤0.15% · 2 velas M5 · R:R 1:2 · SL $9
+- E1 only · Bias H1 alineado · Zona ≤0.15% · 2 velas M5 · R:R 1:2 · SL $9
+(Sesión NY = reloj info, no gate)
 - Rules ≥70% para ENTRAR · <70% → ESPERAR · <50% → NO_OPERAR
 - ML prob (si presente): <45% o 55–65% → sesgo NO_OPERAR · 45–55% → ESPERAR · ≥65% + Rules ≥70% → refuerza ENTRAR · >75% → candidato A+
 - Neural galería (si presente): <50% WIN → NO_OPERAR · 50–70% → ESPERAR salvo Rules ≥75% · >70% + Rules ≥70% + ML ≥65% → refuerza ENTRAR · >85% + Rules ≥75% → A+ galería
-- Fuera NY / H1 NEUTRAL / sin 2M5 / 2 SL hoy → NO_OPERAR o ESPERAR según tabla del protocolo
+- Sin 2M5 / 2 SL hoy / fakeout duro → NO_OPERAR o ESPERAR según tabla del protocolo
 - El auto-veredicto del script NO es señal final — confirmar en TradingView
 
 Responde EXACTAMENTE en este formato (máx 5 líneas, sin tablas):
 
 VEREDICTO: ENTRAR | ESPERAR | NO_OPERAR
 BANDO: AUTO | BULLISH | BEARISH (del live file — Bando usado)
-REC: (copiar Recomendación del live — ej. ENTRAR SHORT, ESPERAR LONG, NO_OPERAR — fin sesión)
+REC: (copiar Recomendación del live — ej. ENTRAR SHORT, ESPERAR LONG, NO_OPERAR)
 DIR: LONG | SHORT | —
 CLAVE: (1 regla que decide — citar regla concreta del plan)
 INVALID: (precio/nivel que invalida)
@@ -161,7 +161,7 @@ No inventes datos. No expliques CRT ni Turtle Soup aquí. Responde en español.
 ```
 VEREDICTO: ENTRAR | ESPERAR | NO_OPERAR
 BANDO: AUTO | BULLISH | BEARISH (del live file — Bando usado)
-REC: (copiar Recomendación del live — ej. ENTRAR SHORT, ESPERAR LONG, NO_OPERAR — fin sesión)
+REC: (copiar Recomendación del live — ej. ENTRAR SHORT, ESPERAR LONG, NO_OPERAR)
 DIR: LONG | SHORT | —
 CLAVE: (1 regla CRT que decide)
 INVALID: (precio/nivel)
@@ -177,12 +177,12 @@ NOTA: (opcional, 1 frase)
 | Signal | Acción |
 |--------|--------|
 | Veredicto NO_OPERAR | NO_OPERAR |
-| Fuera NY / Fakeout PDH long | NO_OPERAR |
+| Fakeout PDH long / CRT contra | NO_OPERAR |
 | Sin 2M5 | ESPERAR |
 | H1 NEUTRAL + PD NEUTRAL | ESPERAR |
 | Rules <50% | NO_OPERAR |
 | Rules 50–69% | ESPERAR |
-| Rules ≥70% + NY OK + 2M5 | ENTRAR — confirmar TV |
+| Rules ≥70% + 2M5 + zona | ENTRAR — confirmar TV |
 | ML prob <45% o 55–65% | NO_OPERAR (sesgo ML) |
 | ML prob 45–55% | ESPERAR |
 | ML prob ≥65% + Rules ≥70% | Refuerza ENTRAR |
@@ -191,7 +191,7 @@ NOTA: (opcional, 1 frase)
 | Neural 50–70% WIN | ESPERAR (salvo Rules ≥75%) |
 | Neural >70% + Rules ≥70% + ML ≥65% | Refuerza ENTRAR |
 | Neural >85% + Rules ≥75% | A+ match galería |
-| 2 SL hoy | NO_OPERAR — fin sesión |
+| 2 SL hoy | NO_OPERAR — límite riesgo diario |
 
 ---
 

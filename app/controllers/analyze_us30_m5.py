@@ -137,7 +137,7 @@ def write_snapshot(path: Path, data: dict, m5: list[dict] | None = None, h1: lis
         "| Campo | Valor |",
         "|-------|-------|",
         f"| Precio spot (último close M5) | **{data['price']:.{dec}f}** |",
-        f"| Sesión NY | {'✅ DENTRO' if data['session']['in_ny_window'] else '❌ FUERA'} — {data['session']['window']} |",
+        f"| Reloj (info) | {data['session']['window']} — NY {data['session'].get('ny_local', 'n/a')} |",
         f"| Bias H1 (EMA20/50) | **{data['bias_h1']}** |",
         f"| RSI M5 (14) | {data['rsi_m5']:.1f}" if data["rsi_m5"] is not None else "| RSI M5 (14) | n/a |",
         f"| RSI H1 (14) | {data['rsi_h1']:.1f}" if data["rsi_h1"] is not None else "| RSI H1 (14) | n/a |",
@@ -200,13 +200,13 @@ def write_signal_light(path: Path, data: dict, m5: list[dict] | None = None, h1:
             ctx["categories"], data, chart_path, use_ml, use_neural, crt, div,
         )
     ses = data["session"]
-    ny = "OK" if ses["in_ny_window"] else "NO"
+    clock = ses.get("window", "n/d")
     dec = PRICE_DECIMALS
 
     lines = [
         f"# {SYMBOL_LABEL} M5 Signal (light)",
         "",
-        f"**{ctx['verdict']}** | **{data['price']:.{dec}f}** | NY:{ny} {ses['window']} | H1:{data['bias_h1']}",
+        f"**{ctx['verdict']}** | **{data['price']:.{dec}f}** | {clock} | H1:{data['bias_h1']}",
         format_bando_rec_line(ctx["categories"]),
         "",
     ]
@@ -385,23 +385,36 @@ def main() -> int:
                 ctx["categories"], data, chart_for_neural, use_ml, use_neural,
                 crt, div, dmi, e2,
             )
-        if args.ilustrate:
+        # Chart High: overlays OPTI/SL/TP/S-R when chart enabled; -Ilustrate → PNG aparte
+        want_entry_chart = (not args.no_chart) or args.ilustrate
+        if want_entry_chart:
             from app.services.btc_high_analysis import compute_optimal_entry
-            from app.views.illustrate_high_entry import create_annotated_entry_chart
-            ann_name = "us30_m5_chart_annotated.png"
-            ann_path = OUT_DIR / ann_name
+            from app.views.illustrate_high_entry import write_entry_overlay_charts
+
             opt = compute_optimal_entry(
                 high_data, high_data["setup"]["direction"],
                 high_data["crt"], high_data["zone"],
             )
             try:
-                create_annotated_entry_chart(high_data, opt, ann_path, asset="US30")
-                high_data["ilustrate"] = True
-                high_data["annotated_chart_file"] = ann_name
-                high_data["annotated_chart_abs"] = str(ann_path.resolve())
-                print(f"Ilustrate: {ann_path.resolve()}")
+                written = write_entry_overlay_charts(
+                    high_data,
+                    opt,
+                    asset="US30",
+                    main_chart_path=None if args.no_chart else chart_path,
+                    annotated_path=(OUT_DIR / "us30_m5_chart_annotated.png") if args.ilustrate else None,
+                )
+                if written.get("main_chart"):
+                    high_data["chart"] = True
+                    data["chart"] = True
+                    chart_ok = True
+                    print(f"Chart OPTI: {written['main_chart']}")
+                if written.get("annotated_chart"):
+                    high_data["ilustrate"] = True
+                    high_data["annotated_chart_file"] = written["annotated_file"]
+                    high_data["annotated_chart_abs"] = written["annotated_chart"]
+                    print(f"Ilustrate: {written['annotated_chart']}")
             except Exception as e:
-                print(f"WARN --ilustrate: {e}")
+                print(f"WARN chart overlays: {e}")
         use_advanced = bool(args.advanced) or (use_ml and use_neural)
         write_high_signal(
             high, high_data, verdict_to_signal,

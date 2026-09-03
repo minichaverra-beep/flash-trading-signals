@@ -2,6 +2,9 @@
 
 > Usar con `@live/us30_m5_high_signal.md` tras `.\scripts\analyze\analyze-us30-high.ps1`
 > Paralelo a `TRADING_LIVE_BTC_HIGH_SIGNAL.md` — mismas reglas E1/E2 y UX High (Categories / Advanced / Salidas).
+>
+> **Roles:** High = **señales** (append historial). Revisión P&L = `analyze-us30-history.ps1` (no es High).
+> Super High (captura TV) es script BTC aparte — **no** se mezcla con High US30.
 
 ---
 
@@ -61,7 +64,7 @@ Advanced:
 
 **Orden de lectura:** Categories (Precio · Entrada óptima · Confluencia) → Entrada optimizada → Checklist 2M5 → CRT/E2 → Salidas.
 
-> **Sesión NY** ya no es fila de la tabla de status signal ni fuerza `NO_OPERAR` en la recomendación. Sigue como info en header.
+> **Sesión NY** no es fila de status signal ni fuerza `NO_OPERAR`. Reloj informativo opcional en header.
 >
 > **Segunda indicación:** cuando H1 es NEUTRAL, el sistema vota sesgo auxiliar desde DMI, CRT premium/discount y swings M5. No reemplaza bias H1.
 
@@ -90,7 +93,8 @@ Lee Veredicto + Categories (**Precio**, **Entrada óptima**, **Bando usado**, **
 + CRT + E2 turtle soup del high signal.
 + **Salidas** (paths chart anotado si Ilustrate).
 
-Aplica plan Danilo: NY info · E1 90%+ · SL $9 (~9 pts mini Dow) · R:R 1:2 · 2 SL fin sesión
+Aplica plan Danilo: E1 90%+ · SL $9 (~9 pts mini Dow) · R:R 1:2 · 2 SL = límite riesgo diario
+(Sesión NY = reloj info, no gate)
 Bias H1 + PDH/PDL + fakeout + 2 velas M5 + zona ≤0.15%
 Break = breakout; Reverse = operable con 2 velas + winrate
 E2 solo watchlist ≤10% salvo modo Reverse operable

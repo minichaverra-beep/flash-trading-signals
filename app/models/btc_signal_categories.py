@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 
-E1_RULES_TOTAL = 7  # sin Sesión NY (info en header/Categories, no bloquea checklist)
+E1_RULES_TOTAL = 7  # sin Sesión NY (reloj opcional; no bloquea checklist)
 
 
 
@@ -50,10 +50,10 @@ def format_recomendacion(
 ) -> str:
     """Recomendación legible con dirección explícita (ENTRAR SHORT, ESPERAR LONG, etc.).
 
-    session_in_ny se acepta por compatibilidad pero ya no fuerza NO_OPERAR;
-    la sesión es informativa (header/Categories), no bloquea la recomendación.
+    session_in_ny se acepta por compatibilidad pero no altera la recomendación
+    (la sesión NY no es gate operativo).
     """
-    _ = session_in_ny  # info-only; no altera recomendación
+    _ = session_in_ny
     dir_u = direction if direction in ("LONG", "SHORT") else None
 
     if verdict == "ENTRAR":
@@ -1074,7 +1074,7 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
             f"| Reglas | {rules} | Calidad | **{grade}** |",
 
-            f"| Prob. hist. | {wr} | Sesión | **{session}** |",
+            f"| Prob. hist. | {wr} | Reloj | **{session}** (info) |",
 
         ]
 
@@ -1114,7 +1114,7 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
     setup_dir = label_setup_direction(c["direction"])
 
-    ny_flag = "✅ en ventana NY" if c["session_in_ny"] else "❌ fuera de NY"
+    clock_note = "ventana NY" if c.get("session_in_ny") else "fuera NY (info)"
 
     gallery = label_gallery(c["gallery"])
 
@@ -1146,7 +1146,7 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
         f"| Calidad del setup | **{grade}** |",
 
-        f"| Sesión | **{session}** ({ny_flag}) |",
+        f"| Reloj | **{session}** — {clock_note} |",
 
         f"| Patrones similares | {gallery} |",
 

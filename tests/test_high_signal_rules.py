@@ -41,6 +41,7 @@ from app.views.illustrate_high_entry import (  # noqa: E402
     create_annotated_entry_chart,
     format_illustration_md,
     format_salidas_block,
+    write_entry_overlay_charts,
 )
 
 
@@ -311,7 +312,7 @@ class TestFormat2m5Checklist:
         assert "❌" not in text.replace("## Checklist 2M5", "")
 
     def test_session_outside_ny_is_info_not_blocking_row(self):
-        """Sesión fuera NY = info; no fila bloqueante en checklist 2M5."""
+        """Sesión fuera NY = reloj info; no fila bloqueante en checklist 2M5."""
         data = make_data(in_ny=False, direction="SHORT", confirm_short=True, dist_pct=0.05)
         m5 = [
             _c(100_040, 100_055, 100_030, 100_035),
@@ -322,9 +323,12 @@ class TestFormat2m5Checklist:
             format_2m5_checklist(data, "SHORT", data["session"], make_crt())
         )
         assert "Sesión NY activa" not in text
-        assert "FUERA NY" in text or "info" in text.lower()
         assert "[❌] Sesión NY" not in text
         assert "[❌] Sesión NY activa" not in text
+        assert "Reloj (info)" in text or "info" in text.lower()
+        # Checklist sigue evaluando zona/2M5 aunque fuera NY
+        assert "Cerca de zona" in text
+        assert "2 velas M5 confirman SHORT" in text
 
     def test_missing_2m5_fails_item(self):
         data = make_data(confirm_short=False, direction="SHORT", dist_pct=0.05, in_ny=True)
@@ -387,6 +391,22 @@ class TestSessionNotBlockingStatus:
         rec2 = format_recomendacion("ENTRAR", "SHORT", session_in_ny=False)
         assert rec2 == "ENTRAR SHORT"
 
+    def test_suggest_setup_fuera_ny_no_red_flag(self):
+        from app.controllers.analyze_btc_m5 import suggest_setup
+        from app.models.market_analysis_core import suggest_setup as suggest_us30
+
+        zone = {"level": 100_050.0, "type": "resistencia_debil", "dist_pct": 0.05}
+        s = suggest_setup(
+            100_040.0, "BEARISH", zone, 45.0, False, True, False, None, None,
+        )
+        assert not any("NY" in r for r in s["red_flags"])
+        s2 = suggest_us30(
+            53700.0, "BEARISH",
+            {"level": 53735.0, "type": "resistencia_debil", "dist_pct": 0.05},
+            45.0, False, True, False, None, None,
+        )
+        assert not any("NY" in r for r in s2["red_flags"])
+
     def test_derive_verdict_not_forced_by_fuera_ny(self):
         data = make_data(
             in_ny=False,
@@ -400,7 +420,7 @@ class TestSessionNotBlockingStatus:
         cats = {"rules_pct": 85, "rules_ok": 6, "rules_total": 7}
         crt = make_crt()
         flags = collect_red_flags(data, crt)
-        assert any("info" in f.lower() for f in flags)
+        assert not any("ventana NY" in f or "FUERA" in f.upper() or "fuera NY" in f.lower() for f in flags)
         assert not any(f == "Fuera ventana NY — NO_OPERAR" for f in flags)
         v = derive_e1_verdict(data, cats, crt=crt)
         # Fuera NY ya no fuerza NO_OPERAR; con rules altos + confirm puede ENTRAR/ESPERAR
@@ -795,6 +815,32 @@ class TestIlustrate:
         assert path.exists()
         assert path.stat().st_size > 500
         assert path.suffix == ".png"
+        assert opt["entry"] is not None
+        assert opt["sl"] is not None
+        assert opt["tp"] is not None
+
+    def test_write_entry_overlay_charts_main_and_annotated(self, tmp_path):
+        """Default High chart path + Ilustrate path both get OPTI overlays."""
+        m5 = [_red(100_040, body=12), _red(100_028, body=10)]
+        data = make_data(
+            price=100_018.0,
+            zone_level=100_050.0,
+            dist_pct=0.03,
+            confirm_short=True,
+            m5=m5,
+            direction="SHORT",
+        )
+        data["generated"] = "2026-09-03 12:00"
+        opt = compute_optimal_entry(data, "SHORT", make_crt(), data["zone"])
+        main = tmp_path / "btc_m5_chart.png"
+        ann = tmp_path / "btc_m5_chart_annotated.png"
+        written = write_entry_overlay_charts(
+            data, opt, asset="BTC", main_chart_path=main, annotated_path=ann,
+        )
+        assert main.exists() and main.stat().st_size > 500
+        assert ann.exists() and ann.stat().st_size > 500
+        assert written["annotated_file"] == "btc_m5_chart_annotated.png"
+        assert "main_chart" in written and "annotated_chart" in written
 
     def test_create_annotated_entry_chart_us30_asset(self, tmp_path):
         m5 = [_red(42_160), _red(42_145)]

@@ -37,11 +37,11 @@ Cursor:
 
 ## Reglas compartidas (igual que BTC)
 
-- Sesión NY **08–11** y **14–17** UTC-4
+- Reloj NY **08–11** y **14–17** UTC-4 — **informativo** (no gate)
 - Solo **E1** (90%+)
 - SL **~$9** fijo — en US30 ≈ **9 pts** ($1/pt) o **90 pts** (micro)
 - R:R mínimo **1:2**
-- **2 SL = fin de sesión**
+- **2 SL = límite de riesgo diario**
 - **2 velas M5** de confirmación obligatorias
 - Rules **≥70%** para ENTRAR
 
@@ -54,10 +54,11 @@ Señal E1 US30 M5 — análisis light.
 
 Lee PRIMERO Categories del signal file (**Bando usado**, **Recomendación**).
 
-Reglas: NY only · E1 only · Bias H1 · Zona ≤0.15% · 2 velas M5 · R:R 1:2 · SL $9 (~9 pts mini)
+Reglas: E1 only · Bias H1 · Zona ≤0.15% · 2 velas M5 · R:R 1:2 · SL $9 (~9 pts mini)
+(Sesión NY = reloj info, no gate)
 Rules ≥70% ENTRAR · <70% ESPERAR · <50% NO_OPERAR
 ML/Neural si presentes — complementan, no reemplazan TV
-Fuera NY / sin 2M5 / 2 SL hoy → NO_OPERAR o ESPERAR
+Sin 2M5 / 2 SL hoy → ESPERAR o NO_OPERAR según tabla
 
 Responde EXACTAMENTE (máx 5 líneas):
 

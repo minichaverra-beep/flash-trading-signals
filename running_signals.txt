@@ -1,20 +1,30 @@
 cd "D:\Danilo\Trading\Cursor Trading"
 
-# BTC Mejor señal
-.\analyze-btc-high.ps1 -Bullish -Break -ML -Neural -Advanced
-
-# US30 Mejor señal
-.\analyze-us30-high.ps1 -Bearish -Break -ML -Neural -Advanced
-
-
----------------------------------------------------
-# Analizar cierre de operación
+# ---------------------------------------------------------------------------
+# HIGH = senales (generacion de entrada). NO es revision P&L ni Super High.
 # ---------------------------------------------------------------------------
 
-# BTC cierre OP
-.\scripts\analyze\analyze-us30-high.ps1 -Bullish -Break -ML -Neural -Ilustrate -Advanced
+# BTC High (senal)
+.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Advanced
+
+# US30 High (senal)
+.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
 
-# US30 cierre OP
-.\scripts\analyze\analyze-btc-high.ps1 -Bearish -Break -ML -Neural -Ilustrate -Advanced
+# ---------------------------------------------------------------------------
+# HISTORY = solo revision P&L de la ultima Entry (NO senal nueva; sin append)
+# ---------------------------------------------------------------------------
 
+# BTC cierre / P&L ultima Entry
+.\scripts\analyze\analyze-btc-history.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Advanced
+
+# US30 cierre / P&L ultima Entry
+.\scripts\analyze\analyze-us30-history.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
+
+
+# ---------------------------------------------------------------------------
+# SUPER HIGH = captura TradingView anotada (script aparte; NO mezclar con High)
+# ---------------------------------------------------------------------------
+# 1) Guarda: live\super_high_entry.png
+# 2) Corre:
+# .\scripts\analyze\analyze-btc-superhigh.ps1

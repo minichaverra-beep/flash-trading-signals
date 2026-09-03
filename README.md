@@ -12,14 +12,15 @@ Sistema de señales **BTC / US30** (estrategia E1) para trabajar en **Cursor**.
 
 Genera reportes live (markdown + opcionales PNG) para decidir entradas según el plan E1:
 
-| Tier | Uso |
-|------|-----|
+| Tier / modo | Uso |
+|-------------|-----|
 | **Light** | Chequeo rápido |
 | **Full** | Snapshot completo (solo excepcional) |
-| **High** | Recomendado para decidir entrada (CRT + 2M5) |
-| **Super High** | Validación con captura TradingView ya anotada |
+| **High** | **Señales** — decidir entrada (CRT + 2M5). Append al historial. |
+| **History** | **Revisión P&L** de la última Entry (`analyze-*-history.ps1`). No es señal; no append. |
+| **Super High** | Validación con captura TradingView anotada — script **aparte** (`analyze-btc-superhigh.ps1`). No se mezcla con High. |
 
-Flags opcionales: **`-ML`** (modelo tabular), **`-Neural`** (similitud galería WIN), **`-Ilustrate`** (PNG anotado 2M5 + entrada óptima).
+Flags opcionales High: **`-ML`** (modelo tabular), **`-Neural`** (similitud galería WIN), **`-Ilustrate`** (PNG anotado 2M5 + entrada óptima).
 
 ## Estructura
 

@@ -433,14 +433,11 @@ def analyze_entry_capture(
         direction = direction or (result["rules"].get("setup_direction") if result.get("rules") else None) or "NONE"
 
     bando_mercado = result["rules"].get("bias_h1", "NEUTRAL") if result.get("rules") else "NEUTRAL"
-    session_in_ny = True
-    if ctx and ctx.get("session"):
-        session_in_ny = ctx["session"].get("in_ny_window", True)
 
     result["bando_usado"] = bando_usado
     result["bando_mercado"] = bando_mercado
     result["recomendacion"] = format_recomendacion(
-        result["verdict"], direction or "NONE", session_in_ny=session_in_ny,
+        result["verdict"], direction or "NONE",
     )
     result["direction"] = direction or "NONE"
     result["bias_mode"] = bias_mode
@@ -565,7 +562,7 @@ def write_super_high_signal(path: Path, result: dict[str, Any]) -> None:
             "## Reglas E1 live (20% peso)",
             "",
             f"- Precio live: **{r.get('price', 'n/d')}** | Bias H1: {r.get('bias_h1', 'n/d')}",
-            f"- Sesión: {r.get('session', 'n/d')} | Setup auto: {r.get('setup_direction', 'n/d')}",
+            f"- Reloj (info): {r.get('session', 'n/d')} | Setup auto: {r.get('setup_direction', 'n/d')}",
             f"- CRT: {r.get('crt_state', 'n/a')} | {r.get('fakeout', '')}",
             "",
             "| Regla | OK | Nota |",

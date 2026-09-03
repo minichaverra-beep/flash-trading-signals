@@ -43,7 +43,7 @@ def apply_forced_bias(data: dict, bias_mode: str) -> dict:
         setup["sl"], setup["tp"], setup["rr"] = sl, price - 2 * risk, 2.0
     near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
     confirm = out["confirm_long"] if direction == "LONG" else out["confirm_short"]
-    # Sesión NY ya no es hard-block para SETUP_A+
+    # Sesión NY no es hard-block para SETUP_A+
     hard = [r for r in setup["red_flags"] if any(k in r for k in ("Lejos", "Sin 2"))]
     if not hard and near and confirm:
         setup["verdict"] = "SETUP_A+"
@@ -445,12 +445,12 @@ def format_executive_synthesis(
         "## A) Síntesis ejecutiva",
         "",
     ]
-    # Macro context
+    # Macro context (reloj opcional — no gate)
     ses = data["session"]
     pd_read = crt.get("pd_reading", "n/a")
     macro = (
         f"**Contexto macro:** Precio {data['price']:.0f} · "
-        f"{'dentro NY' if ses['in_ny_window'] else 'FUERA NY'} ({ses['window']}) · "
+        f"reloj {ses.get('window', 'n/d')} · "
         f"CRT PD={pd_read} · H1 bias **{data['bias_h1']}**"
     )
     lines.append(f"- {macro}")
@@ -737,11 +737,9 @@ def format_trading_plan_advanced(data: dict, ctx: dict, combined: float) -> list
 
 
 def format_psychology_guards(data: dict, categories: dict, combined: float) -> list[str]:
-    """H) Psicología y guardas de sesión."""
+    """H) Psicología y guardas de riesgo (sesión NY no es gate)."""
     flags = []
-    if not data["session"]["in_ny_window"]:
-        flags.append("ℹ️ Fuera ventana NY — informativo (no fuerza NO_OPERAR en checklist)")
-    flags.append("❓ ¿2 SL hoy? — confirmar trader (2 SL = fin sesión)")
+    flags.append("❓ ¿2 SL hoy? — confirmar trader (límite de riesgo diario)")
     ml = categories.get("ml_prob_win")
     nw = categories.get("neural_prob_win")
     if nw and nw >= 0.70 and categories.get("rules_pct", 0) < 63:
@@ -750,7 +748,7 @@ def format_psychology_guards(data: dict, categories: dict, combined: float) -> l
         flags.append("⚠ Tensión ML/Neural — no entrar por galería sola")
 
     lines = [
-        "## H) Psicología y guardas de sesión",
+        "## H) Psicología y guardas",
         "",
     ]
     for f in flags:
@@ -796,7 +794,7 @@ def format_cursor_advanced_block(asset: str | None = None) -> list[str]:
         "NO acortar. Responde estructurado en español con síntesis ejecutiva,",
         "scorecard, CRT deep dive, E2 (si aplica), cruce ML×Neural, galería,",
         "plan (si ENTRAR), red flags y guardas psicológicas.",
-        "Confirmar TradingView antes de ejecutar. 2 SL = fin sesión.",
+        "Confirmar TradingView antes de ejecutar. 2 SL = límite de riesgo diario.",
         "```",
         "",
     ]
@@ -1293,12 +1291,13 @@ def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -
         ),
     ]
     all_ok = all(ok for _, ok in items)
-    ny_info = "DENTRO NY" if session.get("in_ny_window") else f"FUERA NY ({session.get('window', 'n/d')}) — info"
+    # Reloj opcional (no es ítem del checklist ni gate)
+    clock = session.get("window") or session.get("ny_local") or "n/d"
 
     lines = [
         "## Checklist 2M5",
         "",
-        f"_Sesión: {ny_info}_",
+        f"_Reloj (info): {clock}_",
         "",
     ]
     for label, ok in items:
@@ -1628,7 +1627,7 @@ def write_high_signal(
             "2. Leer **Entrada optimizada (E1)** + **Checklist 2M5** + **2M5 Válido/Inválido**.",
             "3. Citar CRT pending/completed/invalid + RSI TORYS.",
             "4. Galería WIN match. 5. E2 solo watch. 6. Confirmar TV.",
-            "7. En resumen chat: **Salidas** con path `live/..._chart_annotated.png` si hay Ilustrate.",
+            "7. En resumen chat: **Salidas** + chart High (líneas OPTI si no `-NoChart`; anotado si Ilustrate).",
         ]
     lines += [""]
     if data.get("chart"):

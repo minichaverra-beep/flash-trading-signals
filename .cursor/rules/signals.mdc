@@ -28,7 +28,7 @@ Preferir `scripts/analyze/`. Stubs raíz solo High.
 | `-Break` / `-Reverse` | Continuación E1 vs reversión E2 |
 | `-ML` | ML tabular (oculto en High Categories; visible en Light) |
 | `-Neural` | Neural galería en Categories |
-| `-Ilustrate` | PNG anotado 2M5+OPTI (también con `-NoChart`) |
+| `-Ilustrate` | PNG anotado 2M5+OPTI (también con `-NoChart`); el chart High normal (sin `-NoChart`) ya incluye líneas OPTI/SL/TP/S-R |
 
 Light / Full / Super High: mismos flags en `analyze-*-light.ps1`, `analyze-*.ps1`, `analyze-*-superhigh.ps1`.
 
@@ -51,16 +51,18 @@ En Cursor: `@live/...` + `@docs/protocols/...` del tier usado.
 4. **Neural** (si `-Neural`) — complementa, no decide solo  
 5. **Entrada optimizada** — AHORA vs OPTI + plan  
 6. **Checklist 2M5** — las 5 ✅ = OK; falta una → ESPERAR  
-7. **Ilustración** — solo si `-Ilustrate` / PNG presente  
+7. **Ilustración / Chart** — chart High (sin `-NoChart`) ya trae líneas OPTI; PNG aparte si `-Ilustrate`  
 8. **Última señal** / **Calificación entrada** — vs último historial del mismo par (High; ver `how_to_use.txt` §4b)  
 
 ## Jerarquía de decisión
 
-**Reglas E1 + sesión NY + Checklist 2M5 > Neural.**  
+**Reglas E1 + Checklist 2M5 > Neural.**  
+Sesión NY es solo reloj informativo (no bloquea ni fuerza NO_OPERAR).  
 ML no aparece en Categories High (puede existir en Light). Auto-veredicto del script **no** es señal final.
 
 ## Veredicto (español)
 
 Usar exactamente: **ENTRAR LONG** | **ENTRAR SHORT** | **ESPERAR** | **NO_OPERAR**.
 
-Justificar con Categories + 2M5 + sesión. **No inventar reglas**; citar `docs/strategy/` solo si hace falta detalle del plan.
+Justificar con Categories + 2M5. **No inventar reglas**; citar `docs/strategy/` solo si hace falta detalle del plan.
+**No** exigir “estar en sesión NY” para calcular o operar.

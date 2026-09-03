@@ -75,13 +75,13 @@ def collect_red_flags(
     crt: dict | None = None,
     div: dict | None = None,
 ) -> list[str]:
-    """Red flags CRT E1 — ordenadas por severidad."""
+    """Red flags CRT E1 — ordenadas por severidad.
+
+    La sesión NY no se lista aquí: es reloj informativo, no condición de trade.
+    """
     flags: list[str] = []
     s = data["setup"]
     direction = s["direction"]
-
-    if not data["session"]["in_ny_window"]:
-        flags.append("Fuera ventana NY (info — no bloquea checklist)")
 
     if crt:
         if crt.get("fakeout_pdh"):

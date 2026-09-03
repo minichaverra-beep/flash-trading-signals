@@ -150,7 +150,7 @@ APLICAR:
 2. Si Neural <50% WIN → sesgo NO_OPERAR salvo Rules ≥75% + extendidas OK
 3. Si ML <45% → veto fuerte (WR histórico 24.8%)
 4. Rules <5/8 → ESPERAR aunque neural sea alto
-5. Confirmar en TradingView: 2 velas M5, sesión NY, SL ~$9, R:R 1:2
+5. Confirmar en TradingView: 2 velas M5, SL ~$9, R:R 1:2 (sesión NY = reloj info)
 6. Comparar visualmente con TRADING_OPERATIONS_DESKTOP_CONTEXT §5.1
 
 Responde EXACTAMENTE en este formato:
@@ -171,7 +171,7 @@ Luego añade:
 - Match galería WIN: (BTC-xx-xx-xx o "sin match claro")
 - Red flags concretos de la captura vs reglas inmutables
 
-Recuerda: 2 SL = fin sesión · 3 ops max · Super High complementa, no reemplaza tu criterio.
+Recuerda: 2 SL = límite riesgo diario · 3 ops max · Super High complementa, no reemplaza tu criterio.
 Responde en español.
 ```
 

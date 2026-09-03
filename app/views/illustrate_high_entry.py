@@ -39,6 +39,31 @@ def _candle_label(c: dict) -> str:
     return "G" if c["close"] >= c["open"] else "R"
 
 
+def write_entry_overlay_charts(
+    data: dict,
+    optimal_entry: dict,
+    *,
+    asset: str = "BTC",
+    main_chart_path: Path | str | None = None,
+    annotated_path: Path | str | None = None,
+) -> dict:
+    """
+    Write OPTI/SL/TP/S-R overlays onto the default High chart and/or the -Ilustrate PNG.
+
+    - main_chart_path: live/*_m5_chart.png (when chart enabled / not -NoChart)
+    - annotated_path: live/*_m5_chart_annotated.png (when -Ilustrate)
+    """
+    out: dict = {}
+    if main_chart_path is not None:
+        p = create_annotated_entry_chart(data, optimal_entry, main_chart_path, asset=asset)
+        out["main_chart"] = str(p.resolve())
+    if annotated_path is not None:
+        p = create_annotated_entry_chart(data, optimal_entry, annotated_path, asset=asset)
+        out["annotated_chart"] = str(p.resolve())
+        out["annotated_file"] = Path(annotated_path).name
+    return out
+
+
 def create_annotated_entry_chart(
     data: dict,
     optimal_entry: dict,
@@ -49,6 +74,7 @@ def create_annotated_entry_chart(
     Draw M5 candles with last-2 highlight, S/R zone, Entry/SL/TP and ESPERAR/ENTRAR callout.
 
     Writes PNG to out_path. Uses matplotlib (same dark style as live M5 charts).
+    Used for the default High chart (when chart enabled) and for -Ilustrate.
     """
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyArrowPatch, Rectangle

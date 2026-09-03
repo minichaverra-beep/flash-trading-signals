@@ -135,8 +135,7 @@ def suggest_setup(
     reasons = []
     red_flags = []
 
-    if not in_ny:
-        red_flags.append("Fuera de ventana NY (regla 2)")
+    _ = in_ny  # reloj opcional; no bloquea setup ni fuerza NO_OPERAR
 
     if bias == "BULLISH":
         direction = "LONG"

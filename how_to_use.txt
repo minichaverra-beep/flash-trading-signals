@@ -15,6 +15,10 @@
 
 2) BTC — SEÑALES RÁPIDAS
 ------------------------------------------------------------
+High = SEÑALES (entrada). No confundir con:
+  • analyze-*-history.ps1 = revisión P&L (última Entry)
+  • analyze-btc-superhigh.ps1 = captura TV (tier aparte)
+
 Tiers (de menos a más tokens):
 
   Light  → chequeo rápido
@@ -23,7 +27,7 @@ Tiers (de menos a más tokens):
   Full   → snapshot completo (solo excepcional)
     .\scripts\analyze\analyze-btc.ps1 -NoChart -ML -Neural
 
-  High   → recomendado para decidir entrada (CRT + 2M5)
+  High   → señales para decidir entrada (CRT + 2M5)
     .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
 
 Flags High (elige según tu sesgo / setup):
@@ -32,7 +36,8 @@ Flags High (elige según tu sesgo / setup):
   -Break   | -Reverse   tipo de setup
   -ML                   corre ML (en High no se muestra en Categories)
   -Neural               Neural galería en Categories
-  -Ilustrate            PNG anotado 2M5 + entrada óptima
+  -Ilustrate            PNG anotado aparte (*_chart_annotated.png); también con -NoChart
+  Chart High (sin -NoChart): PNG normal ya incluye líneas OPTI/SL/TP + S/R débil + callout 2M5
 
 Stub raíz (solo High — mismo resultado):
   .\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
@@ -69,7 +74,7 @@ Lee en este orden:
   5. Neural             → % similitud con galería WIN (complementa, no decide solo)
   6. Entrada optimizada → AHORA vs OPTI + plan (Trigger, Entry, SL, TP 1:2)
   7. Checklist 2M5      → las 5 ✅ = OK; falta una = ESPERAR
-  8. Ilustración        → PNG anotado si usaste -Ilustrate
+  8. Chart / Ilustración → PNG High con líneas OPTI (sin -NoChart); anotado extra si -Ilustrate
   9. Última señal       → id · time · Entry del último High del mismo par (High)
  10. Calificación entrada → (High) vs última Entry; history runners → ver §4b P&L
 
@@ -149,18 +154,19 @@ La estrategia E1 ya carga sola (.cursor/rules). No hace falta @ del plan en cada
 • Máx. 1 mercado a la vez.
 
 
-7) SUPER HIGH (opcional)
+7) SUPER HIGH (opcional — script aparte; NO es High)
 ------------------------------------------------------------
 Cuando YA dibujaste entry + SL + TP en TradingView:
 
   1. Guarda la captura como:  live\super_high_entry.png
-  2. Corre:
+  2. Corre (NO uses analyze-*-high.ps1 para esto):
        .\scripts\analyze\analyze-btc-superhigh.ps1
   3. En Cursor:
        @live/btc_super_high_signal.md
        @docs/protocols/TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md
 
 No es para la rutina diaria — solo cuando tengas captura concreta.
+High = señales live; History = P&L; Super High = captura TV. No mezclar.
 
 
 8) ML TRAIN (opcional — 1 vez / semana)
