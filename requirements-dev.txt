@@ -1,3 +1,5 @@
 # Dev / CI — tests & coverage (not required for daily signal runners)
 pytest>=8.0.0
 pytest-cov>=5.0.0
+# Chart tests (TestIlustrate / create_annotated_entry_chart)
+matplotlib>=3.7.0
