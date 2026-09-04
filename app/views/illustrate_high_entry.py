@@ -1,7 +1,64 @@
 """Generate annotated M5 chart for high-signal optimal entry (2M5 + zona + Entry/SL/TP)."""
 from __future__ import annotations
 
+import io
+import os
+import tempfile
+import time
 from pathlib import Path
+
+
+def savefig_png(
+    fig,
+    out_path: Path | str,
+    *,
+    dpi: int = 140,
+    facecolor: str = "#1e1e1e",
+) -> Path:
+    """
+    Save a matplotlib figure as PNG robustly on Windows.
+
+    Avoids common [Errno 22] Invalid argument failures by:
+    - rendering via BytesIO (matplotlib never opens the final path)
+    - writing a same-dir temp file then os.replace (atomic, handles locked viewers)
+    - one retry after a short sleep, then fallback ``*_new.png``
+    """
+    out = Path(out_path)
+    # Trailing/leading spaces in the filename break Win32 CreateFile
+    out = out.parent / out.name.strip()
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, facecolor=facecolor)
+    payload = buf.getvalue()
+
+    def _atomic_write(target: Path) -> None:
+        fd, tmp_name = tempfile.mkstemp(suffix=".png.tmp", prefix=f".{target.stem}_", dir=str(target.parent))
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_name, target)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+
+    try:
+        _atomic_write(out)
+        return out
+    except OSError:
+        time.sleep(0.2)
+        try:
+            _atomic_write(out)
+            return out
+        except OSError:
+            alt = out.with_name(f"{out.stem}_new{out.suffix or '.png'}")
+            _atomic_write(alt)
+            return alt
 
 
 def _zone_edges(opt: dict) -> tuple[float | None, float | None]:
@@ -73,9 +130,12 @@ def create_annotated_entry_chart(
     """
     Draw M5 candles with last-2 highlight, S/R zone, Entry/SL/TP and ESPERAR/ENTRAR callout.
 
-    Writes PNG to out_path. Uses matplotlib (same dark style as live M5 charts).
+    Writes PNG to out_path. Uses matplotlib Agg + atomic replace (Windows-safe).
     Used for the default High chart (when chart enabled) and for -Ilustrate.
     """
+    import matplotlib
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyArrowPatch, Rectangle
 
@@ -83,150 +143,151 @@ def create_annotated_entry_chart(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     m5 = data.get("m5") or []
-    if len(m5) < 2:
-        # Minimal placeholder so callers/tests still get a file
-        fig, ax = plt.subplots(figsize=(8, 3), facecolor="#1e1e1e")
+    fig = None
+    try:
+        if len(m5) < 2:
+            # Minimal placeholder so callers/tests still get a file
+            fig, ax = plt.subplots(figsize=(8, 3), facecolor="#1e1e1e")
+            ax.set_facecolor("#1e1e1e")
+            ax.set_title(f"{asset} M5 — sin velas para ilustrar", color="#569cd6")
+            return savefig_png(fig, out, dpi=100, facecolor="#1e1e1e")
+
+        show = m5[-60:]
+        n = len(show)
+        opt = optimal_entry or {}
+        dec = int(opt.get("dec", data.get("price_decimals", 1)))
+        fmt = f".{dec}f"
+        direction = opt.get("direction") or data.get("setup", {}).get("direction", "")
+        level = opt.get("level")
+        ztype = opt.get("ztype") or data.get("zone", {}).get("type", "zona")
+        zone_lo, zone_hi = _zone_edges(opt)
+        entry, sl, tp = opt.get("entry"), opt.get("sl"), opt.get("tp")
+        user_entry = opt.get("user_entry")
+
+        fig, ax = plt.subplots(figsize=(12, 5.5), facecolor="#1e1e1e")
         ax.set_facecolor("#1e1e1e")
-        ax.set_title(f"{asset} M5 — sin velas para ilustrar", color="#569cd6")
-        fig.savefig(out, dpi=100, facecolor="#1e1e1e")
-        plt.close(fig)
-        return out
 
-    show = m5[-60:]
-    n = len(show)
-    opt = optimal_entry or {}
-    dec = int(opt.get("dec", data.get("price_decimals", 1)))
-    fmt = f".{dec}f"
-    direction = opt.get("direction") or data.get("setup", {}).get("direction", "")
-    level = opt.get("level")
-    ztype = opt.get("ztype") or data.get("zone", {}).get("type", "zona")
-    zone_lo, zone_hi = _zone_edges(opt)
-    entry, sl, tp = opt.get("entry"), opt.get("sl"), opt.get("tp")
-    user_entry = opt.get("user_entry")
+        for i, c in enumerate(show):
+            color = "#4ec9b0" if c["close"] >= c["open"] else "#f48771"
+            ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.8)
+            bottom = min(c["open"], c["close"])
+            height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.01
+            ax.add_patch(Rectangle((i - 0.3, bottom), 0.6, height, facecolor=color, edgecolor=color))
 
-    fig, ax = plt.subplots(figsize=(12, 5.5), facecolor="#1e1e1e")
-    ax.set_facecolor("#1e1e1e")
+        # Yellow boxes on last 2 M5 candles
+        for idx in (n - 2, n - 1):
+            c = show[idx]
+            pad = (c["high"] - c["low"]) * 0.05 or abs(c["close"]) * 0.0001
+            ax.add_patch(
+                Rectangle(
+                    (idx - 0.42, c["low"] - pad),
+                    0.84,
+                    (c["high"] - c["low"]) + 2 * pad,
+                    linewidth=2.5,
+                    edgecolor="#ffd700",
+                    facecolor="none",
+                    linestyle="--",
+                )
+            )
 
-    for i, c in enumerate(show):
-        color = "#4ec9b0" if c["close"] >= c["open"] else "#f48771"
-        ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.8)
-        bottom = min(c["open"], c["close"])
-        height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.01
-        ax.add_patch(Rectangle((i - 0.3, bottom), 0.6, height, facecolor=color, edgecolor=color))
+        y_lo = min(c["low"] for c in show)
+        y_hi = max(c["high"] for c in show)
+        yrange = (y_hi - y_lo) or abs(show[-1]["close"]) * 0.01
+        off = yrange * 0.025
 
-    # Yellow boxes on last 2 M5 candles
-    for idx in (n - 2, n - 1):
-        c = show[idx]
-        pad = (c["high"] - c["low"]) * 0.05 or abs(c["close"]) * 0.0001
+        if level is not None:
+            ax.axhline(level, color="#c586c0", linewidth=1.5, linestyle="-", alpha=0.9)
+            ax.text(
+                n - 0.5, level + off,
+                f"{ztype} {level:{fmt}}",
+                color="#c586c0", fontsize=9, va="bottom", fontweight="bold",
+            )
+        if zone_lo is not None and level is not None and abs(zone_lo - level) > 1e-9:
+            edge = zone_lo if direction == "SHORT" else zone_hi
+            if edge is not None:
+                ax.axhline(edge, color="#c586c0", linewidth=1, linestyle=":", alpha=0.7)
+        if entry is not None:
+            ax.axhline(entry, color="#4fc1ff", linewidth=1, linestyle="--", alpha=0.85)
+            ax.text(2, entry + off, f"Entrada OPTI ~{entry:{fmt}}", color="#4fc1ff", fontsize=9, va="bottom")
+        if user_entry is not None:
+            # Distinct color/label when user fill differs from system optimal
+            same = entry is not None and abs(float(user_entry) - float(entry)) < 10 ** (-dec)
+            if not same:
+                ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
+                ax.text(
+                    2, float(user_entry) - off,
+                    f"Entry usuario ~{user_entry:{fmt}}",
+                    color="#dcdcaa", fontsize=9, va="top",
+                )
+            elif entry is None:
+                ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
+                ax.text(
+                    2, float(user_entry) + off,
+                    f"Entry usuario ~{user_entry:{fmt}}",
+                    color="#dcdcaa", fontsize=9, va="bottom",
+                )
+        if sl is not None:
+            sl_tag = "past" if opt.get("sl_tp_source") == "past" else ("1:2" if opt.get("sl_tp_source") == "fallback" else "")
+            who = " usuario" if user_entry is not None else ""
+            sl_lbl = f"SL{who} {sl_tag} ~{sl:{fmt}}" if sl_tag else f"SL{who} ~{sl:{fmt}}"
+            ax.axhline(sl, color="#f44747", linewidth=1, linestyle="--", alpha=0.85)
+            ax.text(2, sl + off, sl_lbl, color="#f44747", fontsize=9, va="bottom")
+        if tp is not None:
+            if opt.get("sl_tp_source") == "past":
+                tp_tag = "past" if opt.get("tp_source") == "past_structure" else "1:2 past"
+            elif opt.get("sl_tp_source") == "fallback":
+                tp_tag = "1:2"
+            else:
+                tp_tag = "1:2"
+            who = " usuario" if user_entry is not None else ""
+            ax.axhline(tp, color="#6a9955", linewidth=1, linestyle="--", alpha=0.85)
+            ax.text(2, tp - off, f"TP{who} {tp_tag} ~{tp:{fmt}}", color="#6a9955", fontsize=9, va="top")
+
+        callout = _callout_text(opt)
+        last = show[-1]
+        anchor_y = level - off * 3 if level is not None else last["close"]
         ax.add_patch(
-            Rectangle(
-                (idx - 0.42, c["low"] - pad),
-                0.84,
-                (c["high"] - c["low"]) + 2 * pad,
-                linewidth=2.5,
-                edgecolor="#ffd700",
-                facecolor="none",
-                linestyle="--",
+            FancyArrowPatch(
+                (n - 3, anchor_y),
+                (n - 1.5, last["close"]),
+                arrowstyle="->",
+                color="#ffd700",
+                linewidth=2,
+                mutation_scale=14,
             )
         )
-
-    y_lo = min(c["low"] for c in show)
-    y_hi = max(c["high"] for c in show)
-    yrange = (y_hi - y_lo) or abs(show[-1]["close"]) * 0.01
-    off = yrange * 0.025
-
-    if level is not None:
-        ax.axhline(level, color="#c586c0", linewidth=1.5, linestyle="-", alpha=0.9)
         ax.text(
-            n - 0.5, level + off,
-            f"{ztype} {level:{fmt}}",
-            color="#c586c0", fontsize=9, va="bottom", fontweight="bold",
-        )
-    if zone_lo is not None and level is not None and abs(zone_lo - level) > 1e-9:
-        edge = zone_lo if direction == "SHORT" else zone_hi
-        if edge is not None:
-            ax.axhline(edge, color="#c586c0", linewidth=1, linestyle=":", alpha=0.7)
-    if entry is not None:
-        ax.axhline(entry, color="#4fc1ff", linewidth=1, linestyle="--", alpha=0.85)
-        ax.text(2, entry + off, f"Entrada OPTI ~{entry:{fmt}}", color="#4fc1ff", fontsize=9, va="bottom")
-    if user_entry is not None:
-        # Distinct color/label when user fill differs from system optimal
-        same = entry is not None and abs(float(user_entry) - float(entry)) < 10 ** (-dec)
-        if not same:
-            ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
-            ax.text(
-                2, float(user_entry) - off,
-                f"Entry usuario ~{user_entry:{fmt}}",
-                color="#dcdcaa", fontsize=9, va="top",
-            )
-        elif entry is None:
-            ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
-            ax.text(
-                2, float(user_entry) + off,
-                f"Entry usuario ~{user_entry:{fmt}}",
-                color="#dcdcaa", fontsize=9, va="bottom",
-            )
-    if sl is not None:
-        sl_tag = "past" if opt.get("sl_tp_source") == "past" else ("1:2" if opt.get("sl_tp_source") == "fallback" else "")
-        who = " usuario" if user_entry is not None else ""
-        sl_lbl = f"SL{who} {sl_tag} ~{sl:{fmt}}" if sl_tag else f"SL{who} ~{sl:{fmt}}"
-        ax.axhline(sl, color="#f44747", linewidth=1, linestyle="--", alpha=0.85)
-        ax.text(2, sl + off, sl_lbl, color="#f44747", fontsize=9, va="bottom")
-    if tp is not None:
-        if opt.get("sl_tp_source") == "past":
-            tp_tag = "past" if opt.get("tp_source") == "past_structure" else "1:2 past"
-        elif opt.get("sl_tp_source") == "fallback":
-            tp_tag = "1:2"
-        else:
-            tp_tag = "1:2"
-        who = " usuario" if user_entry is not None else ""
-        ax.axhline(tp, color="#6a9955", linewidth=1, linestyle="--", alpha=0.85)
-        ax.text(2, tp - off, f"TP{who} {tp_tag} ~{tp:{fmt}}", color="#6a9955", fontsize=9, va="top")
-
-    callout = _callout_text(opt)
-    last = show[-1]
-    anchor_y = level - off * 3 if level is not None else last["close"]
-    ax.add_patch(
-        FancyArrowPatch(
-            (n - 3, anchor_y),
-            (n - 1.5, last["close"]),
-            arrowstyle="->",
+            max(n - 10, 1),
+            anchor_y - off,
+            callout,
             color="#ffd700",
-            linewidth=2,
-            mutation_scale=14,
+            fontsize=9,
+            ha="center",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="#2d2d30", edgecolor="#ffd700", alpha=0.9),
         )
-    )
-    ax.text(
-        max(n - 10, 1),
-        anchor_y - off,
-        callout,
-        color="#ffd700",
-        fontsize=9,
-        ha="center",
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="#2d2d30", edgecolor="#ffd700", alpha=0.9),
-    )
 
-    c0, c1 = show[-2], show[-1]
-    t0 = c0["open_time"].strftime("%H:%M") if hasattr(c0.get("open_time"), "strftime") else "?"
-    t1 = c1["open_time"].strftime("%H:%M") if hasattr(c1.get("open_time"), "strftime") else "?"
-    colors = f"[{_candle_label(c0)}][{_candle_label(c1)}]"
-    ax.text(
-        n - 2, show[-2]["low"] - off * 2,
-        f"2M5 [{t0}]+[{t1}] {colors}",
-        color="#ffd700", fontsize=8, ha="center",
-    )
+        c0, c1 = show[-2], show[-1]
+        t0 = c0["open_time"].strftime("%H:%M") if hasattr(c0.get("open_time"), "strftime") else "?"
+        t1 = c1["open_time"].strftime("%H:%M") if hasattr(c1.get("open_time"), "strftime") else "?"
+        colors = f"[{_candle_label(c0)}][{_candle_label(c1)}]"
+        ax.text(
+            n - 2, show[-2]["low"] - off * 2,
+            f"2M5 [{t0}]+[{t1}] {colors}",
+            color="#ffd700", fontsize=8, ha="center",
+        )
 
-    gen = data.get("generated", "")
-    title = f"{asset} M5 · {gen} UTC · 2M5 + entrada óptima"
-    ax.set_title(title, color="#569cd6", fontsize=12, fontweight="bold")
-    ax.tick_params(colors="#e0e0e0")
-    for spine in ax.spines.values():
-        spine.set_color("#3e3e42")
-    ax.set_ylabel(asset, color="#e0e0e0")
-    fig.tight_layout()
-    fig.savefig(out, dpi=140, facecolor="#1e1e1e")
-    plt.close(fig)
-    return out
+        gen = data.get("generated", "")
+        title = f"{asset} M5 · {gen} UTC · 2M5 + entrada óptima"
+        ax.set_title(title, color="#569cd6", fontsize=12, fontweight="bold")
+        ax.tick_params(colors="#e0e0e0")
+        for spine in ax.spines.values():
+            spine.set_color("#3e3e42")
+        ax.set_ylabel(asset, color="#e0e0e0")
+        fig.tight_layout()
+        return savefig_png(fig, out, dpi=140, facecolor="#1e1e1e")
+    finally:
+        if fig is not None:
+            plt.close(fig)
 
 
 def format_illustration_md(

@@ -55,6 +55,7 @@ from app.views.illustrate_high_entry import (  # noqa: E402
     create_annotated_entry_chart,
     format_illustration_md,
     format_salidas_block,
+    savefig_png,
     write_entry_overlay_charts,
 )
 
@@ -1158,6 +1159,31 @@ class TestIlustrate:
         path = create_annotated_entry_chart(data, opt, out, asset="US30")
         assert path.exists()
         assert path.stat().st_size > 200
+
+    def test_savefig_png_atomic_helper(self, tmp_path):
+        """Tiny figure via savefig_png → valid PNG (overwrite + same-dir temp)."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        out = tmp_path / "us30_m5_chart_annotated.png"
+        # Seed an existing file (viewer-lock / overwrite path)
+        out.write_bytes(b"old")
+        fig = None
+        try:
+            fig, ax = plt.subplots(figsize=(2, 1), facecolor="#1e1e1e")
+            ax.plot([0, 1], [0, 1], color="#4ec9b0")
+            path = savefig_png(fig, out, dpi=72, facecolor="#1e1e1e")
+        finally:
+            if fig is not None:
+                plt.close(fig)
+        assert path == out
+        assert path.exists()
+        assert path.stat().st_size > 100
+        assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+        # No leftover *.png.tmp
+        assert not list(tmp_path.glob("*.png.tmp"))
 
 
 # ---------------------------------------------------------------------------

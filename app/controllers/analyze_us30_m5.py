@@ -47,26 +47,35 @@ from app.models.us30_data import DEFAULT_TICKERS, fetch_us30_klines
 
 
 def save_chart(m5: list[dict], path: Path, title: str) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 
-    fig, ax = plt.subplots(figsize=(12, 5), facecolor="#1e1e1e")
-    ax.set_facecolor("#1e1e1e")
-    show = m5[-60:]
-    for i, c in enumerate(show):
-        color = "#4ec9b0" if c["close"] >= c["open"] else "#f48771"
-        ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.8)
-        bottom = min(c["open"], c["close"])
-        height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.01
-        ax.add_patch(Rectangle((i - 0.3, bottom), 0.6, height, facecolor=color, edgecolor=color))
-    ax.set_title(title, color="#569cd6", fontsize=12, fontweight="bold")
-    ax.tick_params(colors="#e0e0e0")
-    for spine in ax.spines.values():
-        spine.set_color("#3e3e42")
-    ax.set_ylabel(SYMBOL_LABEL, color="#e0e0e0")
-    fig.tight_layout()
-    fig.savefig(path, dpi=140, facecolor="#1e1e1e")
-    plt.close(fig)
+    from app.views.illustrate_high_entry import savefig_png
+
+    fig = None
+    try:
+        fig, ax = plt.subplots(figsize=(12, 5), facecolor="#1e1e1e")
+        ax.set_facecolor("#1e1e1e")
+        show = m5[-60:]
+        for i, c in enumerate(show):
+            color = "#4ec9b0" if c["close"] >= c["open"] else "#f48771"
+            ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.8)
+            bottom = min(c["open"], c["close"])
+            height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.01
+            ax.add_patch(Rectangle((i - 0.3, bottom), 0.6, height, facecolor=color, edgecolor=color))
+        ax.set_title(title, color="#569cd6", fontsize=12, fontweight="bold")
+        ax.tick_params(colors="#e0e0e0")
+        for spine in ax.spines.values():
+            spine.set_color("#3e3e42")
+        ax.set_ylabel(SYMBOL_LABEL, color="#e0e0e0")
+        fig.tight_layout()
+        savefig_png(fig, path, dpi=140, facecolor="#1e1e1e")
+    finally:
+        if fig is not None:
+            plt.close(fig)
 
 
 def _augment_categories(categories: dict, data: dict, chart_path: Path | None,
