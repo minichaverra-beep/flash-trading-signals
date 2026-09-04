@@ -489,7 +489,28 @@ def main() -> int:
         action="store_true",
         help="High: review P&L of last Entry only (no new signal framing; do not append history)",
     )
+    parser.add_argument(
+        "--entry",
+        default=None,
+        help=(
+            "High: user fill price (Entry usuario); keeps Entrada óptima separate "
+            "(e.g. 97450, 97450.5, or European 97.450 → 97450)"
+        ),
+    )
     args = parser.parse_args()
+
+    entry_override = None
+    if args.entry is not None:
+        from app.services.btc_high_analysis import parse_entry_price
+        try:
+            entry_override = parse_entry_price(args.entry)
+        except (ValueError, TypeError) as e:
+            print(f"ERROR --entry inválido: {args.entry!r} ({e})")
+            return 1
+        if entry_override is None:
+            print(f"ERROR --entry vacío: {args.entry!r}")
+            return 1
+        print(f"Entry override: {entry_override} (manual; raw={args.entry!r})")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
@@ -549,6 +570,7 @@ def main() -> int:
         "mode_bias": args.bias,
         "mode_setup": args.setup,
         "history_mode": bool(args.history_review),
+        "entry_override": entry_override,
     }
 
     if args.bias in ("bullish", "bearish"):
@@ -666,6 +688,8 @@ def main() -> int:
             print("Modo:     ADVANCED (análisis profundo)")
         if args.history_review:
             print("Modo:     HISTORY-REVIEW (P&L última Entry; sin append)")
+        if entry_override is not None:
+            print(f"Entry:    {entry_override} (manual / user-provided)")
         print("Salidas:")
         print(f"  Reporte:  {high.resolve()}")
         print(f"  Relativo: live/{high.name}")

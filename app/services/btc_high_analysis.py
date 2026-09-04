@@ -371,6 +371,37 @@ def _extract_btc_filename(pattern: str) -> str | None:
     return None
 
 
+# High fusion weights (documented). Missing sources are omitted and renormalized —
+# never pad Neural with fake 50%. See docs/strategy/DEEP_LEARNING_SIGNALS.md.
+HIGH_FUSION_WEIGHTS = {
+    "rules_e1": 0.28,
+    "rules_ext": 0.12,
+    "crt": 0.12,
+    "neural": 0.25,  # gated toward neutral if low conf / grade C
+    "ml": 0.18,      # gated by ml_confidence; omit if absent
+    "e2": 0.05,      # reverse mode only
+}
+
+
+def _ml_gate_factor(confidence: str | None) -> float:
+    return {"high": 1.0, "medium": 0.75, "low": 0.45}.get(
+        (confidence or "medium").lower(), 0.60,
+    )
+
+
+def _direction_penalty(data: dict) -> tuple[float, str]:
+    """Return multiplier ≤1 and note when H1 conflicts with setup direction."""
+    direction = data.get("setup", {}).get("direction", "NONE")
+    bias = data.get("bias_h1", "NEUTRAL")
+    conflict = (
+        (direction == "LONG" and bias == "BEARISH")
+        or (direction == "SHORT" and bias == "BULLISH")
+    )
+    if conflict:
+        return 0.88, f"penalización H1 {bias} vs {direction}"
+    return 1.0, ""
+
+
 def compute_advanced_scorecard(
     data: dict,
     ctx: dict,
@@ -379,57 +410,104 @@ def compute_advanced_scorecard(
     e2: dict,
     setup_mode: str,
 ) -> tuple[float, list[tuple[str, str, str, str]]]:
-    """Score combinado ponderado + filas para tabla."""
-    from app.models.btc_signal_categories import _crt_coherent
+    """Score combinado ponderado Rules+ML+Neural+CRT (pesos documentados).
 
-    rules_pct = categories.get("rules_pct", 0)
+    Pesos base (renormalizados si falta ML/Neural/E2):
+      Rules E1 28% · Extendidas 12% · CRT 12% · Neural gated 25% · ML gated 18% · E2 5%
+    Neural ausente → no relleno 50%; se redistribuye. Low conf → shrink a neutro.
+    """
+    from app.models.btc_signal_categories import _crt_coherent
+    from app.models.btc_neural_signals import (
+        gated_prob_toward_neutral,
+        neural_gate_factor,
+    )
+
+    rules_pct = float(categories.get("rules_pct", 0) or 0)
     rules_ok = categories.get("rules_ok", 0)
     rules_total = categories.get("rules_total", 8)
-    ext_pct = ctx.get("ext_pct", 0)
+    ext_pct = float(ctx.get("ext_pct", 0) or 0)
     nw = categories.get("neural_prob_win")
+    ml = categories.get("ml_prob_win")
     crt_ok, crt_note = _crt_coherent(data, crt)
 
-    rows: list[tuple[str, str, str, str]] = [
-        ("Rules E1 (8)", f"{rules_ok}/{rules_total}", "30%", f"{rules_pct}% OK"),
-        ("Rules extendidas (10)", f"{ext_pct}%", "15%", "meta >70%"),
-    ]
-    scores: list[tuple[float, float]] = [
-        (rules_pct, 0.30),
-        (ext_pct, 0.15),
-        (100.0 if crt_ok else 0.0, 0.15),
-    ]
+    rows: list[tuple[str, str, str, str]] = []
+    scores: list[tuple[float, float]] = []
+    used_keys: list[str] = []
 
-    # ML prob oculto en high signal — no mostrar en scorecard advanced
+    w = HIGH_FUSION_WEIGHTS
+    rows.append(("Rules E1 (8)", f"{rules_ok}/{rules_total}", f"{int(w['rules_e1']*100)}%", f"{rules_pct:.0f}% OK"))
+    scores.append((rules_pct, w["rules_e1"]))
+    used_keys.append("rules_e1")
+
+    rows.append(("Rules extendidas (10)", f"{ext_pct:.0f}%", f"{int(w['rules_ext']*100)}%", "meta >70%"))
+    scores.append((ext_pct, w["rules_ext"]))
+    used_keys.append("rules_ext")
+
+    rows.append(("CRT coherence", "pass" if crt_ok else "fail", f"{int(w['crt']*100)}%", crt_note))
+    scores.append((100.0 if crt_ok else 0.0, w["crt"]))
+    used_keys.append("crt")
 
     if nw is not None:
-        nw_pct = nw * 100
+        gate = float(
+            categories.get("neural_gate_factor")
+            or neural_gate_factor(
+                categories.get("neural_confidence"),
+                categories.get("neural_grade"),
+            )
+        )
+        eff = float(
+            categories.get("neural_effective_prob_win")
+            or gated_prob_toward_neutral(float(nw), gate)
+        )
+        nw_pct = float(nw) * 100
+        eff_pct = eff * 100
+        conf = categories.get("neural_confidence", "?")
         align = "alineado WIN" if categories.get("neural_gallery_aligned") else "no alineado"
-        rows.append(("Neural galería", f"{nw_pct:.1f}%", "30%", align))
-        scores.append((nw_pct, 0.30))
+        note = f"{align}; conf={conf}; gate×{gate:.2f} → {eff_pct:.0f}%"
+        rows.append(("Neural galería (gated)", f"{nw_pct:.1f}%", f"{int(w['neural']*100)}%", note))
+        scores.append((eff_pct, w["neural"]))
+        used_keys.append("neural")
     else:
-        rows.append(("Neural galería", "n/d", "30%", "sin modelo — neutral 50%"))
-        scores.append((50.0, 0.30))
+        rows.append(("Neural galería", "n/d", "—", "omitido — sin chart/modelo (no pad 50%)"))
 
-    rows.append((
-        "CRT coherence",
-        "pass" if crt_ok else "fail",
-        "10%",
-        crt_note,
-    ))
+    if ml is not None:
+        ml_gate = _ml_gate_factor(categories.get("ml_confidence"))
+        ml_eff = gated_prob_toward_neutral(float(ml), ml_gate) * 100
+        ml_pct = float(ml) * 100
+        note = (
+            f"grade {categories.get('ml_grade', '?')}; "
+            f"conf={categories.get('ml_confidence', '?')}; → {ml_eff:.0f}%"
+        )
+        rows.append(("ML tabular (gated)", f"{ml_pct:.1f}%", f"{int(w['ml']*100)}%", note))
+        scores.append((ml_eff, w["ml"]))
+        used_keys.append("ml")
+    else:
+        rows.append(("ML tabular", "n/d", "—", "omitido — sin --ml o modelo"))
 
     show_e2 = setup_mode == "reverse" or e2.get("mode_setup") == "reverse"
     if show_e2:
         e2_score = e2.get("score", 0)
         e2_max = e2.get("max", 6)
         e2_pct = int(e2_score / e2_max * 100) if e2_max else 0
-        rows.append(("E2 turtle", f"{e2_score}/{e2_max}", "5%", e2.get("verdict", "E2_NO")))
-        scores.append((e2_pct, 0.05))
-        total_w = sum(w for _, w in scores)
-    else:
-        total_w = sum(w for _, w in scores)
+        rows.append(("E2 turtle", f"{e2_score}/{e2_max}", f"{int(w['e2']*100)}%", e2.get("verdict", "E2_NO")))
+        scores.append((float(e2_pct), w["e2"]))
+        used_keys.append("e2")
 
-    combined = sum(s * w for s, w in scores) / total_w if total_w else 0.0
-    rows.append(("**Score combinado**", f"**{combined:.0f}%**", "100%", ""))
+    total_w = sum(weight for _, weight in scores)
+    combined = sum(s * weight for s, weight in scores) / total_w if total_w else 0.0
+
+    dir_mult, dir_note = _direction_penalty(data)
+    if dir_mult < 1.0:
+        combined *= dir_mult
+        rows.append(("Penalización dirección", f"×{dir_mult:.2f}", "—", dir_note))
+
+    categories["fusion_score"] = round(combined, 1)
+    categories["fusion_weights"] = {
+        k: round(wt / total_w, 3)
+        for k, (_, wt) in zip(used_keys, scores)
+    } if total_w else {}
+
+    rows.append(("**Score combinado**", f"**{combined:.0f}%**", "100%", "pesos renormalizados"))
     return combined, rows
 
 
@@ -638,7 +716,7 @@ def format_e2_expanded(e2: dict, crt: dict, setup_mode: str) -> list[str]:
 
 
 def format_ml_neural_cross(categories: dict) -> list[str]:
-    """E) Neural cross-analysis (ML oculto en high signal)."""
+    """E) Neural cross-analysis (ML oculto en Categories; gated en scorecard)."""
     agreement, explanation = _ml_neural_agreement(categories)
     lines = [
         "## E) Cruce Neural + Rules",
@@ -650,9 +728,16 @@ def format_ml_neural_cross(categories: dict) -> list[str]:
     ]
     if "neural_prob_win" in categories:
         nw = categories["neural_prob_win"] * 100
+        gate = categories.get("neural_gate_factor")
+        eff = categories.get("neural_effective_prob_win")
+        gate_txt = ""
+        if gate is not None and eff is not None:
+            gate_txt = f" · gate×{float(gate):.2f} → {float(eff)*100:.0f}% efectivo"
         lines += [
             f"- **Neural galería:** {nw:.1f}% WIN "
-            f"(grade {categories.get('neural_grade', '?')})",
+            f"(grade {categories.get('neural_grade', '?')}, "
+            f"conf {categories.get('neural_confidence', '?')})"
+            f"{gate_txt}",
         ]
     lines += ["", "---", ""]
     return lines
@@ -1030,10 +1115,471 @@ def _candles_in_zone(m5: list[dict], zone: dict) -> bool:
     return True
 
 
-def compute_optimal_entry(
-    data: dict, direction: str, crt: dict, zone: dict,
+def parse_entry_price(raw: str | float | int | None) -> float | None:
+    """Parse CLI `--entry` / `-Entry` into a float price.
+
+    Accepts plain (`53128`, `53128.0`), European thousands (`53.128`),
+    comma decimals (`53128,5` / `53.128,50`), and multi-dot European
+    thousands as typed on US30 (`53.12.800` → `53128.0`).
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError("entry price cannot be boolean")
+    if isinstance(raw, (int, float)):
+        return float(raw)
+
+    s = str(raw).strip().replace(" ", "").replace("'", "").replace("\u00a0", "")
+    if not s:
+        return None
+
+    # European decimal comma: 53.128,50 or 53128,5
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+        return float(s)
+
+    # Multi-dot European thousands (e.g. 53.12.800 → 53128.0)
+    if s.count(".") >= 2:
+        parts = s.split(".")
+        if not parts or not all(p.isdigit() for p in parts):
+            raise ValueError(f"invalid multi-dot entry price: {raw!r}")
+        joined = "".join(parts)
+        # Last 3-digit group often carries implied ,00 (53.12.800 → 5312800 → 53128.00)
+        if len(parts) >= 3 and len(parts[-1]) == 3:
+            return float(joined) / 100.0
+        return float(joined)
+
+    # Single dot: thousands (53.128) vs decimal (53128.0 / 97450.5)
+    if s.count(".") == 1:
+        left, right = s.split(".")
+        if left.isdigit() and right.isdigit():
+            if len(right) == 3 and 1 <= len(left) <= 3:
+                return float(left + right)
+            return float(s)
+        raise ValueError(f"invalid entry price: {raw!r}")
+
+    return float(s)
+
+
+# Past-structure SL/TP: keep risk within [min, max] of entry (pct)
+_PAST_SL_MIN_RISK_PCT = 0.05
+_PAST_SL_MAX_RISK_PCT = 2.0
+_PAST_STRUCT_TP_MIN_RR = 1.5
+
+
+def find_m5_index_at_user_entry(m5: list[dict], entry: float) -> int | None:
+    """Index of last M5 bar that touched `entry`, or closest approach if never touched.
+
+    Used to ignore candles strictly before the user's fill for past structure.
+    """
+    if not m5:
+        return None
+    entry = float(entry)
+    last_touch: int | None = None
+    for i, c in enumerate(m5):
+        lo = float(c["low"])
+        hi = float(c["high"])
+        if lo <= entry <= hi:
+            last_touch = i
+    if last_touch is not None:
+        return last_touch
+
+    best_i = 0
+    best_d = float("inf")
+    for i, c in enumerate(m5):
+        lo = float(c["low"])
+        hi = float(c["high"])
+        if entry < lo:
+            d = lo - entry
+        elif entry > hi:
+            d = entry - hi
+        else:
+            d = 0.0
+        if d < best_d or (abs(d - best_d) < 1e-12 and i >= best_i):
+            best_d = d
+            best_i = i
+    return best_i
+
+
+def filter_m5_from_entry_touch(m5: list[dict], entry: float) -> list[dict]:
+    """Return a copy of M5 from the entry-touch (or approach) bar forward inclusive."""
+    if not m5:
+        return []
+    idx = find_m5_index_at_user_entry(m5, entry)
+    if idx is None:
+        return list(m5)
+    return list(m5[idx:])
+
+
+def data_with_m5_from_entry(data: dict, entry: float) -> dict:
+    """Shallow copy of `data` with `m5` filtered to ignore pre-entry candles."""
+    out = copy.copy(data)
+    m5 = data.get("m5") or []
+    idx = find_m5_index_at_user_entry(m5, entry) if m5 else None
+    filtered = filter_m5_from_entry_touch(m5, entry) if m5 else []
+    out["m5"] = filtered
+    out["m5_pre_entry_ignored"] = True
+    out["m5_entry_touch_index"] = idx
+    out["m5_from_entry_len"] = len(filtered)
+    return out
+
+
+def _past_structure_levels(
+    data: dict,
+    zone: dict | None,
+    crt: dict | None,
+) -> tuple[list[tuple[float, str]], list[tuple[float, str]]]:
+    """Collect (level, label) supports below / resistances above from past data."""
+    supports: list[tuple[float, str]] = []
+    resistances: list[tuple[float, str]] = []
+
+    for lvl in data.get("swing_lows") or []:
+        supports.append((float(lvl), "swing_low M5"))
+    for lvl in data.get("swing_highs") or []:
+        resistances.append((float(lvl), "swing_high M5"))
+
+    z = zone or data.get("zone") or {}
+    zlvl = z.get("level")
+    ztype = z.get("type") or ""
+    if zlvl is not None:
+        if ztype == "soporte_debil":
+            supports.append((float(zlvl), "soporte_debil"))
+        elif ztype == "resistencia_debil":
+            resistances.append((float(zlvl), "resistencia_debil"))
+
+    pdl = data.get("pdl")
+    pdh = data.get("pdh")
+    if pdl is not None:
+        supports.append((float(pdl), "PDL"))
+    if pdh is not None:
+        resistances.append((float(pdh), "PDH"))
+
+    # Recent M5 extremes as soft structure (around entry conceptually)
+    m5 = data.get("m5") or []
+    if len(m5) >= 1:
+        window = m5[-24:]
+        supports.append((min(c["low"] for c in window), "M5 low reciente"))
+        resistances.append((max(c["high"] for c in window), "M5 high reciente"))
+
+    # Optional H1 extremes if present on data
+    h1 = data.get("h1") or []
+    if len(h1) >= 3:
+        window_h1 = h1[-12:]
+        supports.append((min(c["low"] for c in window_h1), "H1 low reciente"))
+        resistances.append((max(c["high"] for c in window_h1), "H1 high reciente"))
+
+    _ = crt  # CRT PDH/PDL already via data; reserved for future fakeout-aware picks
+    return supports, resistances
+
+
+def _pick_past_sl(
+    entry: float,
+    direction: str,
+    supports: list[tuple[float, str]],
+    resistances: list[tuple[float, str]],
+) -> tuple[float, str, float] | None:
+    """Return (sl, label, raw_level) beyond nearest safe past structure, or None."""
+    min_risk = entry * (_PAST_SL_MIN_RISK_PCT / 100.0)
+    max_risk = entry * (_PAST_SL_MAX_RISK_PCT / 100.0)
+
+    if direction == "LONG":
+        # Protective side: below entry — prefer closest structure that yields sane risk
+        cands = []
+        for lvl, label in supports:
+            if lvl >= entry:
+                continue
+            # Buffer beyond swing / S/R (match zone multipliers)
+            buf = 0.998 if "debil" in label else 0.997
+            sl = float(lvl) * buf
+            if sl >= entry:
+                continue
+            risk = entry - sl
+            if min_risk <= risk <= max_risk:
+                cands.append((risk, sl, label, float(lvl)))
+        if not cands:
+            return None
+        # Closest structural stop (smallest risk among valid)
+        _, sl, label, raw = min(cands, key=lambda x: x[0])
+        return sl, label, raw
+
+    if direction == "SHORT":
+        cands = []
+        for lvl, label in resistances:
+            if lvl <= entry:
+                continue
+            buf = 1.002 if "debil" in label else 1.003
+            sl = float(lvl) * buf
+            if sl <= entry:
+                continue
+            risk = sl - entry
+            if min_risk <= risk <= max_risk:
+                cands.append((risk, sl, label, float(lvl)))
+        if not cands:
+            return None
+        _, sl, label, raw = min(cands, key=lambda x: x[0])
+        return sl, label, raw
+
+    return None
+
+
+def _pick_past_tp(
+    entry: float,
+    direction: str,
+    risk: float,
+    supports: list[tuple[float, str]],
+    resistances: list[tuple[float, str]],
+) -> tuple[float, float, str, bool]:
+    """Return (tp, rr, label, used_structure). Prefer opposing S/R if RR ≥ 1.5."""
+    min_rr = _PAST_STRUCT_TP_MIN_RR
+    fallback_rr = 2.0
+
+    if direction == "LONG":
+        struct_cands = []
+        for lvl, label in resistances:
+            if lvl <= entry:
+                continue
+            reward = lvl - entry
+            rr = reward / risk if risk > 0 else 0.0
+            if rr >= min_rr:
+                # Prefer nearest opposing structure with acceptable RR (not runaway)
+                struct_cands.append((rr, float(lvl), label))
+        if struct_cands:
+            # Prefer RR closest to 2.0 among ≥1.5, then nearer target
+            rr, tp, label = min(struct_cands, key=lambda x: (abs(x[0] - 2.0), x[1] - entry))
+            return tp, rr, label, True
+        tp = entry + fallback_rr * risk
+        return tp, fallback_rr, "1:2 desde SL estructural", False
+
+    # SHORT
+    struct_cands = []
+    for lvl, label in supports:
+        if lvl >= entry:
+            continue
+        reward = entry - lvl
+        rr = reward / risk if risk > 0 else 0.0
+        if rr >= min_rr:
+            struct_cands.append((rr, float(lvl), label))
+    if struct_cands:
+        rr, tp, label = min(struct_cands, key=lambda x: (abs(x[0] - 2.0), entry - x[1]))
+        return tp, rr, label, True
+    tp = entry - fallback_rr * risk
+    return tp, fallback_rr, "1:2 desde SL estructural", False
+
+
+def optimize_sl_tp_from_past(
+    data: dict,
+    entry: float,
+    direction: str,
+    crt: dict | None = None,
+    zone: dict | None = None,
+) -> dict | None:
+    """Optimal SL/TP from past M5/H1 structure around a manual entry.
+
+    - SL: beyond nearest swing / weak S/R / PDH-PDL (structural, not arbitrary %).
+    - TP: opposing structure if R:R ≥ 1.5, else 1:2 from structural SL.
+
+    Returns None when structure cannot be resolved safely (caller falls back to 1:2).
+    """
+    if direction not in ("LONG", "SHORT"):
+        return None
+    entry = float(entry)
+    if entry <= 0:
+        return None
+
+    supports, resistances = _past_structure_levels(data, zone, crt)
+    picked = _pick_past_sl(entry, direction, supports, resistances)
+    if picked is None:
+        return None
+
+    sl, sl_label, raw_level = picked
+    risk = abs(sl - entry)
+    if risk <= 0:
+        return None
+
+    tp, rr, tp_label, tp_structural = _pick_past_tp(
+        entry, direction, risk, supports, resistances,
+    )
+
+    # Final side sanity
+    if direction == "LONG" and not (sl < entry < tp):
+        return None
+    if direction == "SHORT" and not (tp < entry < sl):
+        return None
+
+    return {
+        "sl": sl,
+        "tp": tp,
+        "rr": float(rr),
+        "risk_pts": risk,
+        "sl_source": "past",
+        "tp_source": "past_structure" if tp_structural else "past_1to2",
+        "sl_label": sl_label,
+        "tp_label": tp_label,
+        "sl_raw_level": raw_level,
+        "sl_tp_source": "past",
+        "sl_tp_note": (
+            f"SL/TP desde estructura pasada "
+            f"(SL={sl_label} @ {raw_level:.1f}; TP={tp_label})"
+        ),
+    }
+
+
+def _apply_entry_override_naive_rr(
+    out: dict,
+    entry: float,
+    direction: str,
+    zone: dict,
+    data: dict,
+    *,
+    fallback_note: str | None = None,
 ) -> dict:
-    """Optimal E1 entry plan from live zone/price (TRADING_2M5_SHORT_VISUAL logic)."""
+    """Legacy 1:2 from entry/zone when past structure is unavailable."""
+    dec = int(out.get("dec", data.get("price_decimals", 1)))
+    fmt = f".{dec}f"
+    level = zone.get("level") if zone else out.get("level")
+    ztype = (zone.get("type") if zone else None) or out.get("ztype") or "zona"
+    rr = 2.0
+    note = fallback_note or "SL/TP 1:2 (fallback; sin estructura pasada segura)"
+
+    if direction == "SHORT":
+        if level:
+            sl = level * 1.002 if ztype == "resistencia_debil" else level * 1.003
+        elif out.get("sl") is not None:
+            sl = float(out["sl"])
+        else:
+            sl = entry * 1.003
+        if sl <= entry:
+            sl = entry * 1.003
+        risk = abs(sl - entry)
+        if risk <= 0:
+            risk = max(entry * 0.003, 10 ** (-dec))
+            sl = entry + risk
+        tp = entry - rr * risk
+        out.update({
+            "valid": True,
+            "sl": sl,
+            "tp": tp,
+            "rr": rr,
+            "risk_pts": risk,
+            "sl_source": "fallback_1to2",
+            "tp_source": "fallback_1to2",
+            "sl_tp_source": "fallback",
+            "sl_tp_note": note,
+            "opti_action": f"ENTRAR {direction} (Entry usuario)",
+            "invalidacion": (
+                f"Cierre M5 > {sl:{fmt}} o breakout sin rechazo "
+                f"(Entry usuario {entry:{fmt}})"
+            ),
+            "trigger": f"Entry usuario CLI @ {entry:{fmt}} (SHORT)",
+        })
+    elif direction == "LONG":
+        if level:
+            sl = level * 0.998 if ztype == "soporte_debil" else level * 0.997
+        elif out.get("sl") is not None:
+            sl = float(out["sl"])
+        else:
+            sl = entry * 0.997
+        if sl >= entry:
+            sl = entry * 0.997
+        risk = abs(entry - sl)
+        if risk <= 0:
+            risk = max(entry * 0.003, 10 ** (-dec))
+            sl = entry - risk
+        tp = entry + rr * risk
+        out.update({
+            "valid": True,
+            "sl": sl,
+            "tp": tp,
+            "rr": rr,
+            "risk_pts": risk,
+            "sl_source": "fallback_1to2",
+            "tp_source": "fallback_1to2",
+            "sl_tp_source": "fallback",
+            "sl_tp_note": note,
+            "opti_action": f"ENTRAR {direction} (Entry usuario)",
+            "invalidacion": (
+                f"Cierre M5 < {sl:{fmt}} o breakdown sin reclaim "
+                f"(Entry usuario {entry:{fmt}})"
+            ),
+            "trigger": f"Entry usuario CLI @ {entry:{fmt}} (LONG)",
+        })
+    else:
+        out["valid"] = True
+        out["opti_action"] = "ESPERAR (Entry usuario sin dirección)"
+        out["trigger"] = f"Entry usuario CLI @ {entry:{fmt}}"
+        out["sl_tp_source"] = "n/a"
+        out["sl_tp_note"] = "Sin dirección — no SL/TP"
+
+    return out
+
+
+def _apply_entry_override(
+    opt: dict,
+    entry: float,
+    direction: str,
+    zone: dict,
+    data: dict,
+) -> dict:
+    """Attach CLI `-Entry` as user fill; keep system Entrada óptima; SL/TP from post-entry past."""
+    out = dict(opt)
+    user_entry = float(entry)
+    # Keep system optimal in out["entry"]; user fill is separate
+    out["user_entry"] = user_entry
+    out["entry_manual"] = True
+    out["entry_source"] = "manual"
+    if data.get("m5_pre_entry_ignored"):
+        filtered = data
+    else:
+        filtered = data_with_m5_from_entry(data, user_entry)
+    out["m5_entry_touch_index"] = filtered.get("m5_entry_touch_index")
+    out["m5_from_entry_len"] = filtered.get("m5_from_entry_len")
+    out["m5_pre_entry_ignored"] = True
+    dec = int(out.get("dec", data.get("price_decimals", 1)))
+    fmt = f".{dec}f"
+
+    past = optimize_sl_tp_from_past(
+        filtered, user_entry, direction, crt=filtered.get("crt"), zone=zone,
+    )
+    if past is not None:
+        sl, tp, rr, risk = past["sl"], past["tp"], past["rr"], past["risk_pts"]
+        out.update({
+            "valid": True,
+            "sl": sl,
+            "tp": tp,
+            "rr": rr,
+            "risk_pts": risk,
+            "sl_source": past["sl_source"],
+            "tp_source": past["tp_source"],
+            "sl_label": past.get("sl_label"),
+            "tp_label": past.get("tp_label"),
+            "sl_tp_source": "past",
+            "sl_tp_note": past.get("sl_tp_note"),
+            "opti_action": f"ENTRAR {direction} (Entry usuario · SL/TP past)",
+            "invalidacion": (
+                (
+                    f"Cierre M5 > {sl:{fmt}} o breakout sin rechazo "
+                    if direction == "SHORT"
+                    else f"Cierre M5 < {sl:{fmt}} o breakdown sin reclaim "
+                )
+                + f"(Entry usuario {user_entry:{fmt}}; SL past={past.get('sl_label', 'estructura')})"
+            ),
+            "trigger": (
+                f"Entry usuario CLI @ {user_entry:{fmt}} ({direction}) · "
+                f"SL/TP desde estructura post-entry"
+            ),
+        })
+        return out
+
+    return _apply_entry_override_naive_rr(
+        out, user_entry, direction, zone, filtered,
+        fallback_note="SL/TP 1:2 (fallback; sin estructura pasada segura post-entry)",
+    )
+
+
+def _compute_optimal_entry_core(
+    data: dict, direction: str, zone: dict,
+) -> dict:
+    """System Entrada óptima from zone/price (no CLI user entry)."""
     price = data["price"]
     dec = data.get("price_decimals", 1)
     level = zone.get("level")
@@ -1050,6 +1596,7 @@ def compute_optimal_entry(
         return {
             "valid": False,
             "direction": direction,
+            "dec": dec,
             "ahora_price": price,
             "ahora_2m5": "No" if not confirm else "Sí",
             "ahora_near": near,
@@ -1142,6 +1689,36 @@ def compute_optimal_entry(
     }
 
 
+def compute_optimal_entry(
+    data: dict, direction: str, crt: dict, zone: dict,
+    entry_override: float | None = None,
+) -> dict:
+    """Optimal E1 entry plan from live zone/price (TRADING_2M5_SHORT_VISUAL logic).
+
+    If `entry_override` (or `data['entry_override']`) is set:
+    - Entrada óptima (`entry`) stays system-computed on post-entry M5 context
+      (pre-entry candles ignored).
+    - `user_entry` holds the CLI fill; SL/TP optimize for that fill from filtered past.
+    """
+    _ = crt  # kept for call-site compatibility / future CRT-aware entry
+    if entry_override is None and data.get("entry_override") is not None:
+        entry_override = data.get("entry_override")
+
+    if entry_override is not None:
+        user_entry = float(entry_override)
+        m5_full = data.get("m5") or []
+        orig_touch = find_m5_index_at_user_entry(m5_full, user_entry) if m5_full else None
+        filtered = data_with_m5_from_entry(data, user_entry)
+        opt = _compute_optimal_entry_core(filtered, direction, zone)
+        out = _apply_entry_override(opt, user_entry, direction, zone, filtered)
+        out["m5_entry_touch_index"] = orig_touch
+        out["m5_from_entry_len"] = len(filtered.get("m5") or [])
+        out["m5_pre_entry_ignored"] = True
+        return out
+
+    return _compute_optimal_entry_core(data, direction, zone)
+
+
 def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) -> list[str]:
     """Markdown: AHORA vs ENTRADA OPTIMIZADA + Plan concreto (+ ilustración opcional)."""
     dec = opt.get("dec", data.get("price_decimals", 1))
@@ -1170,15 +1747,54 @@ def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) ->
         f"| Trigger | {opt.get('trigger', 'n/d')} |",
         f"| Confirmación | {opt.get('confirmacion', 'n/d')} |",
     ]
-    if opt.get("entry") is not None:
-        lines += [
-            f"| Entry | **{opt['entry']:{fmt}}** (limit retest o market al cierre 2ª vela) |",
-            f"| SL | **{opt['sl']:{fmt}}** (estructural) · SL cuenta ~$9 (ajustar lotaje) |",
-            f"| TP 1:2 | **{opt['tp']:{fmt}}** |",
-            f"| R:R | **1:{opt.get('rr', 2):.0f}** · riesgo **{opt.get('risk_pts', 0):.{dec}f}** pts |",
-            f"| Invalidación | {opt.get('invalidacion', 'n/d')} |",
-            f"| Plan B | {opt.get('plan_b', 'n/d')} |",
-        ]
+    if opt.get("entry") is not None or opt.get("user_entry") is not None:
+        sl_src = opt.get("sl_tp_source")
+        if sl_src == "past":
+            sl_tag = f"estructura pasada ({opt.get('sl_label', 'swing/S-R')})"
+            tp_tag = (
+                f"estructura pasada ({opt.get('tp_label', 'S/R')})"
+                if opt.get("tp_source") == "past_structure"
+                else "1:2 desde SL past"
+            )
+            rr_disp = f"{opt.get('rr', 2):.1f}".rstrip("0").rstrip(".")
+        elif sl_src == "fallback":
+            sl_tag = "1:2 fallback (sin estructura past)"
+            tp_tag = "1:2 fallback"
+            rr_disp = f"{opt.get('rr', 2):.0f}"
+        else:
+            sl_tag = "estructural"
+            tp_tag = "1:2"
+            rr_disp = f"{opt.get('rr', 2):.0f}"
+
+        if opt.get("user_entry") is not None:
+            if opt.get("entry") is not None:
+                lines.append(
+                    f"| Entrada óptima | **{opt['entry']:{fmt}}** "
+                    f"(sistema · limit retest o market al cierre 2ª vela) |"
+                )
+            lines.append(
+                f"| Entry usuario | **{opt['user_entry']:{fmt}}** "
+                f"(CLI -Entry / --entry) |"
+            )
+        elif opt.get("entry") is not None:
+            lines.append(
+                f"| Entry | **{opt['entry']:{fmt}}** "
+                f"(limit retest o market al cierre 2ª vela) |"
+            )
+
+        if opt.get("sl") is not None and opt.get("tp") is not None:
+            plan_tag = " · plan Entry usuario" if opt.get("user_entry") is not None else ""
+            lines += [
+                f"| SL | **{opt['sl']:{fmt}}** ({sl_tag}){plan_tag} · SL cuenta ~$9 (ajustar lotaje) |",
+                f"| TP | **{opt['tp']:{fmt}}** ({tp_tag}){plan_tag} |",
+                f"| R:R | **1:{rr_disp}** · riesgo **{opt.get('risk_pts', 0):.{dec}f}** pts |",
+            ]
+            if opt.get("sl_tp_note"):
+                lines.append(f"| SL/TP nota | {opt['sl_tp_note']} |")
+            lines += [
+                f"| Invalidación | {opt.get('invalidacion', 'n/d')} |",
+                f"| Plan B | {opt.get('plan_b', 'n/d')} |",
+            ]
     else:
         lines.append("| Entry / SL / TP | Definir zona S/R válida primero |")
     lines += ["", "---", ""]
@@ -1447,8 +2063,11 @@ def write_high_signal(
     from app.views.btc_e1_report import TIER_HIGH, build_report_context, format_e1_report
     from app.models.btc_signal_categories import (
         build_advanced_table_rows,
+        build_contingency_guidance,
         compute_confluencia_setup,
+        format_contingency_table_rows,
         format_entrada_optima_cell,
+        format_entry_usuario_cell,
     )
     from app.views.illustrate_high_entry import format_salidas_block
 
@@ -1495,8 +2114,14 @@ def write_high_signal(
         )
         # No enfatizar Entrada óptima / señal nueva en revisión
         cats.pop("entrada_optima", None)
+        cats.pop("entry_usuario", None)
     else:
         cats["entrada_optima"] = format_entrada_optima_cell(opt, data)
+        user_cell = format_entry_usuario_cell(opt, data)
+        if user_cell:
+            cats["entry_usuario"] = user_cell
+        else:
+            cats.pop("entry_usuario", None)
         cats["ultima_senal_entrada"] = reflection["cell_ultima"]
         cats["calificacion_entrada"] = reflection.get(
             "cell_calificacion", reflection["cell_vs"],
@@ -1515,6 +2140,14 @@ def write_high_signal(
     else:
         cats.pop("advanced", None)
         cats.pop("advanced_rows", None)
+    # Contingencias auto-on si Recomendación ESPERAR (LONG/SHORT); no history_mode
+    guidance = build_contingency_guidance(cats, data, opt=opt)
+    if guidance:
+        cats["contingency"] = guidance
+        cats["contingency_rows"] = format_contingency_table_rows(guidance)
+    else:
+        cats.pop("contingency", None)
+        cats.pop("contingency_rows", None)
 
     mode_header = ""
     if bias_mode != "auto" or setup_mode != "auto":

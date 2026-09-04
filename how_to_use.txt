@@ -34,13 +34,23 @@ Flags High (elige según tu sesgo / setup):
   -NoChart          sin PNG en el markdown (más limpio)
   -Bearish | -Bullish   fuerza el bando (sin flag = AUTO)
   -Break   | -Reverse   tipo de setup
-  -ML                   corre ML (en High no se muestra en Categories)
-  -Neural               Neural galería en Categories
+  -ML                   corre ML (en High no se muestra en Categories; sí en scorecard Advanced gated)
+  -Neural               Neural galería en Categories + fusión (low conf / grade C → down-weight; sin chart no pad 50%)
   -Ilustrate            PNG anotado aparte (*_chart_annotated.png); también con -NoChart
+  -Entry <precio>       Fill real del usuario (Entry usuario). NO reemplaza Entrada óptima.
+                        PowerShell -Entry → Python --entry. Solo High (history no lo cablea).
+                        Formatos: 53128 | 53128.0 | 53.12.800 → 53128.0
+                        Past: ignora M5 antes del toque del fill; SL/TP usuario = estructura post-entry.
   Chart High (sin -NoChart): PNG normal ya incluye líneas OPTI/SL/TP + S/R débil + callout 2M5
+
+Fusión High (Advanced): Rules 28% + Ext 12% + CRT 12% + Neural gated 25% + ML gated 18% (+ E2 5% Reverse).
+  Detalle / re-entrenar DL: docs\strategy\DEEP_LEARNING_SIGNALS.md
 
 Stub raíz (solo High — mismo resultado):
   .\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+
+Con -Entry (BTC):
+  .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Entry 97450.5
 
 Preferido: siempre scripts\analyze\...
 Stub: atajo solo para High desde la raíz.
@@ -56,11 +66,19 @@ Stub: atajo solo para High desde la raíz.
 
   High (recomendado):
     .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+    .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse -ML -Neural -Ilustrate -Advanced -Entry 53128
 
 Stub raíz:
   .\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
 
 Cambia -Bearish/-Bullish y -Break/-Reverse según tu plan.
+-Entry solo en analyze-*-high.ps1 (no en analyze-*-history.ps1).
+Con -Entry el reporte muestra:
+  - Entrada óptima = cálculo de sistema (no se sobrescribe)
+  - Entry usuario = tu precio CLI (-Entry / --entry)
+  - Past: M5 anteriores al toque del fill se ignoran; SL/TP del plan usuario
+    desde estructura post-entry. Sin estructura segura → 1:2 (CLI · 1:2).
+  Chart: líneas Entrada OPTI + Entry usuario (si difieren) + SL/TP del plan usuario.
 
 
 4) QUÉ MIRAR EN EL RESULTADO (Categories)
@@ -77,6 +95,10 @@ Lee en este orden:
   8. Chart / Ilustración → PNG High con líneas OPTI (sin -NoChart); anotado extra si -Ilustrate
   9. Última señal       → id · time · Entry del último High del mismo par (High)
  10. Calificación entrada → (High) vs última Entry; history runners → ver §4b P&L
+ 11. Si entraste / Contingencias → (High, auto si Recomendación ESPERAR LONG|SHORT)
+     Guía para quien YA está en trade: acción primaria + 2–4 contingencias con
+     números del run (Neural %, Rules %, Confluencia, Entry usuario vs óptima,
+     ML, H1/CRT, distancias). No hace falta flag. No aparece en history P&L.
 
 Archivos live generados:
   BTC High  → live\btc_m5_high_signal.md
@@ -119,10 +141,13 @@ Quién escribe historial:
 Ejemplos revisión (no señal):
   .\scripts\analyze\analyze-btc-history.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
   .\scripts\analyze\analyze-us30-history.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+  (history no cablea -Entry; usá analyze-*-high.ps1 para Entry usuario)
 
 High (sí escribe historial + señal):
   .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+  .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Entry 97450.5
+  .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse -ML -Neural -Ilustrate -Entry 53128
 
 
 5) EN CURSOR (@ archivos)
@@ -187,6 +212,10 @@ cd "D:\Danilo\Trading\Cursor Trading"
 
 # US30 High
 .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
+
+# Con Entry usuario (solo High)
+.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Advanced -Entry 97450.5
+.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse -ML -Neural -Ilustrate -Advanced -Entry 53128
 
 Luego @ el live + el protocolo en Cursor → Categories primero → decide.
 

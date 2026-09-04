@@ -88,7 +88,10 @@ def enrich_categories_bando(categories: dict, data: dict, verdict: str) -> None:
 
 
 def format_entrada_optima_cell(opt: dict | None, data: dict | None = None) -> str:
-    """Valor de celda Entrada óptima: preferir Entry numérico; si falta, zona retest."""
+    """Valor de celda Entrada óptima: preferir Entry numérico; si falta, zona retest.
+
+    Siempre muestra la entrada de sistema (no el fill CLI `-Entry`).
+    """
     if not opt:
         return "n/d"
     dec = int(opt.get("dec", (data or {}).get("price_decimals", 1)))
@@ -102,6 +105,25 @@ def format_entrada_optima_cell(opt: dict | None, data: dict | None = None) -> st
     return "n/d"
 
 
+def format_entry_usuario_cell(opt: dict | None, data: dict | None = None) -> str | None:
+    """Celda Entry usuario (-Entry / --entry). None si no hay fill CLI.
+
+    Sufijos: ` (CLI · past)` / ` (CLI · 1:2)` / ` (CLI)`.
+    """
+    if not opt or opt.get("user_entry") is None:
+        return None
+    dec = int(opt.get("dec", (data or {}).get("price_decimals", 1)))
+    fmt = f".{dec}f"
+    src = opt.get("sl_tp_source")
+    if src == "past":
+        suffix = " (CLI · past)"
+    elif src == "fallback":
+        suffix = " (CLI · 1:2)"
+    else:
+        suffix = " (CLI)"
+    return f"{float(opt['user_entry']):{fmt}}{suffix}"
+
+
 def compute_confluencia_setup(
     categories: dict,
     data: dict,
@@ -110,8 +132,12 @@ def compute_confluencia_setup(
 ) -> tuple[str, str]:
     """Confluencia setup: ALTA / MEDIA / BAJA / NULA.
 
-    Alinea Rules %, Neural (si hay), validez 2M5, operabilidad Break/Reverse
-    y bias H1 vs bando CLI. Score normalizado sobre puntos disponibles.
+    Alinea Rules %, Neural gated (si hay), ML gated (si hay), validez 2M5,
+    operabilidad Break/Reverse y bias H1 vs bando CLI.
+    Score normalizado sobre puntos disponibles.
+
+    Neural: low conf / grade C reduce puntos (no infla ENTRAR).
+    ML: P(win) del setup tabular; <45% no suma (veto suave).
     """
     score = 0.0
     max_pts = 0.0
@@ -132,20 +158,55 @@ def compute_confluencia_setup(
         notes.append(f"Rules {rules_pct}% bajo")
 
     if "neural_prob_win" in categories and categories.get("neural_prob_win") is not None:
+        from app.models.btc_neural_signals import (
+            gated_prob_toward_neutral,
+            neural_gate_factor,
+        )
+
         max_pts += 3
-        nw = float(categories["neural_prob_win"])
+        nw_raw = float(categories["neural_prob_win"])
+        gate = float(
+            categories.get("neural_gate_factor")
+            or neural_gate_factor(
+                categories.get("neural_confidence"),
+                categories.get("neural_grade"),
+            )
+        )
+        nw = float(
+            categories.get("neural_effective_prob_win")
+            or gated_prob_toward_neutral(nw_raw, gate)
+        )
         aligned = bool(categories.get("neural_gallery_aligned"))
-        if nw >= 0.70 and aligned:
+        conf = str(categories.get("neural_confidence") or "?")
+        if nw >= 0.70 and aligned and gate >= 0.65:
             score += 3
-            notes.append(f"Neural {nw * 100:.0f}% alineado")
-        elif nw >= 0.70:
+            notes.append(f"Neural {nw_raw * 100:.0f}%→{nw * 100:.0f}% alineado")
+        elif nw >= 0.65 and gate >= 0.50:
             score += 2
-            notes.append(f"Neural {nw * 100:.0f}%")
-        elif nw >= 0.50:
+            notes.append(f"Neural gated {nw * 100:.0f}% ({conf})")
+        elif nw >= 0.55:
             score += 1
-            notes.append(f"Neural {nw * 100:.0f}%")
+            notes.append(f"Neural gated {nw * 100:.0f}% ({conf})")
         else:
-            notes.append(f"Neural {nw * 100:.0f}% débil")
+            notes.append(f"Neural débil/gating {nw_raw * 100:.0f}% conf={conf}")
+
+    if "ml_prob_win" in categories and categories.get("ml_prob_win") is not None:
+        max_pts += 2
+        ml = float(categories["ml_prob_win"])
+        ml_conf = str(categories.get("ml_confidence") or "medium").lower()
+        ml_mult = {"high": 1.0, "medium": 0.75, "low": 0.45}.get(ml_conf, 0.60)
+        if ml >= 0.65:
+            pts = 2 * ml_mult
+            score += pts
+            notes.append(f"ML {ml * 100:.0f}% ({ml_conf})")
+        elif ml >= 0.55:
+            pts = 1 * ml_mult
+            score += pts
+            notes.append(f"ML {ml * 100:.0f}% zona media")
+        elif ml < 0.45:
+            notes.append(f"ML {ml * 100:.0f}% veto suave")
+        else:
+            notes.append(f"ML {ml * 100:.0f}% gris")
 
     direction = data.get("setup", {}).get("direction", "NONE")
     near = (
@@ -211,6 +272,10 @@ def compute_confluencia_setup(
         (direction == "LONG" and mode_bias == "bullish")
         or (direction == "SHORT" and mode_bias == "bearish")
     )
+    conflict_h1 = (
+        (direction == "LONG" and bias == "BEARISH")
+        or (direction == "SHORT" and bias == "BULLISH")
+    )
     if aligned_h1:
         score += 2
         notes.append("H1 alineado")
@@ -221,6 +286,9 @@ def compute_confluencia_setup(
         notes.append("H1 NEUTRAL")
     else:
         notes.append("Bias vs bando en conflicto")
+        if conflict_h1:
+            score = max(0.0, score - 1.0)
+            notes.append("penalización dirección H1")
 
     pct = int(score / max_pts * 100) if max_pts else 0
     if pct >= 75:
@@ -258,8 +326,16 @@ def build_advanced_table_rows(
         entry = float(opt["entry"])
         dist = entry - float(price)
         dist_pct = abs(dist) / float(price) * 100 if price else 0.0
+        label = "Dist. a Entrada óptima" if opt.get("user_entry") is not None else "Dist. a Entry"
         rows.append(
-            ("Dist. a Entry", f"{dist:+{fmt}} pts ({dist_pct:.3f}%)"),
+            (label, f"{dist:+{fmt}} pts ({dist_pct:.3f}%)"),
+        )
+    if opt and price is not None and opt.get("user_entry") is not None:
+        ue = float(opt["user_entry"])
+        dist = ue - float(price)
+        dist_pct = abs(dist) / float(price) * 100 if price else 0.0
+        rows.append(
+            ("Dist. a Entry usuario", f"{dist:+{fmt}} pts ({dist_pct:.3f}%)"),
         )
     if opt and price is not None and opt.get("sl") is not None:
         sl = float(opt["sl"])
@@ -274,6 +350,11 @@ def build_advanced_table_rows(
 
     if opt and opt.get("risk_pts") is not None:
         rows.append(("Riesgo (pts)", f"{opt['risk_pts']:{fmt}}"))
+
+    if opt and opt.get("sl_tp_source") == "past":
+        rows.append(("SL/TP", "estructura pasada (past)"))
+    elif opt and opt.get("sl_tp_source") == "fallback":
+        rows.append(("SL/TP", "1:2 fallback"))
 
     wr = categories.get("winrate")
     if wr:
@@ -336,6 +417,239 @@ def build_advanced_table_rows(
             f"**{rules_ok}/{rules_total}** ({categories.get('rules_pct', 0)}%)",
         ))
 
+    return rows
+
+
+def is_esperar_recomendacion(rec: str | None) -> bool:
+    """True si Recomendación / veredicto es ESPERAR (LONG/SHORT/sin dirección)."""
+    return bool(rec) and "ESPERAR" in str(rec).upper()
+
+
+def _contingency_side(categories: dict, data: dict, opt: dict | None) -> str:
+    """Lado asumido del trade abierto: LONG / SHORT / NONE."""
+    for src in (
+        (opt or {}).get("direction"),
+        categories.get("direction"),
+        data.get("setup", {}).get("direction"),
+    ):
+        if src in ("LONG", "SHORT"):
+            return src
+    rec = str(categories.get("recomendacion") or "").upper()
+    if "LONG" in rec:
+        return "LONG"
+    if "SHORT" in rec:
+        return "SHORT"
+    return "NONE"
+
+
+def build_contingency_guidance(
+    categories: dict,
+    data: dict,
+    opt: dict | None = None,
+) -> dict | None:
+    """Guía 'Si entraste' + Contingencias cuando Recomendación es ESPERAR.
+
+    Auto-on para High ESPERAR LONG/SHORT. Devuelve None si no aplica.
+    Dict: headline (str), options (list[str] 2–4), rows (list[tuple] para tabla).
+    """
+    if categories.get("history_mode"):
+        return None
+    rec = categories.get("recomendacion") or format_recomendacion(
+        categories.get("signal_e1", "ESPERAR"),
+        categories.get("direction") or data.get("setup", {}).get("direction", "NONE"),
+    )
+    if not is_esperar_recomendacion(rec):
+        return None
+
+    side = _contingency_side(categories, data, opt)
+    side_txt = side if side in ("LONG", "SHORT") else "posición"
+    has_user = opt is not None and opt.get("user_entry") is not None
+    entry_label = "Entry usuario" if has_user else "Entrada óptima"
+
+    # Distancia a referencia de entrada
+    price = data.get("price")
+    dec = int((opt or {}).get("dec", data.get("price_decimals", 1)))
+    fmt = f".{dec}f"
+    ref_entry = None
+    if has_user:
+        ref_entry = float(opt["user_entry"])  # type: ignore[index]
+    elif opt and opt.get("entry") is not None:
+        ref_entry = float(opt["entry"])
+    dist_pct = None
+    dist_pts = None
+    if price is not None and ref_entry is not None and float(price) > 0:
+        dist_pts = ref_entry - float(price)
+        dist_pct = abs(dist_pts) / float(price) * 100
+    near_entry = dist_pct is not None and dist_pct <= 0.15
+
+    rules_pct = int(categories.get("rules_pct") or 0)
+    conf = str(categories.get("confluencia_setup") or "")
+    neural = categories.get("neural_prob_win")
+    neural_pct = float(neural) * 100 if neural is not None else None
+    ml = categories.get("ml_prob_win")
+    ml_pct = float(ml) * 100 if ml is not None else None
+    bias_h1 = str(
+        categories.get("bando_mercado") or data.get("bias_h1") or "NEUTRAL"
+    ).upper()
+    crt = data.get("crt") or {}
+    crt_h1 = str(crt.get("h1_state") or categories.get("crt_h1") or "")
+
+    # Headline: acción primaria clara
+    if rules_pct < 50 or conf in ("BAJA", "NULA"):
+        headline = (
+            f"Reduce o BE en {side_txt} — Rules {rules_pct}% / Confluencia {conf or 'n/d'}; "
+            f"sistema en **{rec}**"
+        )
+    elif near_entry and neural_pct is not None and neural_pct >= 70:
+        headline = (
+            f"Mantén {side_txt} sin añadir — Neural {neural_pct:.0f}% y cerca de {entry_label}; "
+            f"espera trigger (**{rec}**)"
+        )
+    elif has_user and opt and opt.get("entry") is not None and price is not None:
+        opt_e = float(opt["entry"])
+        ue = float(opt["user_entry"])
+        gap = abs(ue - opt_e)
+        gap_pct = gap / float(price) * 100 if price else 0.0
+        headline = (
+            f"Gestiona {side_txt} en Entry usuario ({ue:{fmt}}) — "
+            f"óptima {opt_e:{fmt}} ({gap_pct:.3f}% gap); no scales (**{rec}**)"
+        )
+    else:
+        dist_note = (
+            f" · {dist_pct:.3f}% de {entry_label}"
+            if dist_pct is not None
+            else ""
+        )
+        headline = (
+            f"No añadas tamaño en {side_txt}{dist_note} — "
+            f"sistema pide espera (**{rec}**); trail o BE según contingencias"
+        )
+
+    options: list[str] = []
+
+    # 1) Neural + cercanía a entry
+    if neural_pct is not None:
+        if neural_pct >= 70 and near_entry:
+            options.append(
+                f"Si Neural ≥70% (ahora {neural_pct:.0f}%) y precio cerca de {entry_label} "
+                f"→ mantener / trail suave"
+            )
+        elif neural_pct >= 70:
+            options.append(
+                f"Si Neural {neural_pct:.0f}% alto pero lejos de {entry_label} "
+                f"→ no chase; espera pullback o BE"
+            )
+        else:
+            options.append(
+                f"Si Neural <70% (ahora {neural_pct:.0f}%) → no añadir; "
+                f"considera reducir 25–50%"
+            )
+    else:
+        options.append(
+            f"Sin Neural: prioriza Rules/Confluencia — cerca de {entry_label} "
+            f"mantener; lejos → no chase"
+        )
+
+    # 2) Rules / Confluencia
+    if rules_pct < 70 or conf in ("BAJA", "NULA"):
+        options.append(
+            f"Si Rules <70% (ahora {rules_pct}%) o Confluencia {conf or 'BAJA'} "
+            f"→ reducir / salir a BE"
+        )
+    else:
+        options.append(
+            f"Rules {rules_pct}% · Confluencia {conf or 'n/d'} OK — "
+            f"mantén plan; invalida solo si rompe SL"
+        )
+
+    # 3) ML vs lado (si hay)
+    if ml_pct is not None and side in ("LONG", "SHORT"):
+        # ml_prob_win es P(win) del setup; grade bearish proxy: win bajo vs lado
+        if ml_pct < 45:
+            options.append(
+                f"Si ML win {ml_pct:.0f}% bajo vs {side} → no añadir / cortar parcial"
+            )
+        elif side == "LONG" and bias_h1 == "BEARISH":
+            options.append(
+                f"ML {ml_pct:.0f}% pero H1 BEARISH vs LONG → no añadir / cortar si pierde BE"
+            )
+        elif side == "SHORT" and bias_h1 == "BULLISH":
+            options.append(
+                f"ML {ml_pct:.0f}% pero H1 BULLISH vs SHORT → no añadir / cortar si pierde BE"
+            )
+        else:
+            options.append(
+                f"ML win {ml_pct:.0f}% alineado — hold sin scale-in hasta ENTRAR"
+            )
+    elif side in ("LONG", "SHORT") and bias_h1 in ("BULLISH", "BEARISH"):
+        conflict = (
+            (side == "LONG" and bias_h1 == "BEARISH")
+            or (side == "SHORT" and bias_h1 == "BULLISH")
+        )
+        if conflict:
+            options.append(
+                f"H1 {bias_h1} contra {side} → no añadir; salir a BE si debilita"
+            )
+        else:
+            options.append(f"H1 {bias_h1} a favor de {side} — hold; espera confirmación")
+
+    # 4) Distancia a Entrada óptima / Entry usuario + CRT
+    opti = float(opt["entry"]) if opt and opt.get("entry") is not None else None
+    dist_opti_pct = None
+    if price is not None and opti is not None and float(price) > 0:
+        dist_opti_pct = abs(opti - float(price)) / float(price) * 100
+
+    if has_user and dist_opti_pct is not None and dist_opti_pct > 0.15 and opti is not None:
+        options.append(
+            f"Lejos de Entrada óptima ({opti:{fmt}}, {dist_opti_pct:.3f}%) "
+            f"→ espera pullback a óptima o invalida en SL past"
+        )
+    elif dist_pct is not None and dist_pct > 0.15:
+        options.append(
+            f"Lejos de {entry_label} ({dist_pct:.3f}% · {dist_pts:+{fmt}} pts) "
+            f"→ espera pullback a óptima o invalida en SL"
+        )
+    elif dist_pct is not None:
+        options.append(
+            f"Cerca de {entry_label} ({dist_pct:.3f}%) — trail o BE; "
+            f"no scales hasta veredicto ENTRAR"
+        )
+
+    if crt_h1 and crt_h1.upper() not in ("", "N/A", "NA"):
+        # CRT/H1 fricción vs lado
+        h1u = crt_h1.upper()
+        if side == "LONG" and ("BEAR" in h1u or "DOWN" in h1u or "PDH" in h1u):
+            options.append(f"CRT/H1 {crt_h1} fricción vs LONG → BE o corte si pierde estructura")
+        elif side == "SHORT" and ("BULL" in h1u or "UP" in h1u or "PDL" in h1u):
+            options.append(f"CRT/H1 {crt_h1} fricción vs SHORT → BE o corte si pierde estructura")
+
+    # Cap 2–4 opciones concretas (priorizar primeras)
+    options = options[:4]
+    if len(options) < 2:
+        options.append(
+            f"Plan B: Light re-scan ~30 min — si no retestea {entry_label}, flat o BE"
+        )
+
+    return {
+        "headline": headline,
+        "options": options,
+        "recomendacion": rec,
+        "side": side,
+    }
+
+
+def format_contingency_table_rows(guidance: dict | None) -> list[tuple[str, str]]:
+    """Filas Categories: Si entraste + Contingencia 1..N (antes de Confluencia)."""
+    if not guidance:
+        return []
+    rows: list[tuple[str, str]] = [
+        ("Si entraste", str(guidance.get("headline") or "Gestiona posición abierta")),
+    ]
+    opts = guidance.get("options") or []
+    if opts:
+        rows.append(("Contingencias", f"{len(opts)} opciones (datos del run)"))
+        for i, o in enumerate(opts, 1):
+            rows.append((f"Contingencia {i}", o))
     return rows
 
 
@@ -1226,12 +1540,17 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
     Orden fijo (High): Precio e Entrada óptima justo al inicio; Confluencia setup siempre última.
     history_mode: Revisión última Entry + P&L (no señal nueva; sin Entrada óptima / ENTRAR).
     Con advanced=True (categories['advanced']) se insertan stats trader antes de Confluencia.
+    Con contingency_rows (auto ESPERAR) se inserta bloque Si entraste antes de Confluencia.
     """
     history_mode = bool(categories.get("history_mode"))
     has_ml = "ml_prob_win" in categories and not hide_ml
     has_neural = "neural_prob_win" in categories
     has_bando = "bando_usado" in categories
-    has_precio = "precio" in categories or "entrada_optima" in categories
+    has_precio = (
+        "precio" in categories
+        or "entrada_optima" in categories
+        or "entry_usuario" in categories
+    )
     has_conf = "confluencia_setup" in categories
     has_review = bool(
         categories.get("revision_ultima_entry")
@@ -1298,6 +1617,8 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
         lines.append(f"| Precio | **{categories['precio']}** |")
     if "entrada_optima" in categories:
         lines.append(f"| Entrada óptima | **{categories['entrada_optima']}** |")
+    if categories.get("entry_usuario"):
+        lines.append(f"| Entry usuario | **{categories['entry_usuario']}** |")
     # Reflexión: última Entry del mismo par + calificación (High)
     if categories.get("ultima_senal_entrada"):
         lines.append(f"| Última señal | {categories['ultima_senal_entrada']} |")
@@ -1340,6 +1661,12 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
         if adv_rows:
             lines.append("| **— Advanced —** | |")
         for label, value in adv_rows:
+            lines.append(f"| {label} | {value} |")
+    # Si entraste / Contingencias — auto en ESPERAR LONG|SHORT (antes de Confluencia)
+    cont_rows = categories.get("contingency_rows") or []
+    if cont_rows:
+        lines.append("| **— Si entraste —** | *(posición abierta · ESPERAR)* |")
+        for label, value in cont_rows:
             lines.append(f"| {label} | {value} |")
     # Última fila de status: Confluencia setup
     if "confluencia_setup" in categories:

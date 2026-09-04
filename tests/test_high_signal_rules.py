@@ -21,20 +21,34 @@ from app.services.btc_high_analysis import (  # noqa: E402
     adjust_crt_for_setup_mode,
     adjust_e2_for_setup_mode,
     analyze_breakout,
+    compute_advanced_scorecard,
     compute_optimal_entry,
     compute_second_indication,
+    filter_m5_from_entry_touch,
+    find_m5_index_at_user_entry,
     format_2m5_checklist,
     format_2m5_valid_invalid,
     format_optimal_entry_md,
+    optimize_sl_tp_from_past,
+    parse_entry_price,
 )
 from app.models.btc_signal_categories import (  # noqa: E402
     build_advanced_table_rows,
+    build_contingency_guidance,
     compute_confluencia_setup,
     format_augmented_categories_md,
+    format_contingency_table_rows,
     format_entrada_optima_cell,
+    format_entry_usuario_cell,
     format_recomendacion,
+    is_esperar_recomendacion,
     score_e1_rules_8,
     winrate_estimate,
+)
+from app.models.btc_neural_signals import (  # noqa: E402
+    gated_prob_toward_neutral,
+    neural_gate_factor,
+    prob_to_confidence,
 )
 from app.views.btc_e1_report import collect_red_flags, derive_e1_verdict  # noqa: E402
 from app.views.illustrate_high_entry import (  # noqa: E402
@@ -276,6 +290,292 @@ class TestComputeOptimalEntry:
         risk_l = abs(opt_l["entry"] - opt_l["sl"])
         reward_l = abs(opt_l["tp"] - opt_l["entry"])
         assert abs(reward_l / risk_l - 2.0) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# 2b. CLI --entry / -Entry parse + override
+# ---------------------------------------------------------------------------
+
+class TestParseEntryPrice:
+    """European thousands + plain floats for High -Entry."""
+
+    def test_plain_and_decimal(self):
+        assert parse_entry_price(53128) == 53128.0
+        assert parse_entry_price("53128") == 53128.0
+        assert parse_entry_price("53128.0") == 53128.0
+        assert parse_entry_price("53128.5") == 53128.5
+
+    def test_european_single_thousands(self):
+        assert parse_entry_price("53.128") == 53128.0
+        assert parse_entry_price("97.450") == 97450.0
+
+    def test_european_multi_dot_us30(self):
+        # User typing 53.12.800 → 53128.0 (US30 European-style thousands)
+        assert parse_entry_price("53.12.800") == 53128.0
+
+    def test_comma_decimal(self):
+        assert parse_entry_price("53128,5") == 53128.5
+        assert parse_entry_price("53.128,50") == 53128.5
+
+    def test_empty_none(self):
+        assert parse_entry_price(None) is None
+        assert parse_entry_price("") is None
+        assert parse_entry_price("   ") is None
+
+
+class TestEntryOverride:
+    """CLI -Entry = Entry usuario; Entrada óptima stays system-computed."""
+
+    def test_override_keeps_optimal_separate_from_user(self):
+        data = make_data(direction="SHORT", dist_pct=0.05, confirm_short=True)
+        data["entry_override"] = 53128.0
+        opt_auto = compute_optimal_entry(
+            {**data, "entry_override": None}, "SHORT", make_crt(), data["zone"],
+        )
+        opt = compute_optimal_entry(data, "SHORT", make_crt(), data["zone"])
+        assert opt["user_entry"] == 53128.0
+        assert opt["entry_manual"] is True
+        assert opt["entry_source"] == "manual"
+        # System optimal must not be replaced by CLI fill
+        assert opt["entry"] == opt_auto["entry"]
+        assert opt["entry"] != opt["user_entry"]
+        assert opt["sl"] is not None and opt["tp"] is not None
+        # SL/TP plan is relative to user fill
+        assert opt["sl"] > opt["user_entry"] > opt["tp"]
+        risk = abs(opt["sl"] - opt["user_entry"])
+        reward = abs(opt["user_entry"] - opt["tp"])
+        assert abs(reward / risk - opt["rr"]) < 1e-6
+        assert opt.get("sl_tp_source") in ("past", "fallback")
+        assert format_entrada_optima_cell(opt, data) == f"{opt['entry']:.1f}"
+        assert "(manual" not in format_entrada_optima_cell(opt, data)
+        user_cell = format_entry_usuario_cell(opt, data)
+        assert user_cell is not None and user_cell.startswith("53128.0 (CLI")
+        md = "\n".join(format_optimal_entry_md(opt, data, "SHORT", make_crt()))
+        assert "Entry usuario" in md
+        assert "53128.0" in md
+        assert "Entrada óptima" in md
+
+    def test_override_param_user_differs_from_optimal(self):
+        data = make_data(direction="LONG", zone_level=99_950.0, zone_type="soporte_debil",
+                         dist_pct=0.05, confirm_long=True, confirm_short=False)
+        opt_auto = compute_optimal_entry(data, "LONG", make_crt("DISCOUNT"), data["zone"])
+        opt_manual = compute_optimal_entry(
+            data, "LONG", make_crt("DISCOUNT"), data["zone"], entry_override=100_100.0,
+        )
+        assert opt_manual["user_entry"] == 100_100.0
+        assert opt_manual["entry"] == opt_auto["entry"]
+        assert opt_manual["entry"] != opt_manual["user_entry"]
+        assert opt_manual["entry_manual"] is True
+
+    def test_override_long_user_entry_below_zone_keeps_sl_under_user(self):
+        """US30 case: Entry usuario 53128 while zone ~53487 — SL under user fill."""
+        data = make_data(
+            price=53465.0,
+            direction="LONG",
+            zone_level=53487.0,
+            zone_type="soporte_debil",
+            dist_pct=0.04,
+            confirm_long=False,
+            confirm_short=False,
+        )
+        opt = compute_optimal_entry(
+            data, "LONG", make_crt("DISCOUNT"), data["zone"], entry_override=53128.0,
+        )
+        assert opt["user_entry"] == 53128.0
+        assert opt["entry"] != opt["user_entry"]
+        assert opt["sl"] < opt["user_entry"] < opt["tp"]
+        risk = abs(opt["user_entry"] - opt["sl"])
+        reward = abs(opt["tp"] - opt["user_entry"])
+        assert abs(reward / risk - opt["rr"]) < 1e-6
+
+    def test_categories_show_both_optimal_and_user(self):
+        cats = {
+            "precio": "53465.0",
+            "entrada_optima": "53495.1",
+            "entry_usuario": "53312.0 (CLI · past)",
+            "bando_usado": "BULLISH",
+            "bando_mercado": "BULLISH",
+            "recomendacion": "ESPERAR LONG",
+            "confluencia_setup": "MEDIA",
+        }
+        md = "\n".join(format_augmented_categories_md(cats))
+        assert "| Entrada óptima | **53495.1** |" in md
+        assert "| Entry usuario | **53312.0 (CLI · past)** |" in md
+        assert md.index("| Entrada óptima |") < md.index("| Entry usuario |")
+
+
+class TestFilterM5FromEntry:
+    """Pre-entry M5 candles ignored for past / post-entry context."""
+
+    def test_last_touch_drops_earlier_bars(self):
+        m5 = [
+            _c(53_000, 53_050, 52_900, 53_020),  # before
+            _c(53_020, 53_100, 52_950, 53_080),  # before
+            _c(53_080, 53_320, 53_050, 53_300),  # first touch 53312
+            _c(53_300, 53_350, 53_250, 53_280),  # also touches 53312
+            _c(53_280, 53_310, 53_200, 53_250),  # after (no touch)
+        ]
+        entry = 53_312.0
+        idx = find_m5_index_at_user_entry(m5, entry)
+        assert idx == 3  # last interaction with level
+        filtered = filter_m5_from_entry_touch(m5, entry)
+        assert len(filtered) == 2
+        assert filtered[0] is m5[3]
+
+    def test_compute_ignores_pre_entry_m5_for_past_sl_tp(self):
+        entry = 53_200.0
+        # Pre-entry bar has an extreme low that would pull SL if not filtered.
+        # Zone kept above entry so it does not compete as LONG support.
+        m5 = [
+            _c(53_100, 53_180, 52_400, 53_150),  # deep low before entry (in risk band)
+            _c(53_150, 53_220, 53_100, 53_200),  # touches entry
+            _c(53_200, 53_260, 53_180, 53_250),  # also touches entry → last touch
+            _c(53_250, 53_280, 53_220, 53_270),  # after (no touch of 53200)
+        ]
+        data = make_data(
+            price=53_270.0,
+            direction="LONG",
+            zone_level=53_450.0,
+            zone_type="soporte_debil",
+            dist_pct=0.3,
+            confirm_long=True,
+            confirm_short=False,
+            price_decimals=1,
+            m5=m5,
+        )
+        # No swings/PD — force past levels to lean on M5 window
+        data["swing_lows"] = []
+        data["swing_highs"] = [53_500.0]
+        data["pdl"] = None
+        data["pdh"] = None
+        opt = compute_optimal_entry(
+            data, "LONG", make_crt("DISCOUNT"), data["zone"], entry_override=entry,
+        )
+        assert opt["user_entry"] == entry
+        assert opt["entry"] != entry
+        assert opt.get("m5_pre_entry_ignored") is True
+        assert opt.get("m5_from_entry_len") == 2
+        assert opt["m5_entry_touch_index"] == 2  # last touch on full M5 series
+        # Unfiltered past would use the 52400 pre-entry low
+        past_full = optimize_sl_tp_from_past(
+            {**data, "swing_lows": [], "pdl": None, "pdh": None},
+            entry, "LONG", make_crt("DISCOUNT"), data["zone"],
+        )
+        past_filt = optimize_sl_tp_from_past(
+            {**data, "m5": filter_m5_from_entry_touch(m5, entry),
+             "swing_lows": [], "pdl": None, "pdh": None},
+            entry, "LONG", make_crt("DISCOUNT"), data["zone"],
+        )
+        assert past_full is not None and past_filt is not None
+        assert past_full["sl"] < 52_500.0  # pulled by pre-entry extreme
+        assert past_filt["sl"] > 52_800.0  # post-entry structure only
+        assert opt["sl"] == past_filt["sl"]# ---------------------------------------------------------------------------
+# 2c. Past-structure SL/TP with --entry
+# ---------------------------------------------------------------------------
+
+class TestOptimizeSlTpFromPast:
+    """SL beyond past swings/S-R; TP structural (≥1.5) or 1:2 from that SL."""
+
+    def test_long_sl_below_swing_tp_structural_or_1to2(self):
+        entry = 53_200.0
+        data = make_data(
+            price=53_250.0,
+            direction="LONG",
+            zone_level=53_100.0,
+            zone_type="soporte_debil",
+            dist_pct=0.2,
+            confirm_long=True,
+            confirm_short=False,
+            price_decimals=1,
+        )
+        data["swing_lows"] = [53_050.0, 53_080.0]
+        data["swing_highs"] = [53_450.0, 53_500.0]
+        data["pdl"] = 52_900.0
+        data["pdh"] = 53_600.0
+        data["m5"] = [
+            _c(53_100, 53_180, 53_050, 53_150),
+            _c(53_150, 53_220, 53_100, 53_200),
+            _c(53_200, 53_260, 53_180, 53_250),
+        ]
+        past = optimize_sl_tp_from_past(data, entry, "LONG", make_crt("DISCOUNT"), data["zone"])
+        assert past is not None
+        assert past["sl"] < entry < past["tp"]
+        assert past["sl_tp_source"] == "past"
+        assert past["rr"] >= 1.5
+        # SL beyond nearest support (zone/swing), not arbitrary %
+        assert past["sl"] < 53_100.0
+        risk = entry - past["sl"]
+        reward = past["tp"] - entry
+        assert abs(reward / risk - past["rr"]) < 1e-6
+
+        opt = compute_optimal_entry(
+            data, "LONG", make_crt("DISCOUNT"), data["zone"], entry_override=entry,
+        )
+        assert opt["user_entry"] == entry
+        assert opt["entry"] != entry
+        assert opt["sl_tp_source"] == "past"
+        assert format_entry_usuario_cell(opt, data) == "53200.0 (CLI · past)"
+        assert "(manual" not in format_entrada_optima_cell(opt, data)
+        md = "\n".join(format_optimal_entry_md(opt, data, "LONG", make_crt("DISCOUNT")))
+        assert "estructura pasada" in md.lower() or "past" in md.lower()
+        assert "Entry usuario" in md
+
+    def test_short_sl_above_swing_tp_from_structure(self):
+        entry = 53_400.0
+        data = make_data(
+            price=53_350.0,
+            direction="SHORT",
+            zone_level=53_480.0,
+            zone_type="resistencia_debil",
+            dist_pct=0.15,
+            confirm_short=True,
+            confirm_long=False,
+            price_decimals=1,
+        )
+        data["swing_highs"] = [53_500.0, 53_520.0]
+        data["swing_lows"] = [53_050.0, 53_100.0]
+        data["pdh"] = 53_550.0
+        data["pdl"] = 53_000.0
+        data["m5"] = [
+            _c(53_450, 53_520, 53_400, 53_480),
+            _c(53_480, 53_510, 53_420, 53_430),
+            _c(53_430, 53_450, 53_380, 53_350),
+        ]
+        past = optimize_sl_tp_from_past(data, entry, "SHORT", make_crt(), data["zone"])
+        assert past is not None
+        assert past["tp"] < entry < past["sl"]
+        assert past["sl_tp_source"] == "past"
+        assert past["sl"] > 53_480.0  # beyond resistance / swing high
+        assert past["rr"] >= 1.5
+
+        opt = compute_optimal_entry(
+            data, "SHORT", make_crt(), data["zone"], entry_override=entry,
+        )
+        assert opt["user_entry"] == entry
+        assert opt["sl"] > opt["user_entry"] > opt["tp"]
+        assert opt["sl_tp_source"] == "past"
+        assert format_entry_usuario_cell(opt, data) == "53400.0 (CLI · past)"
+
+    def test_fallback_when_no_safe_structure(self):
+        data = make_data(direction="SHORT", dist_pct=0.05, confirm_short=True)
+        # No swings/PDH near entry — only far zone → past returns None
+        data["swing_highs"] = []
+        data["swing_lows"] = []
+        data["pdh"] = None
+        data["pdl"] = None
+        data["m5"] = [_red(100_000), _red(99_999)]
+        past = optimize_sl_tp_from_past(
+            data, 53_128.0, "SHORT", make_crt(), data["zone"],
+        )
+        assert past is None
+        opt = compute_optimal_entry(
+            data, "SHORT", make_crt(), data["zone"], entry_override=53_128.0,
+        )
+        assert opt["user_entry"] == 53_128.0
+        assert opt["sl_tp_source"] == "fallback"
+        assert opt["rr"] == 2.0
+        assert "1:2" in (format_entry_usuario_cell(opt, data) or "")
+        assert "fallback" in (opt.get("sl_tp_note") or "").lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1065,6 +1365,144 @@ class TestCategoriesEntradaConfluenciaAdvanced:
 
 
 # ---------------------------------------------------------------------------
+# 9b. Contingencias Si entraste (ESPERAR LONG/SHORT)
+# ---------------------------------------------------------------------------
+
+class TestContingencyGuidanceEsperar:
+    def _cats(self, **extra) -> dict:
+        cats = {
+            "recomendacion": "ESPERAR LONG",
+            "signal_e1": "ESPERAR",
+            "direction": "LONG",
+            "rules_pct": 71,
+            "rules_ok": 5,
+            "rules_total": 7,
+            "confluencia_setup": "MEDIA",
+            "bando_usado": "BULLISH",
+            "bando_mercado": "BULLISH",
+            "neural_prob_win": 0.72,
+            "neural_grade": "B",
+            "neural_gallery_aligned": True,
+        }
+        cats.update(extra)
+        return cats
+
+    def test_is_esperar_recomendacion(self):
+        assert is_esperar_recomendacion("ESPERAR LONG")
+        assert is_esperar_recomendacion("ESPERAR SHORT")
+        assert not is_esperar_recomendacion("ENTRAR LONG")
+        assert not is_esperar_recomendacion("NO_OPERAR")
+
+    def test_esperar_long_without_user_entry(self):
+        data = make_data(
+            direction="LONG",
+            bias_h1="BULLISH",
+            confirm_long=True,
+            confirm_short=False,
+            price=100_000.0,
+            zone_level=99_980.0,
+            dist_pct=0.05,
+        )
+        opt = {"entry": 99_980.0, "dec": 1, "direction": "LONG"}
+        g = build_contingency_guidance(self._cats(), data, opt=opt)
+        assert g is not None
+        assert g["side"] == "LONG"
+        assert "ESPERAR LONG" in g["headline"] or "LONG" in g["headline"]
+        assert 2 <= len(g["options"]) <= 4
+        joined = " ".join(g["options"])
+        assert "Neural" in joined
+        assert "Rules" in joined or "Confluencia" in joined
+        assert "Entrada óptima" in joined or "óptima" in g["headline"].lower() or "óptima" in joined
+
+    def test_esperar_short_with_user_entry(self):
+        data = make_data(
+            direction="SHORT",
+            bias_h1="BEARISH",
+            confirm_short=True,
+            price=53_500.0,
+            zone_level=53_484.0,
+            dist_pct=0.03,
+            price_decimals=1,
+        )
+        opt = {
+            "entry": 53_484.1,
+            "user_entry": 53_490.0,
+            "dec": 1,
+            "direction": "SHORT",
+            "sl": 53_520.0,
+            "tp": 53_420.0,
+            "sl_tp_source": "past",
+        }
+        cats = self._cats(
+            recomendacion="ESPERAR SHORT",
+            direction="SHORT",
+            rules_pct=55,
+            confluencia_setup="BAJA",
+            neural_prob_win=0.48,
+            ml_prob_win=0.40,
+            bando_usado="BEARISH",
+            bando_mercado="BEARISH",
+        )
+        g = build_contingency_guidance(cats, data, opt=opt)
+        assert g is not None
+        assert g["side"] == "SHORT"
+        assert "Entry usuario" in g["headline"] or "Entry usuario" in " ".join(g["options"])
+        assert any("Rules" in o and ("<70%" in o or "55%" in o) for o in g["options"])
+        assert any("BE" in o or "reducir" in o.lower() for o in g["options"])
+
+    def test_none_when_entrar_or_history(self):
+        data = make_data(direction="LONG", confirm_long=True, confirm_short=False)
+        opt = {"entry": 100_000.0, "dec": 1}
+        g_enter = build_contingency_guidance(
+            self._cats(recomendacion="ENTRAR LONG", signal_e1="ENTRAR"),
+            data,
+            opt=opt,
+        )
+        assert g_enter is None
+        g_hist = build_contingency_guidance(
+            self._cats(history_mode=True),
+            data,
+            opt=opt,
+        )
+        assert g_hist is None
+
+    def test_categories_md_shows_si_entraste_before_confluencia(self):
+        g = build_contingency_guidance(
+            self._cats(recomendacion="ESPERAR SHORT", direction="SHORT"),
+            make_data(direction="SHORT", confirm_short=True, price=53_500.0),
+            opt={"entry": 53_484.0, "dec": 1, "direction": "SHORT"},
+        )
+        rows = format_contingency_table_rows(g)
+        assert rows[0][0] == "Si entraste"
+        assert any(r[0].startswith("Contingencia") for r in rows)
+
+        cats = {
+            "bando_usado": "BEARISH",
+            "bando_mercado": "BEARISH",
+            "recomendacion": "ESPERAR SHORT",
+            "signal_e1": "ESPERAR",
+            "direction": "SHORT",
+            "precio": "53500.0",
+            "entrada_optima": "53484.0",
+            "confluencia_setup": "MEDIA",
+            "confluencia_detalle": "58%",
+            "contingency_rows": rows,
+        }
+        md = "\n".join(format_augmented_categories_md(cats))
+        assert "| **— Si entraste —** |" in md
+        assert "| Si entraste |" in md
+        assert "| Contingencia 1 |" in md
+        si_i = md.index("| Si entraste |")
+        conf_i = md.index("| Confluencia setup |")
+        assert si_i < conf_i
+        table_lines = [
+            ln for ln in md.splitlines()
+            if ln.startswith("| ") and "Campo" not in ln and "---" not in ln
+        ]
+        assert table_lines[-1].startswith("| Confluencia setup |")
+
+
+# ---------------------------------------------------------------------------
 # 10. Signal history + calificación entrada vs última Entrada óptima
 # ---------------------------------------------------------------------------
 
@@ -1518,6 +1956,155 @@ class TestSignalHistoryReflection:
         assert hist[-1].get("side") == "SHORT"
         assert set(hist[-1].keys()) == {"id", "time", "optimal_entry", "side"}
         assert "NY" in hist[-1]["time"]
+
+
+# ---------------------------------------------------------------------------
+# Fusion score + Neural/ML confidence gating (High DL path)
+# ---------------------------------------------------------------------------
+
+class TestFusionAndNeuralGating:
+    """Smarter High fusion: no Neural pad, low-conf gate, ML in scorecard."""
+
+    def _base_ctx(self, rules_pct: int = 85, ext_pct: int = 80) -> dict:
+        return {
+            "verdict": "ENTRAR",
+            "ext_pct": ext_pct,
+            "categories": {
+                "rules_ok": 6,
+                "rules_total": 7,
+                "rules_pct": rules_pct,
+            },
+        }
+
+    def test_neural_gate_factor_low_and_grade_c(self):
+        assert neural_gate_factor("high", "B") == 1.0
+        assert neural_gate_factor("low", "B") == 0.35
+        assert neural_gate_factor("low", "C") < neural_gate_factor("low", "B")
+        assert gated_prob_toward_neutral(0.80, 0.35) < 0.65
+        assert gated_prob_toward_neutral(0.80, 0.35) > 0.50
+
+    def test_prob_to_confidence_respects_model_softmax(self):
+        assert prob_to_confidence(0.90, model_confidence=0.52) == "low"
+        assert prob_to_confidence(0.90, model_confidence=0.95) == "high"
+
+    def test_confluencia_downweights_low_conf_neural(self):
+        data = make_data(
+            direction="SHORT",
+            bias_h1="BEARISH",
+            mode_bias="bearish",
+            dist_pct=0.05,
+            confirm_short=True,
+        )
+        data["mode_setup"] = "break"
+        strong = {
+            "rules_pct": 85,
+            "neural_prob_win": 0.78,
+            "neural_grade": "B",
+            "neural_confidence": "high",
+            "neural_gallery_aligned": True,
+            "neural_gate_factor": 1.0,
+            "neural_effective_prob_win": 0.78,
+        }
+        weak = {
+            **strong,
+            "neural_confidence": "low",
+            "neural_gallery_aligned": False,
+            "neural_gate_factor": 0.35,
+            "neural_effective_prob_win": gated_prob_toward_neutral(0.78, 0.35),
+        }
+        level_hi, detail_hi = compute_confluencia_setup(
+            strong, data, crt=make_crt(), e2={"eligible": False},
+        )
+        level_lo, detail_lo = compute_confluencia_setup(
+            weak, data, crt=make_crt(), e2={"eligible": False},
+        )
+        # Extraer % del detalle ("66% · ...")
+        pct_hi = int(detail_hi.split("%")[0])
+        pct_lo = int(detail_lo.split("%")[0])
+        assert pct_hi > pct_lo
+        assert level_hi in ("ALTA", "MEDIA")
+        assert "gated" in detail_lo.lower() or "gating" in detail_lo.lower() or "débil" in detail_lo.lower() or "Neural" in detail_lo
+
+    def test_scorecard_omits_missing_neural_no_pad50(self):
+        data = make_data(direction="SHORT", bias_h1="BEARISH", confirm_short=True)
+        data["mode_setup"] = "break"
+        ctx = self._base_ctx()
+        cats_no = dict(ctx["categories"])
+        combined_no, rows_no = compute_advanced_scorecard(
+            data, ctx, cats_no, make_crt(), {"eligible": False}, "break",
+        )
+        assert any("omitido" in r[3] for r in rows_no if "Neural" in r[0])
+        assert not any("neutral 50%" in r[3] for r in rows_no if "Neural" in r[0])
+        assert "neural" not in cats_no.get("fusion_weights", {})
+        assert cats_no["fusion_score"] == round(combined_no, 1)
+
+        # High-conf Neural vs low-conf same raw prob: low gate must not inflate
+        cats_hi = {
+            **ctx["categories"],
+            "neural_prob_win": 0.88,
+            "neural_confidence": "high",
+            "neural_grade": "A+",
+            "neural_gallery_aligned": True,
+            "neural_gate_factor": 1.0,
+            "neural_effective_prob_win": 0.88,
+        }
+        cats_lo = {
+            **cats_hi,
+            "neural_confidence": "low",
+            "neural_gallery_aligned": False,
+            "neural_gate_factor": 0.35,
+            "neural_effective_prob_win": gated_prob_toward_neutral(0.88, 0.35),
+        }
+        combined_hi, _ = compute_advanced_scorecard(
+            data, ctx, cats_hi, make_crt(), {"eligible": False}, "break",
+        )
+        combined_lo, _ = compute_advanced_scorecard(
+            data, ctx, cats_lo, make_crt(), {"eligible": False}, "break",
+        )
+        assert combined_hi > combined_lo
+        assert "neural" in cats_hi["fusion_weights"]
+        assert cats_hi["fusion_score"] == round(combined_hi, 1)
+    def test_scorecard_includes_ml_and_gates_low_conf(self):
+        data = make_data(direction="SHORT", bias_h1="BEARISH", confirm_short=True)
+        data["mode_setup"] = "break"
+        ctx = self._base_ctx()
+        cats = {
+            **ctx["categories"],
+            "ml_prob_win": 0.80,
+            "ml_grade": "A+",
+            "ml_confidence": "high",
+            "neural_prob_win": 0.80,
+            "neural_confidence": "low",
+            "neural_grade": "B",
+            "neural_gate_factor": 0.35,
+            "neural_effective_prob_win": gated_prob_toward_neutral(0.80, 0.35),
+            "neural_gallery_aligned": False,
+        }
+        combined, rows = compute_advanced_scorecard(
+            data, ctx, cats, make_crt(), {"eligible": False}, "break",
+        )
+        assert any("ML tabular" in r[0] for r in rows)
+        assert "ml" in cats["fusion_weights"]
+        # Low-conf Neural effective ~60.5%, not raw 80%
+        neural_row = next(r for r in rows if "Neural" in r[0])
+        assert "gate×0.35" in neural_row[3]
+        assert combined < 90  # would be higher if raw 80% neural counted fully
+
+    def test_direction_penalty_lowers_combined(self):
+        ctx = self._base_ctx()
+        cats = dict(ctx["categories"])
+        aligned = make_data(direction="SHORT", bias_h1="BEARISH", confirm_short=True)
+        aligned["mode_setup"] = "break"
+        conflict = make_data(direction="SHORT", bias_h1="BULLISH", confirm_short=True)
+        conflict["mode_setup"] = "break"
+        c_ok, _ = compute_advanced_scorecard(
+            aligned, ctx, dict(cats), make_crt(), {}, "break",
+        )
+        c_bad, rows = compute_advanced_scorecard(
+            conflict, ctx, dict(cats), make_crt(pd_reading="BULLISH"), {}, "break",
+        )
+        assert c_bad < c_ok
+        assert any("Penalización" in r[0] for r in rows)
 
 
 # ---------------------------------------------------------------------------

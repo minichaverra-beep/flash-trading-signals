@@ -10,6 +10,13 @@ cd "D:\Danilo\Trading\Cursor Trading"
 # US30 High (senal)
 .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
+# High + Entry usuario (fill CLI → --entry; Entrada optima NO se sobrescribe)
+# Solo High — analyze-*-history.ps1 no cablea -Entry
+.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Advanced -Entry 97450.5
+.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse -ML -Neural -Ilustrate -Advanced -Entry 53128
+# Formatos: 53312 | 53312.0 | 53.12.800 → 53128.0
+# ESPERAR → Categories: Si entraste + Contingencias
+
 
 # ---------------------------------------------------------------------------
 # HISTORY = solo revision P&L de la ultima Entry (NO senal nueva; sin append)

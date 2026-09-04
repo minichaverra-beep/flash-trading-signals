@@ -10,7 +10,9 @@ param(
     [switch]$Advanced,
     [Alias("Illustrate")]
     [switch]$Ilustrate,
-    [string]$Symbol = "BTCUSDT"
+    [switch]$HistoryReview,
+    [string]$Symbol = "BTCUSDT",
+    [string]$Entry = ""
 )
 
 $ErrorActionPreference = "Stop"

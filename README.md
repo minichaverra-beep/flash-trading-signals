@@ -20,7 +20,7 @@ Genera reportes live (markdown + opcionales PNG) para decidir entradas según el
 | **History** | **Revisión P&L** de la última Entry (`analyze-*-history.ps1`). No es señal; no append. |
 | **Super High** | Validación con captura TradingView anotada — script **aparte** (`analyze-btc-superhigh.ps1`). No se mezcla con High. |
 
-Flags opcionales High: **`-ML`** (modelo tabular), **`-Neural`** (similitud galería WIN), **`-Ilustrate`** (PNG anotado 2M5 + entrada óptima).
+Flags opcionales High: **`-ML`** (modelo tabular), **`-Neural`** (similitud galería WIN), **`-Ilustrate`** (PNG anotado 2M5 + entrada óptima), **`-Entry <precio>`** (fill CLI → Entry usuario; Entrada óptima sigue del sistema). Solo High (`analyze-*-high.ps1`); history no lo cablea.
 
 ## Estructura
 
@@ -54,9 +54,15 @@ cd "D:\Danilo\Trading\Cursor Trading"
 
 # US30 High (recomendado)
 .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+
+# High con Entry usuario (fill real; PS → Python --entry)
+.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Entry 97450.5
+.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse -ML -Neural -Ilustrate -Entry 53128
 ```
 
 Cambia `-Bearish`/`-Bullish` y `-Break`/`-Reverse` según tu plan. Preferí siempre `scripts\analyze\...`; los stubs raíz solo cubren High.
+
+**`-Entry`:** precio de fill (`53312`, `53312.0`, o miles europeos p. ej. `53.12.800` → 53128). El reporte separa **Entry usuario** (CLI) de **Entrada óptima** (sistema). Análisis past ignora M5 antes del toque del fill; SL/TP del plan usuario salen de estructura post-entry. Si el veredicto es ESPERAR, Categories muestra **Si entraste** + Contingencias.
 
 Guía completa (Light / Full / Super High, Categories, reglas de sesión): [how_to_use.txt](how_to_use.txt).
 

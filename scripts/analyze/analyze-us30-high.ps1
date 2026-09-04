@@ -15,6 +15,8 @@
 
 #   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
 
+#   .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse -ML -Neural -Ilustrate -Advanced -Entry 53128
+
 #
 
 # Bias (mutuamente excluyente): -Bullish | -Bearish  ->  --bias bullish|bearish|neutral
@@ -26,6 +28,8 @@
 #   reverse = E2 turtle soup / reversal (operable con 2 velas + winrate)
 
 # -Ilustrate / -Illustrate: PNG anotado 2M5+OPTI (aunque -NoChart)
+
+# -Entry: fill usuario (Entry usuario); Entrada óptima sigue siendo sistema
 
 
 
@@ -52,7 +56,9 @@ param(
 
     [switch]$HistoryReview,
 
-    [string]$Ticker = ""
+    [string]$Ticker = "",
+
+    [string]$Entry = ""
 
 )
 
@@ -96,6 +102,8 @@ if ($Ilustrate) { $argsList += "--ilustrate" }
 
 if ($HistoryReview) { $argsList += "--history-review" }
 
+if ($Entry) { $argsList += @("--entry", $Entry) }
+
 # Advanced: explicit flag, or auto when ML + Neural both set
 $useAdvanced = $Advanced -or ($ML -and $Neural)
 if ($useAdvanced) { $argsList += "--advanced" }
@@ -132,7 +140,8 @@ $modeLabel = if ($modeHint.Count -gt 0) { " [" + ($modeHint -join " + ") + "]" }
 
 $advLabel = if ($useAdvanced) { " [ADVANCED]" } else { "" }
 $histLabel = if ($HistoryReview) { " [HISTORY-REVIEW]" } else { "" }
-Write-Host ">> US30 M5 HIGH$modeLabel$advLabel$histLabel - CRT + Turtle Soup..." -ForegroundColor Magenta
+$entryLabel = if ($Entry) { " [ENTRY $Entry]" } else { "" }
+Write-Host ">> US30 M5 HIGH$modeLabel$advLabel$histLabel$entryLabel - CRT + Turtle Soup..." -ForegroundColor Magenta
 
 python @argsList
 

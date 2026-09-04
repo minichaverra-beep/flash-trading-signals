@@ -102,6 +102,7 @@ def create_annotated_entry_chart(
     ztype = opt.get("ztype") or data.get("zone", {}).get("type", "zona")
     zone_lo, zone_hi = _zone_edges(opt)
     entry, sl, tp = opt.get("entry"), opt.get("sl"), opt.get("tp")
+    user_entry = opt.get("user_entry")
 
     fig, ax = plt.subplots(figsize=(12, 5.5), facecolor="#1e1e1e")
     ax.set_facecolor("#1e1e1e")
@@ -148,12 +149,39 @@ def create_annotated_entry_chart(
     if entry is not None:
         ax.axhline(entry, color="#4fc1ff", linewidth=1, linestyle="--", alpha=0.85)
         ax.text(2, entry + off, f"Entrada OPTI ~{entry:{fmt}}", color="#4fc1ff", fontsize=9, va="bottom")
+    if user_entry is not None:
+        # Distinct color/label when user fill differs from system optimal
+        same = entry is not None and abs(float(user_entry) - float(entry)) < 10 ** (-dec)
+        if not same:
+            ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
+            ax.text(
+                2, float(user_entry) - off,
+                f"Entry usuario ~{user_entry:{fmt}}",
+                color="#dcdcaa", fontsize=9, va="top",
+            )
+        elif entry is None:
+            ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
+            ax.text(
+                2, float(user_entry) + off,
+                f"Entry usuario ~{user_entry:{fmt}}",
+                color="#dcdcaa", fontsize=9, va="bottom",
+            )
     if sl is not None:
+        sl_tag = "past" if opt.get("sl_tp_source") == "past" else ("1:2" if opt.get("sl_tp_source") == "fallback" else "")
+        who = " usuario" if user_entry is not None else ""
+        sl_lbl = f"SL{who} {sl_tag} ~{sl:{fmt}}" if sl_tag else f"SL{who} ~{sl:{fmt}}"
         ax.axhline(sl, color="#f44747", linewidth=1, linestyle="--", alpha=0.85)
-        ax.text(2, sl + off, f"SL ~{sl:{fmt}}", color="#f44747", fontsize=9, va="bottom")
+        ax.text(2, sl + off, sl_lbl, color="#f44747", fontsize=9, va="bottom")
     if tp is not None:
+        if opt.get("sl_tp_source") == "past":
+            tp_tag = "past" if opt.get("tp_source") == "past_structure" else "1:2 past"
+        elif opt.get("sl_tp_source") == "fallback":
+            tp_tag = "1:2"
+        else:
+            tp_tag = "1:2"
+        who = " usuario" if user_entry is not None else ""
         ax.axhline(tp, color="#6a9955", linewidth=1, linestyle="--", alpha=0.85)
-        ax.text(2, tp - off, f"TP 1:2 ~{tp:{fmt}}", color="#6a9955", fontsize=9, va="top")
+        ax.text(2, tp - off, f"TP{who} {tp_tag} ~{tp:{fmt}}", color="#6a9955", fontsize=9, va="top")
 
     callout = _callout_text(opt)
     last = show[-1]

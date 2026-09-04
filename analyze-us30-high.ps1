@@ -10,7 +10,9 @@ param(
     [switch]$Advanced,
     [Alias("Illustrate")]
     [switch]$Ilustrate,
-    [string]$Ticker = ""
+    [switch]$HistoryReview,
+    [string]$Ticker = "",
+    [string]$Entry = ""
 )
 
 $ErrorActionPreference = "Stop"

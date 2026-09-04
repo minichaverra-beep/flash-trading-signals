@@ -15,6 +15,8 @@
 
 #   .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
 
+#   .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Advanced -Entry 97450.5
+
 #
 
 # Bias (mutuamente excluyente): -Bullish | -Bearish  ->  --bias bullish|bearish|neutral
@@ -26,6 +28,8 @@
 #   reverse = E2 turtle soup / reversal watchlist
 
 # -Ilustrate / -Illustrate: PNG anotado 2M5+OPTI (aunque -NoChart)
+
+# -Entry: fill usuario (Entry usuario); Entrada óptima sigue siendo sistema
 
 
 
@@ -52,7 +56,9 @@ param(
 
     [switch]$HistoryReview,
 
-    [string]$Symbol = "BTCUSDT"
+    [string]$Symbol = "BTCUSDT",
+
+    [string]$Entry = ""
 
 )
 
@@ -94,6 +100,8 @@ if ($Ilustrate) { $argsList += "--ilustrate" }
 
 if ($HistoryReview) { $argsList += "--history-review" }
 
+if ($Entry) { $argsList += @("--entry", $Entry) }
+
 # Advanced: explicit flag, or auto when ML + Neural both set
 $useAdvanced = $Advanced -or ($ML -and $Neural)
 if ($useAdvanced) { $argsList += "--advanced" }
@@ -130,7 +138,8 @@ $modeLabel = if ($modeHint.Count -gt 0) { " [" + ($modeHint -join " + ") + "]" }
 
 $advLabel = if ($useAdvanced) { " [ADVANCED]" } else { "" }
 $histLabel = if ($HistoryReview) { " [HISTORY-REVIEW]" } else { "" }
-Write-Host ">> BTC M5 HIGH ($Symbol)$modeLabel$advLabel$histLabel - CRT + Turtle Soup..." -ForegroundColor Magenta
+$entryLabel = if ($Entry) { " [ENTRY $Entry]" } else { "" }
+Write-Host ">> BTC M5 HIGH ($Symbol)$modeLabel$advLabel$histLabel$entryLabel - CRT + Turtle Soup..." -ForegroundColor Magenta
 
 python @argsList
 
@@ -153,4 +162,3 @@ if ($useAdvanced) {
 } else {
     Write-Host '  @live/btc_m5_high_signal.md @docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md analisis E1 CRT' -ForegroundColor Yellow
 }
-

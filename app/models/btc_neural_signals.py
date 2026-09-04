@@ -53,13 +53,43 @@ def prob_to_grade(prob_win: float) -> str:
     return "C"
 
 
-def prob_to_confidence(prob_win: float) -> str:
+def prob_to_confidence(prob_win: float, model_confidence: float | None = None) -> str:
+    """Confidence from distance to 0.5, tightened by raw model softmax conf."""
     margin = abs(prob_win - 0.5)
     if margin >= 0.30:
-        return "high"
-    if margin >= 0.15:
+        base = "high"
+    elif margin >= 0.15:
+        base = "medium"
+    else:
+        base = "low"
+    if model_confidence is None:
+        return base
+    # Softmax conf <0.60 → never "high"; <0.55 → force "low"
+    mc = float(model_confidence)
+    if mc < 0.55:
+        return "low"
+    if mc < 0.60 and base == "high":
         return "medium"
-    return "low"
+    return base
+
+
+def neural_gate_factor(confidence: str | None, grade: str | None) -> float:
+    """0–1 multiplier for High fusion / Confluencia (low conf / grade C → down-weight)."""
+    conf = (confidence or "medium").lower()
+    conf_mult = {"high": 1.0, "medium": 0.65, "low": 0.35}.get(conf, 0.50)
+    grade_u = (grade or "B").upper()
+    if grade_u == "C":
+        conf_mult *= 0.50
+    elif grade_u == "A+":
+        conf_mult = min(1.0, conf_mult * 1.05)
+    return round(max(0.15, min(1.0, conf_mult)), 4)
+
+
+def gated_prob_toward_neutral(prob: float, factor: float) -> float:
+    """Shrink probability toward 0.5 when factor < 1 (low-conf Neural no inflate ENTRAR)."""
+    p = float(prob)
+    f = float(factor)
+    return round(0.5 + (p - 0.5) * f, 4)
 
 
 def predict_chart_similarity(chart_path: Path) -> dict[str, Any]:
@@ -95,15 +125,21 @@ def predict_chart_similarity(chart_path: Path) -> dict[str, Any]:
 
     prob_win = round(float(prob_win), 4)
     prob_loss = round(float(prob_loss), 4)
+    grade = prob_to_grade(prob_win)
+    confidence = prob_to_confidence(prob_win, model_confidence=float(conf))
+    gate = neural_gate_factor(confidence, grade)
+    effective = gated_prob_toward_neutral(prob_win, gate)
 
     return {
         "prob_win": prob_win,
         "prob_loss": prob_loss,
-        "grade": prob_to_grade(prob_win),
-        "confidence": prob_to_confidence(prob_win),
-        "gallery_aligned": prob_win >= 0.70,
+        "grade": grade,
+        "confidence": confidence,
+        "gallery_aligned": prob_win >= 0.70 and confidence != "low",
         "predicted_label": pred_label,
         "model_confidence": round(float(conf), 4),
+        "gate_factor": gate,
+        "effective_prob_win": effective,
     }
 
 
@@ -124,5 +160,7 @@ def augment_categories_neural(categories: dict, chart_path: Path | None) -> dict
     out["neural_grade"] = pred["grade"]
     out["neural_confidence"] = pred["confidence"]
     out["neural_gallery_aligned"] = pred["gallery_aligned"]
+    out["neural_gate_factor"] = pred["gate_factor"]
+    out["neural_effective_prob_win"] = pred["effective_prob_win"]
     out["neural_source"] = "desktop_vision_model.pt"
     return out

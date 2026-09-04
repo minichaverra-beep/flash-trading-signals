@@ -41,6 +41,8 @@ python "training neuronal/analyze_desktop_ops.py"
 
 **Orden sugerido:** reglas E1 → galería desktop → ML tabular live → ML visión (si hay captura nueva).
 
+**Fusión High (pesos + gating):** ver `docs/strategy/DEEP_LEARNING_SIGNALS.md`.
+
 ---
 
 ## Fuente de etiquetas
