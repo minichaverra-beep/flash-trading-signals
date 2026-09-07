@@ -1617,6 +1617,8 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
         lines.append(f"| Precio | **{categories['precio']}** |")
     if "entrada_optima" in categories:
         lines.append(f"| Entrada óptima | **{categories['entrada_optima']}** |")
+    if categories.get("ict_scan"):
+        lines.append(f"| ICT scan | {categories['ict_scan']} |")
     if categories.get("entry_usuario"):
         lines.append(f"| Entry usuario | **{categories['entry_usuario']}** |")
     # Reflexión: última Entry del mismo par + calificación (High)

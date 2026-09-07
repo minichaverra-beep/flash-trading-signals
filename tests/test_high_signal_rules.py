@@ -292,6 +292,76 @@ class TestComputeOptimalEntry:
         reward_l = abs(opt_l["tp"] - opt_l["entry"])
         assert abs(reward_l / risk_l - 2.0) < 1e-9
 
+    def test_ahora_esperar_when_confirm_not_in_zone(self):
+        """2M5 color OK pero cierres fuera de zona → AHORA ESPERAR (alinea checklist)."""
+        data = make_data(
+            price=53440.0,
+            direction="LONG",
+            zone_level=53442.0,
+            zone_type="resistencia_debil",
+            dist_pct=0.01,
+            confirm_long=True,
+            m5=[_green(53530), _green(53540)],
+        )
+        opt = compute_optimal_entry(data, "LONG", make_crt("DISCOUNT"), data["zone"])
+        assert "ESPERAR" in opt["ahora_action"]
+
+
+class TestIctEntryRefinement:
+    """ICT scan refina entrada óptima sin romper plan 1:2."""
+
+    def test_long_ict_avoids_chase_above_price(self):
+        mid = 53348.0
+        sweep = 53380.0
+        m5 = [
+            _c(53400, 53410, 53370, 53390),
+            _c(53390, 53405, 53375, 53400),
+            _c(53400, 53435, 53395, 53430),
+            _c(53430, 53450, 53425, 53440),
+        ]
+        crt = make_crt("DISCOUNT", "NEUTRAL")
+        crt["midpoint"] = mid
+        crt["h1_state"] = "PENDING_BULL"
+        data = make_data(
+            price=53440.0,
+            direction="LONG",
+            zone_level=53442.0,
+            zone_type="resistencia_debil",
+            dist_pct=0.004,
+            confirm_long=True,
+            m5=m5,
+        )
+        data["swing_lows"] = [sweep]
+        data["pdl"] = sweep
+        opt = compute_optimal_entry(data, "LONG", crt, data["zone"])
+        assert opt["valid"] is True
+        assert opt.get("ict_scan") is not None
+        assert opt["entry"] <= data["price"]
+        if opt.get("entry_before_ict") is not None:
+            assert opt["entry"] <= opt["entry_before_ict"]
+
+    def test_ict_scan_md_and_categories_cell(self):
+        from app.services.ict_entry_scan import format_ict_scan_cell, format_ict_scan_md
+
+        data = make_data(
+            price=53440.0,
+            direction="LONG",
+            zone_level=53442.0,
+            zone_type="resistencia_debil",
+            dist_pct=0.004,
+            confirm_long=True,
+        )
+        crt = make_crt("DISCOUNT", "NEUTRAL")
+        crt["midpoint"] = 53348.0
+        opt = compute_optimal_entry(data, "LONG", crt, data["zone"])
+        cell = format_ict_scan_cell(opt)
+        assert cell is not None
+        md = "\n".join(format_ict_scan_md(opt, data))
+        assert "## ICT scan (entrada)" in md
+        cats = {"entrada_optima": "53400.0", "ict_scan": cell}
+        aug = "\n".join(format_augmented_categories_md(cats))
+        assert "| ICT scan |" in aug
+
 
 # ---------------------------------------------------------------------------
 # 2b. CLI --entry / -Entry parse + override

@@ -1616,6 +1616,8 @@ def _compute_optimal_entry_core(
             "plan_b": "Re-scan light en 30 min si no hay retest",
         }
 
+    in_zone_2 = _candles_in_zone(data.get("m5", []), zone)
+
     if direction == "SHORT":
         zone_lo = level * (1 - 0.0015)
         zone_hi = level
@@ -1645,10 +1647,10 @@ def _compute_optimal_entry_core(
         )
         opti_2m5 = f"Nuevas 2 {color_word} en zona tras retest (no las actuales lejos)"
 
-    if near and confirm:
+    if near and confirm and in_zone_2:
         ahora_action = f"ENTRAR {direction}"
         opti_action = f"ENTRAR {direction} (condiciones actuales OK)"
-    elif confirm and not near:
+    elif confirm and (not near or not in_zone_2):
         ahora_action = f"ESPERAR {direction}"
         opti_action = f"ENTRAR {direction}"
     else:
@@ -1710,13 +1712,17 @@ def compute_optimal_entry(
         orig_touch = find_m5_index_at_user_entry(m5_full, user_entry) if m5_full else None
         filtered = data_with_m5_from_entry(data, user_entry)
         opt = _compute_optimal_entry_core(filtered, direction, zone)
+        from app.services.ict_entry_scan import refine_entry_with_ict
+        opt = refine_entry_with_ict(opt, filtered, direction, crt, zone)
         out = _apply_entry_override(opt, user_entry, direction, zone, filtered)
         out["m5_entry_touch_index"] = orig_touch
         out["m5_from_entry_len"] = len(filtered.get("m5") or [])
         out["m5_pre_entry_ignored"] = True
         return out
 
-    return _compute_optimal_entry_core(data, direction, zone)
+    opt = _compute_optimal_entry_core(data, direction, zone)
+    from app.services.ict_entry_scan import refine_entry_with_ict
+    return refine_entry_with_ict(opt, data, direction, crt, zone)
 
 
 def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) -> list[str]:
@@ -1797,6 +1803,8 @@ def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) ->
             ]
     else:
         lines.append("| Entry / SL / TP | Definir zona S/R válida primero |")
+    if opt.get("ict_note"):
+        lines.append(f"| ICT nota | {opt['ict_note']} |")
     lines += ["", "---", ""]
     if data.get("ilustrate"):
         from app.views.illustrate_high_entry import format_illustration_md
@@ -2012,6 +2020,8 @@ def format_high_signal_extras(data: dict, ctx: dict, crt: dict) -> list[str]:
     opt = compute_optimal_entry(data, direction, crt, data["zone"])
     lines: list[str] = ["", "---", ""]
     lines += format_optimal_entry_md(opt, data, direction, crt)
+    from app.services.ict_entry_scan import format_ict_scan_md
+    lines += format_ict_scan_md(opt, data)
     lines += format_2m5_valid_invalid(data, direction)
     lines += format_2m5_checklist(data, direction, data["session"], crt)
     segunda = ctx.get("categories", {}).get("segunda_indicacion")
@@ -2117,6 +2127,12 @@ def write_high_signal(
         cats.pop("entry_usuario", None)
     else:
         cats["entrada_optima"] = format_entrada_optima_cell(opt, data)
+        from app.services.ict_entry_scan import format_ict_scan_cell
+        ict_cell = format_ict_scan_cell(opt)
+        if ict_cell:
+            cats["ict_scan"] = ict_cell
+        else:
+            cats.pop("ict_scan", None)
         user_cell = format_entry_usuario_cell(opt, data)
         if user_cell:
             cats["entry_usuario"] = user_cell

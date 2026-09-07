@@ -625,6 +625,7 @@ def main() -> int:
                            chart_path=chart_for_neural)
     if args.mode in ("high", "all"):
         from app.services.btc_high_analysis import build_high_context, write_high_signal
+        from app.views.btc_e1_report import build_report_context as _build_report_context
         high_data = build_high_context(
             data, m5, h1, last_n_candle_summary,
             bias_mode=args.bias, setup_mode=args.setup,
@@ -675,16 +676,39 @@ def main() -> int:
                 print(f"WARN chart overlays: {e}")
         # Auto-advanced when ML+Neural (PS1 also passes --advanced; keep Python consistent)
         use_advanced = bool(args.advanced) or (use_ml and use_neural)
+        high_ctx = _build_report_context(
+            high_data,
+            crt=high_data.get("crt"),
+            div=high_data.get("divergence"),
+            dmi=high_data.get("dmi"),
+            e2=high_data.get("e2"),
+            gallery_patterns=high_data.get("gallery_patterns"),
+        )
         write_high_signal(
             high, high_data, verdict_to_signal,
             use_ml=use_ml or use_neural,
             advanced=use_advanced,
         )
+    else:
+        high_ctx = None
 
     sig_label = verdict_to_signal(data["setup"])
+    if high_ctx is not None:
+        sig_label = high_ctx["verdict"]
     print("=" * 56)
     print(f"BTC {args.symbol}  {price:.2f}  |  Bias H1: {bias}  |  {session['window']}")
-    print(f"Bando: {data.get('mode_bias', 'auto').upper()} | Senal: {sig_label}  ({data['setup']['direction']})  |  Auto: {data['setup']['verdict']}")
+    if high_ctx is not None:
+        print(
+            f"Bando: {data.get('mode_bias', 'auto').upper()} | "
+            f"Veredicto: {sig_label}  ({data['setup']['direction']})  |  "
+            f"Auto setup: {data['setup']['verdict']}"
+        )
+    else:
+        print(
+            f"Bando: {data.get('mode_bias', 'auto').upper()} | "
+            f"Senal: {sig_label}  ({data['setup']['direction']})  |  "
+            f"Auto: {data['setup']['verdict']}"
+        )
     if args.mode in ("full", "both", "all"):
         print(f"Snapshot: {snap}")
     if args.mode in ("light", "both", "all"):
