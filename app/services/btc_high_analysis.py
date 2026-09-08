@@ -305,14 +305,13 @@ def _pdh_pdl_distances(price: float, pdh: float | None, pdl: float | None) -> di
 
 
 def _ml_bucket_note(ml_prob: float) -> str:
-    pct = ml_prob * 100
-    if pct < 45:
+    if ml_prob < 0.45:
         return "NO_OPERAR — WR real 24.8% (bucket <45%)"
-    if pct < 55:
+    if ml_prob < 0.55:
         return "ESPERAR — zona gris WR 60.9% (45–55%)"
-    if pct < 65:
+    if ml_prob < 0.65:
         return "NO_OPERAR — anomalía WR 21.1% (55–65%)"
-    if pct < 75:
+    if ml_prob < 0.75:
         return "Confluencia positiva si Rules ≥70% (65–75%, WR 75%)"
     return "A+ si Rules ≥70% + extendidas ≥70% (>75%, WR 83.3%)"
 
@@ -365,7 +364,7 @@ def _pattern_tags(pattern: str) -> str:
 
 def _extract_btc_filename(pattern: str) -> str | None:
     import re
-    m = re.search(r"BTC[-\d]+[-\d]+[-\d]+", pattern.upper())
+    m = re.search(r"BTC-\d+-\d+-\d+", pattern.upper())
     if m:
         return m.group(0) + ".png"
     return None

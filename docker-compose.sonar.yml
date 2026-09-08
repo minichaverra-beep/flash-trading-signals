@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.sonar.yml up -d
 #   # Wait ~1–2 min, then open http://localhost:9000
 #   # Default login: admin / admin (change on first login)
-#   # Create project key: flash-trading-signals → generate token → set $env:SONAR_TOKEN
+#   # Create project key: minichaverra-beep_flash-trading-signals → generate token → set $env:SONAR_TOKEN
 #   .\scripts\analyze\run-sonar-local.ps1
 #
 # Stop:

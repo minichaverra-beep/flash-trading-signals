@@ -139,4 +139,4 @@ if ($scanExit -ne 0) {
 
 Write-Host ""
 Write-Host "Analisis enviado. Revisa el proyecto en: $HostUrl" -ForegroundColor Green
-Write-Host "Project key: flash-trading-signals (ver sonar-project.properties)"
+Write-Host "Project key: minichaverra-beep_flash-trading-signals (ver sonar-project.properties)"

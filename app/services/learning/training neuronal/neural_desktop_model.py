@@ -26,6 +26,7 @@ CONTEXT_MD = (
 )
 LABELS_CSV = TRAINING_DIR / "data" / "desktop_labels.csv"
 MODEL_PATH = TRAINING_DIR / "models" / "desktop_vision_model.pt"
+MODEL_META_PATH = MODEL_PATH.with_suffix(".json")
 IMAGE_CACHE = TRAINING_DIR / "data" / "desktop_image_list.json"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -333,10 +334,13 @@ def load_model_artifact():
     if not MODEL_PATH.is_file():
         return None, None
     try:
+        import json
         import torch
-        ckpt = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
-        if isinstance(ckpt, dict) and "state_dict" in ckpt:
-            return "torch", ckpt
+
+        if MODEL_META_PATH.is_file():
+            state_dict = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
+            meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
+            return "torch", {"state_dict": state_dict, **meta}
     except Exception:
         pass
     from joblib import load
@@ -348,13 +352,18 @@ def model_available() -> bool:
 
 
 def load_torch_model(device=None):
+    import json
     import torch
 
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if not MODEL_PATH.is_file():
-        raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
-    checkpoint = torch.load(MODEL_PATH, map_location=device, weights_only=False)
+    if not MODEL_PATH.is_file() or not MODEL_META_PATH.is_file():
+        raise FileNotFoundError(
+            f"Model not found: {MODEL_PATH} (expected metadata at {MODEL_META_PATH})"
+        )
+    state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=True)
+    checkpoint = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
+    checkpoint["state_dict"] = state_dict
     arch = checkpoint.get("architecture", "resnet18")
     model = build_cnn_model(arch, num_classes=len(CLASS_NAMES), pretrained=False)
     model.load_state_dict(checkpoint["state_dict"])

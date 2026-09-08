@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -22,6 +21,7 @@ from neural_desktop_model import (
     BASE,
     CLASS_NAMES,
     DESKTOP_DIR,
+    MODEL_META_PATH,
     MODEL_PATH,
     TRAINING_DIR,
     build_cnn_model,
@@ -94,20 +94,21 @@ def write_training_report(
 
 
 def split_train_val(items, val_ratio: float = 0.2, seed: int = 42):
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     by_class: dict[str, list] = {c: [] for c in CLASS_NAMES}
     for it in items:
         by_class[it.label].append(it)
     train, val = [], []
     for c in CLASS_NAMES:
-        pool = by_class[c][:]
-        rng.shuffle(pool)
+        pool = list(by_class[c])
+        order = rng.permutation(len(pool))
+        pool = [pool[i] for i in order]
         n_val = max(1, int(len(pool) * val_ratio)) if len(pool) >= 3 else (1 if len(pool) > 1 else 0)
         val.extend(pool[:n_val])
         train.extend(pool[n_val:])
-    rng.shuffle(train)
-    rng.shuffle(val)
-    return train, val
+    train_order = rng.permutation(len(train))
+    val_order = rng.permutation(len(val))
+    return [train[i] for i in train_order], [val[i] for i in val_order]
 
 
 def train_torch(args) -> dict:
@@ -123,8 +124,9 @@ def train_torch(args) -> dict:
     train_items = labeled_for_training(all_items)
 
     if args.quick and len(train_items) > 24:
-        rng = random.Random(42)
-        train_items = rng.sample(train_items, 24)
+        rng = np.random.default_rng(42)
+        pick = rng.choice(len(train_items), size=24, replace=False)
+        train_items = [train_items[i] for i in pick]
 
     if len(train_items) < 4:
         raise RuntimeError(
@@ -200,18 +202,16 @@ def train_torch(args) -> dict:
     }
 
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {
-            "state_dict": model.state_dict(),
-            "architecture": args.architecture,
-            "class_names": list(CLASS_NAMES),
-            "image_size": image_size,
-            "mode": "torch",
-            "metrics": metrics,
-            "trained_at": datetime.now(timezone.utc).isoformat(),
-        },
-        MODEL_PATH,
-    )
+    meta = {
+        "architecture": args.architecture,
+        "class_names": list(CLASS_NAMES),
+        "image_size": image_size,
+        "mode": "torch",
+        "metrics": metrics,
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+    }
+    torch.save(model.state_dict(), MODEL_PATH)
+    MODEL_META_PATH.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     return {
         "mode": f"torch/{args.architecture}",
@@ -231,7 +231,9 @@ def train_simple(args) -> dict:
     train_items = labeled_for_training(all_items)
 
     if args.quick and len(train_items) > 30:
-        train_items = random.Random(42).sample(train_items, 30)
+        rng = np.random.default_rng(42)
+        pick = rng.choice(len(train_items), size=30, replace=False)
+        train_items = [train_items[i] for i in pick]
 
     if len(train_items) < 4:
         raise RuntimeError(f"Solo {len(train_items)} imágenes etiquetadas para entrenar.")

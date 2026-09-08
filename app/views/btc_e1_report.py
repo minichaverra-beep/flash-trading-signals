@@ -272,14 +272,9 @@ def format_checklist_e1(rules_items: list[tuple[str, bool, str]], tier: str) -> 
     if tier == TIER_LIGHT:
         return []
     lines = ["### Checklist E1", ""]
-    if tier == TIER_FULL:
-        lines += ["| Regla | OK | Nota |", "|-------|----|------|"]
-        for label, passed, note in rules_items:
-            lines.append(f"| {label} | {'✅' if passed else '❌'} | {label_rule_note(note)} |")
-    else:
-        lines += ["| Regla | OK | Nota |", "|-------|----|------|"]
-        for label, passed, note in rules_items:
-            lines.append(f"| {label} | {'✅' if passed else '❌'} | {label_rule_note(note)} |")
+    lines += ["| Regla | OK | Nota |", "|-------|----|------|"]
+    for label, passed, note in rules_items:
+        lines.append(f"| {label} | {'✅' if passed else '❌'} | {label_rule_note(note)} |")
     lines.append("")
     return lines
 

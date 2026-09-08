@@ -170,7 +170,7 @@ sonar-scanner.bat `
 
 
 
-Proyecto: clave `flash-trading-signals` (ver `sonar-project.properties`). Créalo en la UI de SonarQube si aún no existe.
+Proyecto: clave `minichaverra-beep_flash-trading-signals` (ver `sonar-project.properties`). Créalo en la UI de SonarQube si aún no existe.
 
 
 
@@ -218,9 +218,9 @@ El job de GitHub Actions **falla de forma explícita** si falta `SONAR_TOKEN`. P
 
    - Organization key: `minichaverra-beep`
 
-   - Project key: `flash-trading-signals`
+   - Project key: `minichaverra-beep_flash-trading-signals`
 
-   Si SonarCloud te asignó otra key (p. ej. `minichaverra-beep_flash-trading-signals`), actualiza `sonar.projectKey` en el repo para que coincida.
+   URL del proyecto: https://sonarcloud.io/summary/overall?id=minichaverra-beep_flash-trading-signals&branch=main
 
 3. Genera un token: SonarCloud → **My Account → Security → Generate Tokens** (tipo Analysis o Global Analysis).
 
@@ -280,7 +280,7 @@ Tras crear el proyecto, `.sonarlint/connectedMode.json`:
 
   "sonarCloudOrganization": "minichaverra-beep",
 
-  "projectKey": "flash-trading-signals"
+  "projectKey": "minichaverra-beep_flash-trading-signals"
 
 }
 

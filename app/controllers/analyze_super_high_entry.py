@@ -110,8 +110,7 @@ def main() -> int:
         bias_mode=args.bias,
     )
 
-    out_path = Path(args.output)
-    write_super_high_signal(out_path, result)
+    write_super_high_signal(Path(args.output), result)
 
     prob = result["combined_prob"] * 100
     print("=" * 56)

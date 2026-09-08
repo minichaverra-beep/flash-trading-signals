@@ -19,8 +19,23 @@ CAPTURE_NAMES = [
 CAPTURES_DIR = OUT_DIR / "super_high_captures"
 NOTES_PATH = OUT_DIR / "super_high_entry.md"
 DEFAULT_OUTPUT = OUT_DIR / "btc_super_high_signal.md"
+ALLOWED_OUTPUT_DIR = OUT_DIR
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def resolve_signal_output_path(path: Path, *, base: Path = ALLOWED_OUTPUT_DIR) -> Path:
+    """Resolve CLI output under live/ to block path traversal (Sonar taint)."""
+    candidate = path if path.is_absolute() else (BASE / path)
+    resolved = candidate.resolve()
+    base_resolved = base.resolve()
+    try:
+        resolved.relative_to(base_resolved)
+    except ValueError as exc:
+        raise ValueError(
+            f"Output path must stay under {base_resolved}; got {resolved}"
+        ) from exc
+    return resolved
 
 WEIGHT_NEURAL = 0.50
 WEIGHT_ML = 0.30
@@ -474,6 +489,7 @@ def analyze_entry_capture(
 
 def write_super_high_signal(path: Path, result: dict[str, Any]) -> None:
     """Write live/btc_super_high_signal.md from analysis result."""
+    path = resolve_signal_output_path(path)
     prob_pct = result["combined_prob"] * 100
     neural_pct = (
         f"{result['neural']['prob_win'] * 100:.0f}%"
