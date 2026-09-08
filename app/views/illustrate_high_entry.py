@@ -7,6 +7,9 @@ import tempfile
 import time
 from pathlib import Path
 
+CHART_DPI = 200
+CHART_DPI_PLACEHOLDER = 120
+
 
 def savefig_png(
     fig,
@@ -103,6 +106,7 @@ def write_entry_overlay_charts(
     asset: str = "BTC",
     main_chart_path: Path | str | None = None,
     annotated_path: Path | str | None = None,
+    dpi: int | None = None,
 ) -> dict:
     """
     Write OPTI/SL/TP/S-R overlays onto the default High chart and/or the -Ilustrate PNG.
@@ -111,11 +115,16 @@ def write_entry_overlay_charts(
     - annotated_path: live/*_m5_chart_annotated.png (when -Ilustrate)
     """
     out: dict = {}
+    chart_dpi = dpi if dpi is not None else CHART_DPI
     if main_chart_path is not None:
-        p = create_annotated_entry_chart(data, optimal_entry, main_chart_path, asset=asset)
+        p = create_annotated_entry_chart(
+            data, optimal_entry, main_chart_path, asset=asset, dpi=chart_dpi,
+        )
         out["main_chart"] = str(p.resolve())
     if annotated_path is not None:
-        p = create_annotated_entry_chart(data, optimal_entry, annotated_path, asset=asset)
+        p = create_annotated_entry_chart(
+            data, optimal_entry, annotated_path, asset=asset, dpi=chart_dpi,
+        )
         out["annotated_chart"] = str(p.resolve())
         out["annotated_file"] = Path(annotated_path).name
     return out
@@ -126,6 +135,8 @@ def create_annotated_entry_chart(
     optimal_entry: dict,
     out_path: Path | str,
     asset: str = "BTC",
+    *,
+    dpi: int = CHART_DPI,
 ) -> Path:
     """
     Draw M5 candles with last-2 highlight, S/R zone, Entry/SL/TP and ESPERAR/ENTRAR callout.
@@ -150,7 +161,7 @@ def create_annotated_entry_chart(
             fig, ax = plt.subplots(figsize=(8, 3), facecolor="#1e1e1e")
             ax.set_facecolor("#1e1e1e")
             ax.set_title(f"{asset} M5 — sin velas para ilustrar", color="#569cd6")
-            return savefig_png(fig, out, dpi=100, facecolor="#1e1e1e")
+            return savefig_png(fig, out, dpi=CHART_DPI_PLACEHOLDER, facecolor="#1e1e1e")
 
         show = m5[-60:]
         n = len(show)
@@ -163,13 +174,19 @@ def create_annotated_entry_chart(
         zone_lo, zone_hi = _zone_edges(opt)
         entry, sl, tp = opt.get("entry"), opt.get("sl"), opt.get("tp")
         user_entry = opt.get("user_entry")
+        scalp_entries = opt.get("scalp_entries") or []
 
-        fig, ax = plt.subplots(figsize=(12, 5.5), facecolor="#1e1e1e")
+        fig_w = 14 if dpi >= 180 else 12
+        fig_h = 6.5 if dpi >= 180 else 5.5
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h), facecolor="#1e1e1e")
         ax.set_facecolor("#1e1e1e")
+        lw_candle = 1.0 if dpi >= 180 else 0.8
+        lw_zone = 2.0 if dpi >= 180 else 1.5
+        fs_label = 10 if dpi >= 180 else 9
 
         for i, c in enumerate(show):
             color = "#4ec9b0" if c["close"] >= c["open"] else "#f48771"
-            ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.8)
+            ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=lw_candle)
             bottom = min(c["open"], c["close"])
             height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.01
             ax.add_patch(Rectangle((i - 0.3, bottom), 0.6, height, facecolor=color, edgecolor=color))
@@ -196,19 +213,28 @@ def create_annotated_entry_chart(
         off = yrange * 0.025
 
         if level is not None:
-            ax.axhline(level, color="#c586c0", linewidth=1.5, linestyle="-", alpha=0.9)
+            ax.axhline(level, color="#c586c0", linewidth=lw_zone, linestyle="-", alpha=0.9)
             ax.text(
                 n - 0.5, level + off,
                 f"{ztype} {level:{fmt}}",
-                color="#c586c0", fontsize=9, va="bottom", fontweight="bold",
+                color="#c586c0", fontsize=fs_label, va="bottom", fontweight="bold",
             )
         if zone_lo is not None and level is not None and abs(zone_lo - level) > 1e-9:
             edge = zone_lo if direction == "SHORT" else zone_hi
             if edge is not None:
                 ax.axhline(edge, color="#c586c0", linewidth=1, linestyle=":", alpha=0.7)
         if entry is not None:
-            ax.axhline(entry, color="#4fc1ff", linewidth=1, linestyle="--", alpha=0.85)
-            ax.text(2, entry + off, f"Entrada OPTI ~{entry:{fmt}}", color="#4fc1ff", fontsize=9, va="bottom")
+            ax.axhline(entry, color="#4fc1ff", linewidth=1.2, linestyle="--", alpha=0.9)
+            ax.text(2, entry + off, f"Entrada OPTI ~{entry:{fmt}}", color="#4fc1ff", fontsize=fs_label, va="bottom")
+        for idx, (sc_e, sc_src) in enumerate(scalp_entries[:3]):
+            if entry is not None and abs(float(sc_e) - float(entry)) < 10 ** (-dec):
+                continue
+            ax.axhline(sc_e, color="#9cdcfe", linewidth=0.9, linestyle=":", alpha=0.75)
+            ax.text(
+                4 + idx * 2.5, float(sc_e) + off * (idx + 1),
+                f"Scalp {idx + 1} ~{float(sc_e):{fmt}}",
+                color="#9cdcfe", fontsize=fs_label - 1, va="bottom",
+            )
         if user_entry is not None:
             # Distinct color/label when user fill differs from system optimal
             same = entry is not None and abs(float(user_entry) - float(entry)) < 10 ** (-dec)
@@ -284,7 +310,7 @@ def create_annotated_entry_chart(
             spine.set_color("#3e3e42")
         ax.set_ylabel(asset, color="#e0e0e0")
         fig.tight_layout()
-        return savefig_png(fig, out, dpi=140, facecolor="#1e1e1e")
+        return savefig_png(fig, out, dpi=dpi, facecolor="#1e1e1e")
     finally:
         if fig is not None:
             plt.close(fig)

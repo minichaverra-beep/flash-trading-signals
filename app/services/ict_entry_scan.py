@@ -285,6 +285,35 @@ def _collect_entry_candidates(
     return cands
 
 
+def build_scalp_entry_levels(
+    opt: dict,
+    data: dict,
+    direction: str,
+    crt: dict | None,
+    zone: dict | None,
+    *,
+    limit: int = 3,
+) -> list[tuple[float, str]]:
+    """Top micro-entradas scalp (ICT + zona) para history-review."""
+    if not opt.get("valid") or opt.get("entry") is None:
+        return []
+    dec = int(opt.get("dec", data.get("price_decimals", 1)))
+    ict = opt.get("ict_scan") or scan_ict_context(data, direction, crt, zone)
+    base = float(opt["entry"])
+    cands = _collect_entry_candidates(base, direction, ict, zone or {})
+    seen: set[float] = set()
+    out: list[tuple[float, str]] = []
+    for entry, src, score in sorted(cands, key=lambda x: (-x[2], x[0])):
+        rounded = round(float(entry), dec)
+        if rounded in seen:
+            continue
+        seen.add(rounded)
+        out.append((rounded, src))
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _recalc_sl_tp_from_entry(
     entry: float,
     direction: str,
@@ -345,6 +374,10 @@ def refine_entry_with_ict(
         out["ict_refined"] = False
         out["ict_source"] = "zona base (sin cambio ICT)"
         out["ict_note"] = _build_ict_note(ict, base_entry, base_entry, best_src, refined=False)
+        if data.get("history_mode") or data.get("scalp_mode"):
+            out["scalp_entries"] = build_scalp_entry_levels(
+                out, data, direction, crt, zone, limit=3,
+            )
         return out
 
     sl, tp, risk = _recalc_sl_tp_from_entry(best_entry, direction, zone or {}, data, dec)
@@ -383,6 +416,10 @@ def refine_entry_with_ict(
         f"+ 2 velas M5 {'verdes' if direction == 'LONG' else 'rojas'} en zona"
     )
     out["ict_note"] = _build_ict_note(ict, base_entry, best_entry, best_src, refined=True)
+    if data.get("history_mode") or data.get("scalp_mode"):
+        out["scalp_entries"] = build_scalp_entry_levels(
+            out, data, direction, crt, zone, limit=3,
+        )
     return out
 
 

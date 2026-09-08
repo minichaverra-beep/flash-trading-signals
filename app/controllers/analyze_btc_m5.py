@@ -499,6 +499,11 @@ def main() -> int:
         help="High: review P&L of last Entry only (no new signal framing; do not append history)",
     )
     parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="History-review: no abrir preview HTML en el navegador",
+    )
+    parser.add_argument(
         "--entry",
         default=None,
         help=(
@@ -580,6 +585,8 @@ def main() -> int:
         "mode_setup": args.setup,
         "history_mode": bool(args.history_review),
         "entry_override": entry_override,
+        "asset_label": "BTC",
+        "price_decimals": 2 if args.history_review else 1,
     }
 
     if args.bias in ("bullish", "bearish"):
@@ -671,7 +678,19 @@ def main() -> int:
                     high_data["ilustrate"] = True
                     high_data["annotated_chart_file"] = written["annotated_file"]
                     high_data["annotated_chart_abs"] = written["annotated_chart"]
-                    print(f"Ilustrate: {written['annotated_chart']}")
+                    if args.ilustrate:
+                        from app.views.history_review import finalize_history_chart
+                        from app.models.signal_history import load_signal_history, history_path_for_asset
+                        hist_path = history_path_for_asset("BTC", OUT_DIR)
+                        hist = load_signal_history(hist_path)
+                        sig_id = hist[-1]["id"] if hist else None
+                        finalize_history_chart(
+                            high_data,
+                            asset="BTC",
+                            annotated_abs=written["annotated_chart"],
+                            signal_id=sig_id,
+                            mode="history_review" if args.history_review else "high",
+                        )
             except Exception as e:
                 print(f"WARN chart overlays: {e}")
         # Auto-advanced when ML+Neural (PS1 also passes --advanced; keep Python consistent)
@@ -718,21 +737,32 @@ def main() -> int:
         if args.bias != "auto" or args.setup != "auto":
             print(f"Modo:     bias={args.bias} setup={args.setup}")
         if args.advanced or (use_ml and use_neural):
-            print("Modo:     ADVANCED (análisis profundo)")
+            from app.views.history_review import _console_print
+            _console_print("Modo:     ADVANCED (análisis profundo)")
         if args.history_review:
-            print("Modo:     HISTORY-REVIEW (P&L última Entry; sin append)")
+            print("Modo:     HISTORY-REVIEW (P&L ultima Entry; sin append)")
+            rows = high_data.get("_history_summary_rows")
+            from app.views.history_review import finish_history_review_output
+            finish_history_review_output(
+                high_data,
+                rows,
+                asset="BTC",
+                no_open=bool(args.no_open),
+            )
+        else:
+            rows = high_data.get("_high_summary_rows")
+            from app.views.history_review import finish_high_output
+            finish_high_output(
+                high_data,
+                rows,
+                asset="BTC",
+                no_open=bool(args.no_open),
+            )
         if entry_override is not None:
             print(f"Entry:    {entry_override} (manual / user-provided)")
         print("Salidas:")
         print(f"  Reporte:  {high.resolve()}")
         print(f"  Relativo: live/{high.name}")
-        if high_data.get("ilustrate") and high_data.get("annotated_chart_file"):
-            ann_abs = high_data.get("annotated_chart_abs") or str(
-                (OUT_DIR / high_data["annotated_chart_file"]).resolve()
-            )
-            print(f"  Chart:    {ann_abs}")
-            print(f"  Chart rel: live/{high_data['annotated_chart_file']}")
-            print(f"  Preview:  ![chart]({high_data['annotated_chart_file']})")
     if chart_ok:
         print(f"Chart:    {chart_path}")
     print("=" * 56)

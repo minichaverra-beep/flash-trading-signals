@@ -1582,6 +1582,12 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
         calif = categories.get("calificacion_entrada") or categories.get("vs_ultima_entrada")
         if calif:
             lines.append(f"| Calificación Entry | {calif} |")
+        if categories.get("plan_scalp"):
+            lines.append(f"| Plan scalp (ref.) | {categories['plan_scalp']} |")
+        if categories.get("entradas_scalp"):
+            lines.append(f"| Entradas scalp | {categories['entradas_scalp']} |")
+        if categories.get("ict_scan"):
+            lines.append(f"| ICT scan | {categories['ict_scan']} |")
         if "precio" in categories:
             lines.append(f"| Precio actual | **{categories['precio']}** |")
         if has_bando:

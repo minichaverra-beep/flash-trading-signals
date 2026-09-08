@@ -1434,30 +1434,24 @@ class TestCategoriesEntradaConfluenciaAdvanced:
         write_high_signal(out, data, verdict_to_signal, use_ml=False, advanced=True)
         text = out.read_text(encoding="utf-8")
         assert "# US30 M5 High Signal" in text
-        assert "| Precio |" in text
+        assert "## Resumen High" in text
+        assert "| Sección | Detalle |" in text
         assert "| Entrada óptima |" in text
-        assert text.index("| Precio |") < text.index("| Entrada óptima |")
-        assert "| Última señal |" in text
-        assert "| Calificación entrada |" in text
-        assert "SIN HISTORIAL" in text
+        resumen_block = text.split("## Resumen High")[1].split("\n---\n")[0]
+        assert "| Precio |" in resumen_block
+        assert resumen_block.index("| Precio |") < resumen_block.index("| Entrada óptima |")
+        assert "| Historial ref |" in resumen_block or "SIN HISTORIAL" in resumen_block
         assert (tmp_path / "us30_signal_history.json").exists()
-        assert "| Confluencia setup |" in text
-        # Confluencia es la última fila de la tabla Categories (antes de blank/sección)
-        cats_block = text.split("## Categories")[1].split("##")[0]
-        table_rows = [
-            ln for ln in cats_block.splitlines()
-            if ln.startswith("| ") and "Campo" not in ln and "---" not in ln
-        ]
-        assert table_rows[-1].startswith("| Confluencia setup |")
-        assert "— Advanced —" in text or "Dist. a Entry" in text
+        assert "| Métricas |" in resumen_block
+        assert "## Categories" not in text
+        assert "— Advanced —" in resumen_block or "Dist. a Entry" in resumen_block
         assert "Modo **ADVANCED**" in text
         assert "TRADING_LIVE_US30_HIGH_SIGNAL.md" in text
-        assert "## Salidas" in text
-        assert "live/us30_m5_high_signal.md" in text
-        assert "live/us30_m5_chart_annotated.png" in text
-        assert "![chart](us30_m5_chart_annotated.png)" in text
-        # Sesión no es fila de status Categories
-        assert "| Sesión |" not in cats_block
+        salidas_block = text.rsplit("## Salidas", 1)[-1]
+        assert "live/us30_m5_high_signal.md" in salidas_block
+        assert "Preview en navegador" in salidas_block
+        assert "live/us30_m5_chart_annotated.png" not in salidas_block
+        assert "| Sesión |" not in resumen_block
 
 
 # ---------------------------------------------------------------------------
@@ -1964,9 +1958,14 @@ class TestSignalHistoryReflection:
         out = tmp_path / "btc_m5_high_signal.md"
         write_high_signal(out, data, verdict_to_signal, use_ml=False, advanced=False)
         text = out.read_text(encoding="utf-8")
+        assert "## Resumen History-Review" in text
+        assert "| Sección | Detalle |" in text
         assert "| Revisión última Entry |" in text
         assert "| P&L vs precio actual |" in text
         assert "| Calificación Entry |" in text
+        assert "| Chart |" in text
+        assert "`live/latest" not in text.split("## Resumen History-Review")[1].split("---")[0]
+        assert "## Categories" not in text
         assert "| Entrada óptima |" not in text
         assert "btc-001" in text
         assert "EN BENEFICIO" in text or "EN PÉRDIDA" in text or "NEUTRO" in text
@@ -2039,9 +2038,12 @@ class TestSignalHistoryReflection:
         out = tmp_path / "btc_m5_high_signal.md"
         write_high_signal(out, data, verdict_to_signal, use_ml=False, advanced=False)
         text = out.read_text(encoding="utf-8")
-        assert "| Última señal |" in text
+        assert "## Resumen High" in text
+        assert "| Sección | Detalle |" in text
+        assert "| Historial ref |" in text
         assert "btc-001" in text
-        assert "| Calificación entrada |" in text
+        assert "| Calificación entrada |" not in text
+        assert "## Categories" not in text
         assert any(g in text for g in ("BUENA", "REGULAR", "MALA", "EVITAR"))
         # Tras el write hay 2 registros (previo + actual)
         hist = load_signal_history(path_hist)

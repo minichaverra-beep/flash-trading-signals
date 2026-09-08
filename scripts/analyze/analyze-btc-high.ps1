@@ -56,6 +56,8 @@ param(
 
     [switch]$HistoryReview,
 
+    [switch]$NoOpen,
+
     [string]$Symbol = "BTCUSDT",
 
     [string]$Entry = ""
@@ -65,6 +67,8 @@ param(
 
 
 $ErrorActionPreference = "Stop"
+
+$env:PYTHONIOENCODING = 'utf-8'
 
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
@@ -99,6 +103,8 @@ if ($Neural) { $argsList += "--neural" }
 if ($Ilustrate) { $argsList += "--ilustrate" }
 
 if ($HistoryReview) { $argsList += "--history-review" }
+
+if ($NoOpen) { $argsList += "--no-open" }
 
 if ($Entry) { $argsList += @("--entry", $Entry) }
 

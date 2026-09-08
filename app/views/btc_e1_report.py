@@ -412,9 +412,11 @@ def format_e1_report(
     if tier == TIER_LIGHT:
         lines += format_categories_md(categories, compact=True)
     elif tier == TIER_HIGH:
-        lines += format_augmented_categories_md(categories, hide_ml=True)
+        if not categories.get("history_mode") and not categories.get("unified_summary"):
+            lines += format_augmented_categories_md(categories, hide_ml=True)
     else:
-        lines += format_augmented_categories_md(categories)
+        if not categories.get("history_mode"):
+            lines += format_augmented_categories_md(categories)
     lines += format_crt_block(crt, data, tier)
     lines += format_checklist_e1(ctx["rules_items"], tier)
     lines += format_e2_block(e2, tier)

@@ -1581,7 +1581,11 @@ def _compute_optimal_entry_core(
 ) -> dict:
     """System Entrada óptima from zone/price (no CLI user entry)."""
     price = data["price"]
+    scalp = bool(data.get("history_mode") or data.get("scalp_mode"))
     dec = data.get("price_decimals", 1)
+    if scalp:
+        asset = str(data.get("asset_label", "BTC")).upper()
+        dec = max(int(dec), 2) if asset in ("BTC", "BTCUSDT", "US30") else int(dec)
     level = zone.get("level")
     near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
     confirm = (
@@ -1618,10 +1622,13 @@ def _compute_optimal_entry_core(
 
     in_zone_2 = _candles_in_zone(data.get("m5", []), zone)
 
+    zone_pct = 0.0010 if scalp else 0.0015
+    entry_ratio = 0.28 if scalp else 0.35
+
     if direction == "SHORT":
-        zone_lo = level * (1 - 0.0015)
+        zone_lo = level * (1 - zone_pct)
         zone_hi = level
-        entry = level - (level - zone_lo) * 0.35
+        entry = level - (level - zone_lo) * entry_ratio
         sl = level * 1.002 if ztype == "resistencia_debil" else level * 1.003
         risk = abs(sl - entry)
         tp = entry - 2 * risk
@@ -1634,8 +1641,8 @@ def _compute_optimal_entry_core(
         opti_2m5 = f"Nuevas 2 {color_word} en zona tras retest (no las actuales lejos)"
     else:
         zone_lo = level
-        zone_hi = level * (1 + 0.0015)
-        entry = level + (zone_hi - level) * 0.35
+        zone_hi = level * (1 + zone_pct)
+        entry = level + (zone_hi - level) * entry_ratio
         sl = level * 0.998 if ztype == "soporte_debil" else level * 0.997
         risk = abs(entry - sl)
         tp = entry + 2 * risk
@@ -1721,8 +1728,11 @@ def compute_optimal_entry(
         return out
 
     opt = _compute_optimal_entry_core(data, direction, zone)
-    from app.services.ict_entry_scan import refine_entry_with_ict
-    return refine_entry_with_ict(opt, data, direction, crt, zone)
+    from app.services.ict_entry_scan import build_scalp_entry_levels, refine_entry_with_ict
+    out = refine_entry_with_ict(opt, data, direction, crt, zone)
+    if (data.get("history_mode") or data.get("scalp_mode")) and not out.get("scalp_entries"):
+        out["scalp_entries"] = build_scalp_entry_levels(out, data, direction, crt, zone, limit=3)
+    return out
 
 
 def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) -> list[str]:
@@ -1806,11 +1816,20 @@ def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) ->
     if opt.get("ict_note"):
         lines.append(f"| ICT nota | {opt['ict_note']} |")
     lines += ["", "---", ""]
-    if data.get("ilustrate"):
+    if data.get("ilustrate") and not data.get("unified_summary"):
         from app.views.illustrate_high_entry import format_illustration_md
         ann = data.get("annotated_chart_file", "btc_m5_chart_annotated.png")
         abs_ann = data.get("annotated_chart_abs")
         lines += format_illustration_md(ann, absolute_path=abs_ann)
+    elif data.get("ilustrate") and data.get("unified_summary"):
+        lines += [
+            "## Ilustración entrada (2M5 + óptima)",
+            "",
+            "Chart: **Preview en navegador**",
+            "",
+            "---",
+            "",
+        ]
     return lines
 
 
@@ -2122,6 +2141,20 @@ def write_high_signal(
         cats["calificacion_entrada"] = reflection.get(
             "cell_calificacion", reflection.get("cell_vs", "—"),
         )
+        from app.views.history_review import (
+            format_plan_scalp_cell,
+            format_scalp_entries_cell,
+        )
+        from app.services.ict_entry_scan import format_ict_scan_cell
+        scalp_cell = format_scalp_entries_cell(opt, data)
+        if scalp_cell:
+            cats["entradas_scalp"] = scalp_cell
+        plan_cell = format_plan_scalp_cell(opt, data)
+        if plan_cell != "n/d":
+            cats["plan_scalp"] = plan_cell
+        ict_cell = format_ict_scan_cell(opt)
+        if ict_cell:
+            cats["ict_scan"] = ict_cell
         # No enfatizar Entrada óptima / señal nueva en revisión
         cats.pop("entrada_optima", None)
         cats.pop("entry_usuario", None)
@@ -2212,10 +2245,34 @@ def write_high_signal(
         for note in data["mode_notes"]:
             lines.append(f"- {note}")
         lines += ["", "---", ""]
+    if not history_mode:
+        cats["unified_summary"] = True
+        data["unified_summary"] = True
     lines += format_e1_report(
         data, TIER_HIGH, ctx=ctx, crt=crt, div=div, dmi=dmi, e2=e2, gallery_patterns=pats,
     )
-    lines += format_high_signal_extras(data, ctx, crt)
+    chart_pub = data.get("chart_archive") or {}
+    if history_mode:
+        from app.views.history_review import (
+            build_history_summary_rows,
+            format_history_summary_md,
+        )
+        hist_rows = build_history_summary_rows(
+            data, ctx, opt, reflection, chart_pub=chart_pub if chart_pub.get("ok") else None,
+        )
+        data["_history_summary_rows"] = hist_rows
+        lines += format_history_summary_md(hist_rows)
+    else:
+        from app.views.history_review import (
+            build_high_summary_rows,
+            format_high_summary_md,
+        )
+        high_rows = build_high_summary_rows(
+            data, ctx, opt, reflection, chart_pub=chart_pub if chart_pub.get("ok") else None,
+        )
+        data["_high_summary_rows"] = high_rows
+        lines += format_high_summary_md(high_rows)
+        lines += format_high_signal_extras(data, ctx, crt)
     lines += [
         "",
         "## Indicadores Legacy Pro (proxy)",
@@ -2283,10 +2340,27 @@ def write_high_signal(
         lines.append(f"![Chart]({chart_file})")
     # Salidas: paths fáciles para abrir chart/MD (sin base64)
     ann_name = data.get("annotated_chart_file") if data.get("ilustrate") else None
-    lines += format_salidas_block(
-        signal_md=path,
-        annotated_file=ann_name,
-        annotated_abs=data.get("annotated_chart_abs") if ann_name else None,
-    )
+    if history_mode and ann_name:
+        lines += [
+            "## Salidas",
+            "",
+            f"- **Reporte:** `live/{path.name}`",
+            "- **Chart:** **Preview en navegador** (generado al ejecutar history-review)",
+            "",
+        ]
+    elif ann_name and cats.get("unified_summary"):
+        lines += [
+            "## Salidas",
+            "",
+            f"- **Reporte:** `live/{path.name}`",
+            "- **Chart:** **Preview en navegador**",
+            "",
+        ]
+    else:
+        lines += format_salidas_block(
+            signal_md=path,
+            annotated_file=ann_name,
+            annotated_abs=data.get("annotated_chart_abs") if ann_name else None,
+        )
     lines += ["", f"---\n*high signal | {data['generated']} UTC*\n"]
     path.write_text("\n".join(lines), encoding="utf-8")
