@@ -5,10 +5,10 @@ cd "D:\Danilo\Trading\Cursor Trading"
 # ---------------------------------------------------------------------------
 
 # BTC High (senal)
-.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate -Advanced
+.\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate
 
 # US30 High (senal)
-.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
+.\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Break -ML -Neural -Ilustrate
 
 # High + Entry usuario (fill CLI → --entry; Entrada optima NO se sobrescribe)
 # Solo High — analyze-*-history.ps1 no cablea -Entry

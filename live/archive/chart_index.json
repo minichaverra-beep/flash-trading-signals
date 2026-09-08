@@ -1,0 +1,48 @@
+{
+  "charts": [
+    {
+      "id": "us30-020",
+      "asset": "US30",
+      "mode": "history_review",
+      "time_utc": "2026-09-08 15:15",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260908_151549_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260908_151549_annotated.png"
+    },
+    {
+      "id": "us30-020",
+      "asset": "US30",
+      "mode": "history_review",
+      "time_utc": "2026-09-08 15:16",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260908_151613_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260908_151613_annotated.png"
+    },
+    {
+      "id": "us30-021",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-09-08 15:41",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260908_154131_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260908_154131_annotated.png"
+    },
+    {
+      "id": "us30-022",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-09-08 15:49",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260908_154933_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260908_154933_annotated.png"
+    }
+  ]
+}
