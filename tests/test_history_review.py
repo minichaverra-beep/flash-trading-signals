@@ -1,12 +1,17 @@
 """Tests history-review: tabla unificada, preview HTML y consola segura."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
 from app.views.chart_archive import (
+    _asset_key,
+    _strip_md,
     build_chart_preview_html,
+    format_archive_md_rows,
     open_preview_in_browser,
+    publish_annotated_chart,
     write_chart_preview_html,
 )
 from app.views.history_review import (
@@ -271,3 +276,82 @@ def test_finish_high_output_prints_without_paths(capsys, tmp_path, monkeypatch):
     assert "Preview abierto en navegador" in out
     assert "live/latest" not in out
     assert "C:/" not in out
+
+
+def test_asset_key_maps_btc_and_us30():
+    assert _asset_key("btc") == "BTC"
+    assert _asset_key("BTCUSDT") == "BTC"
+    assert _asset_key("US30") == "US30"
+    assert _asset_key("YM") == "US30"
+    assert _asset_key("") == "BTC"
+
+
+def test_strip_md_removes_common_markers():
+    assert _strip_md("**ESPERAR** · `live/x` __ok__") == "ESPERAR · live/x ok"
+
+
+def test_format_archive_md_rows_preview_hides_paths():
+    assert format_archive_md_rows(None) == []
+    assert format_archive_md_rows({"ok": False}) == []
+    preview_rows = format_archive_md_rows(
+        {"ok": True, "preview_rel": "live/latest/btc_latest_preview.html"}
+    )
+    assert preview_rows == ["| Chart | **Preview en navegador** |"]
+    path_rows = format_archive_md_rows(
+        {
+            "ok": True,
+            "latest_rel": "live/latest/btc_latest_annotated.png",
+            "archive_rel": "live/archive/btc_x.png",
+            "latest_abs": "C:/proj/live/latest/btc_latest_annotated.png",
+        }
+    )
+    assert len(path_rows) == 3
+    assert "Chart (latest)" in path_rows[0]
+
+
+def test_publish_annotated_chart_copies_and_indexes(tmp_path, monkeypatch):
+    latest = tmp_path / "latest"
+    archive = tmp_path / "archive"
+    latest.mkdir()
+    archive.mkdir()
+    monkeypatch.setattr("app.views.chart_archive.LATEST_DIR", latest)
+    monkeypatch.setattr("app.views.chart_archive.ARCHIVE_DIR", archive)
+    monkeypatch.setattr(
+        "app.views.chart_archive.INDEX_PATH", archive / "chart_index.json"
+    )
+
+    src = tmp_path / "us30_m5_chart_annotated.png"
+    src.write_bytes(b"fake-us30-png")
+
+    result = publish_annotated_chart(
+        "US30", src, signal_id="us30-test-001", mode="high"
+    )
+    assert result["ok"] is True
+    assert result["asset"] == "US30"
+    assert result["latest_name"] == "us30_latest_annotated.png"
+    assert (latest / "us30_latest_annotated.png").is_file()
+    assert Path(result["archive_abs"]).is_file()
+
+    index = json.loads((archive / "chart_index.json").read_text(encoding="utf-8"))
+    assert index["charts"][-1]["id"] == "us30-test-001"
+    assert index["charts"][-1]["mode"] == "high"
+
+
+def test_publish_annotated_chart_missing_source(tmp_path):
+    missing = tmp_path / "nope.png"
+    result = publish_annotated_chart("BTC", missing)
+    assert result["ok"] is False
+    assert "source missing" in result["error"]
+
+
+def test_bash_launchers_exist_and_are_lf():
+    """Smoke: launchers sin Cursor AI existen y no usan CRLF (bash-safe)."""
+    root = Path(__file__).resolve().parents[1]
+    for name in ("trading.bash", "btc.bash", "us30.bash"):
+        path = root / name
+        assert path.is_file(), f"falta {name}"
+        raw = path.read_bytes()
+        assert b"\r\n" not in raw, f"{name} debe usar LF (sin CRLF)"
+        text = path.read_text(encoding="utf-8")
+        assert "#!/usr/bin/env bash" in text
+        assert "trading.bash" in text or "app.controllers" in text

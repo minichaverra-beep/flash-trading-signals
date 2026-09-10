@@ -43,6 +43,50 @@
       "archive": "live/archive/us30_20260908_154933_annotated.png",
       "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
       "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260908_154933_annotated.png"
+    },
+    {
+      "id": "us30-023",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-09-08 16:44",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260908_164454_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260908_164454_annotated.png"
+    },
+    {
+      "id": "us30-024",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-09-09 15:21",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260909_152122_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260909_152122_annotated.png"
+    },
+    {
+      "id": "us30-025",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-09-10 02:34",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260910_023402_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260910_023402_annotated.png"
+    },
+    {
+      "id": "us30-026",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-09-10 18:52",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260910_185256_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260910_185256_annotated.png"
     }
   ]
 }

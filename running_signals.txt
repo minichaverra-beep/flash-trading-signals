@@ -1,6 +1,17 @@
 cd "D:\Danilo\Trading\Cursor Trading"
 
 # ---------------------------------------------------------------------------
+# SIN CURSOR AI — launchers bash (Git Bash / WSL)
+# ---------------------------------------------------------------------------
+#   bash trading.bash              # menu ambos activos
+#   bash us30.bash                 # High US30 Bullish+Break+ML+Neural+Ilustrate
+#   bash btc.bash                  # High BTC  Bullish+Break+ML+Neural+Ilustrate
+#   bash us30.bash --bearish --break
+#   bash btc.bash  --bearish --break
+#   bash us30.bash show | bash btc.bash show
+#   bash trading.bash help
+
+# ---------------------------------------------------------------------------
 # HIGH = senales (generacion de entrada). NO es revision P&L ni Super High.
 # ---------------------------------------------------------------------------
 
