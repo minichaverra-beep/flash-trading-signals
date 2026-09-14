@@ -40,12 +40,13 @@ Genera: `live/btc_super_high_signal.md` (analiza `live/super_high_entry.png`)
 
 | Nivel | Script | Archivo Cursor | Tokens (~) | Captura usuario |
 |-------|--------|----------------|------------|-----------------|
+| **Context** | `scripts/analyze/analyze-btc-context.ps1` | `@live/btc_m5_context.md` (consola basta) | ~bajo | No |
 | Light | `scripts/analyze/analyze-btc-light.ps1` | `@live/btc_m5_signal.md` | ~612 | No |
 | Full | `scripts/analyze/analyze-btc.ps1` | `@live/btc_m5_snapshot.md` | ~1 912 | No |
 | High | `scripts/analyze/analyze-btc-high.ps1` | `@live/btc_m5_high_signal.md` | ~1 769 | No (auto chart) |
 | **Super High** | `scripts/analyze/analyze-btc-superhigh.ps1` | `@live/btc_super_high_signal.md` | **~2 508** | **SÍ (obligatorio)** |
 
-`.\scripts\analyze\analyze-btc.ps1 -All` genera Light + Full + High; **Super High solo si existe** `live/super_high_entry.png`.
+`.\scripts\analyze\analyze-btc.ps1 -All` genera Light + Full + High; **Context** es aparte; **Super High solo si existe** `live/super_high_entry.png`.
 
 ---
 

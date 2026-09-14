@@ -74,11 +74,27 @@ Ver protocolo: `TRADING_LIVE_BTC_HIGH_SIGNAL.md`
 
 ---
 
+### C2) Context (estructura M5 / vigente vs agotando — sin Cursor IA)
+
+```powershell
+.\scripts\analyze\analyze-btc-context.ps1
+```
+
+Consola: Bias + Estado. Opcional Cursor: `@live/btc_m5_context.md` `@docs/protocols/TRADING_LIVE_BTC_CONTEXT.md`
+
+| Salida | Contenido |
+|--------|-----------|
+| `live/btc_m5_context.md` | Bias M5 + VIGENTE/AGOTANDO/TRANSICION (no Entry) |
+
+---
+
 ### D) Los 3 a la vez
 
 ```powershell
 .\scripts\analyze\analyze-btc.ps1 -All
 ```
+
+(`-All` = Full + Light + High; **Context** corre aparte con `analyze-btc-context.ps1`)
 
 ---
 

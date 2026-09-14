@@ -16,10 +16,14 @@
 2) BTC — SEÑALES RÁPIDAS
 ------------------------------------------------------------
 High = SEÑALES (entrada). No confundir con:
+  • analyze-btc-context.ps1 = contexto M5 (vigente/agotando; NO entrada)
   • analyze-*-history.ps1 = revisión P&L (última Entry)
   • analyze-btc-superhigh.ps1 = captura TV (tier aparte)
 
 Tiers (de menos a más tokens):
+
+  Context → estructura M5 / vigente vs agotando (SIN params; consola basta)
+    .\scripts\analyze\analyze-btc-context.ps1
 
   Light  → chequeo rápido
     .\scripts\analyze\analyze-btc-light.ps1 -ML -Neural
@@ -29,6 +33,11 @@ Tiers (de menos a más tokens):
 
   High   → señales para decidir entrada (CRT + 2M5)
     .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
+
+Context (qué mirar en consola o live\btc_m5_context.md):
+  Bias estructura M5 → BULLISH / BEARISH / NEUTRAL
+  Estado del impulso → VIGENTE / AGOTANDO / TRANSICION
+  No da Entry/SL/TP ni ENTRAR — sirve antes de Light/High o solo terminal.
 
 Flags High (elige según tu sesgo / setup):
   -NoChart          sin PNG en el markdown (más limpio)
@@ -58,6 +67,9 @@ Stub: atajo solo para High desde la raíz.
 
 3) US30 — IGUAL
 ------------------------------------------------------------
+  Context (sin params; consola basta):
+    .\scripts\analyze\analyze-us30-context.ps1
+
   Light:
     .\scripts\analyze\analyze-us30-light.ps1 -ML -Neural
 
@@ -72,7 +84,7 @@ Stub raíz:
   .\analyze-us30-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
 
 Cambia -Bearish/-Bullish y -Break/-Reverse según tu plan.
--Entry solo en analyze-*-high.ps1 (no en analyze-*-history.ps1).
+-Entry solo en analyze-*-high.ps1 (no en analyze-*-history.ps1 ni context).
 Con -Entry el reporte muestra:
   - Entrada óptima = cálculo de sistema (no se sobrescribe)
   - Entry usuario = tu precio CLI (-Entry / --entry)
@@ -101,10 +113,13 @@ Lee en este orden:
      ML, H1/CRT, distancias). No hace falta flag. No aparece en history P&L.
 
 Archivos live generados:
+  BTC Context → live\btc_m5_context.md
+  US30 Context → live\us30_m5_context.md
   BTC High  → live\btc_m5_high_signal.md
   US30 High → live\us30_m5_high_signal.md
   Historial → live\btc_signal_history.json | live\us30_signal_history.json
   (append solo desde High; history = revisión P&L, sin escritura)
+  (Context no escribe historial ni propone Entry)
 
 
 4b) REVISIÓN P&L — última Entry (history runners; NO es señal)
@@ -153,6 +168,14 @@ High (sí escribe historial + señal):
 5) EN CURSOR (@ archivos)
 ------------------------------------------------------------
 Tras correr el script, en un chat nuevo pega los @:
+
+  BTC Context (opcional — la consola ya basta):
+    @live/btc_m5_context.md
+    @docs/protocols/TRADING_LIVE_BTC_CONTEXT.md
+
+  US30 Context (opcional):
+    @live/us30_m5_context.md
+    @docs/protocols/TRADING_LIVE_US30_CONTEXT.md
 
   BTC High:
     @live/btc_m5_high_signal.md
@@ -207,6 +230,10 @@ High = señales live; History = P&L; Super High = captura TV. No mezclar.
 ============================================================
 cd "D:\Danilo\Trading\Cursor Trading"
 
+# Context primero (sin params; sin Cursor — mira Bias + VIGENTE/AGOTANDO)
+.\scripts\analyze\analyze-btc-context.ps1
+.\scripts\analyze\analyze-us30-context.ps1
+
 # BTC High
 .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate -Advanced
 
@@ -218,6 +245,7 @@ cd "D:\Danilo\Trading\Cursor Trading"
 .\scripts\analyze\analyze-us30-high.ps1 -NoChart -Bullish -Reverse -ML -Neural -Ilustrate -Advanced -Entry 53128
 
 Luego @ el live + el protocolo en Cursor → Categories primero → decide.
+(Context: la consola ya basta; @ opcional.)
 
 
 9) CALIDAD / SONAR (antes de push)

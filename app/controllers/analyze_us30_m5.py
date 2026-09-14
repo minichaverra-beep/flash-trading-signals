@@ -10,6 +10,7 @@ Output:
   live/us30_m5_snapshot.md
   live/us30_m5_signal.md
   live/us30_m5_high_signal.md
+  live/us30_m5_context.md      (context - estructura M5 vigente/agotando)
   live/us30_m5_chart.png
 
 Data: yfinance / Yahoo Chart API — primary YM=F (Dow futures), fallback ^DJI.
@@ -234,8 +235,9 @@ def main() -> int:
     parser.add_argument("--no-chart", action="store_true")
     parser.add_argument(
         "--mode",
-        choices=("full", "light", "high", "both", "all"),
+        choices=("full", "light", "high", "context", "both", "all"),
         default="full",
+        help="full | light | high | context | both | all",
     )
     parser.add_argument("--ml", action="store_true")
     parser.add_argument("--neural", action="store_true")
@@ -364,6 +366,23 @@ def main() -> int:
     snap = OUT_DIR / "us30_m5_snapshot.md"
     signal = OUT_DIR / "us30_m5_signal.md"
     high = OUT_DIR / "us30_m5_high_signal.md"
+    context_md = OUT_DIR / "us30_m5_context.md"
+
+    if args.mode == "context":
+        from app.services.m5_context_analysis import analyze_m5_context, write_context_report
+
+        ctx = analyze_m5_context(m5, asset="US30")
+        write_context_report(context_md, data, ctx, price_decimals=PRICE_DECIMALS)
+        print("=" * 56)
+        print(f"US30 {ticker_label}  {price:.{PRICE_DECIMALS}f}  |  CONTEXT M5")
+        print(f"Fuente: {data_source}")
+        print(f"Bias estructura: {ctx['bias_m5']}  |  Estado: {ctx['estado']}")
+        print(f"Swings: {ctx['structure']['lows']} · {ctx['structure']['highs']}")
+        print(f"Context:  {context_md}")
+        print("=" * 56)
+        print("Cursor -> @live/us30_m5_context.md @docs/protocols/TRADING_LIVE_US30_CONTEXT.md")
+        print("(consola basta — no requiere Cursor IA)")
+        return 0
 
     use_ml = False
     if args.ml:

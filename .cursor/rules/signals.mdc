@@ -1,5 +1,5 @@
 ---
-description: Protocolo de señales live BTC/US30 — Light/Full/High/Super High, flags y Categories
+description: Protocolo de señales live BTC/US30 — Light/Full/High/Context/Super High, flags y Categories
 alwaysApply: true
 ---
 
@@ -12,7 +12,11 @@ Cómo comportarse al analizar outputs live. Guía humana: `how_to_use.txt`. Regl
 Preferir `scripts/analyze/`. Stubs raíz solo High.
 
 ```powershell
-# BTC High (recomendado)
+# CONTEXT (sin params; consola basta — no necesita Cursor IA)
+.\scripts\analyze\analyze-btc-context.ps1
+.\scripts\analyze\analyze-us30-context.ps1
+
+# BTC High (recomendado para entrada)
 .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish|-Bullish -Break|-Reverse -ML -Neural -Ilustrate
 .\analyze-btc-high.ps1 ...   # stub raíz
 
@@ -30,18 +34,21 @@ Preferir `scripts/analyze/`. Stubs raíz solo High.
 | `-Neural` | Neural galería en Categories |
 | `-Ilustrate` | PNG anotado 2M5+OPTI (también con `-NoChart`); el chart High normal (sin `-NoChart`) ya incluye líneas OPTI/SL/TP/S-R |
 
-Light / Full / Super High: mismos flags en `analyze-*-light.ps1`, `analyze-*.ps1`, `analyze-*-superhigh.ps1`.
+Light / Full / Super High: mismos flags en `analyze-*-light.ps1`, `analyze-*.ps1`, `analyze-*-superhigh.ps1`.  
+**Context:** sin flags; no usa ML/Neural/Entry.
 
 ## Outputs y protocolos
 
 | Tier | Live | Protocolo |
 |------|------|-----------|
+| **Context** | `live/btc_m5_context.md`, `live/us30_m5_context.md` | `docs/protocols/TRADING_LIVE_*_CONTEXT.md` |
 | Light | `live/btc_m5_signal.md`, `live/us30_m5_signal.md` | `docs/protocols/TRADING_LIVE_*_SIGNAL_LIGHT.md` |
 | Full | `live/btc_m5_snapshot.md`, `live/us30_m5_snapshot.md` | `docs/protocols/TRADING_LIVE_*_M5_ANALYSIS.md` |
 | High | `live/btc_m5_high_signal.md`, `live/us30_m5_high_signal.md` | `docs/protocols/TRADING_LIVE_*_HIGH_SIGNAL.md` |
 | Super High | `live/btc_super_high_signal.md` | `docs/protocols/TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md` |
 
-En Cursor: `@live/...` + `@docs/protocols/...` del tier usado.
+En Cursor: `@live/...` + `@docs/protocols/...` del tier usado.  
+**Context** también sirve **solo por consola** (Bias + VIGENTE/AGOTANDO) sin abrir chat.
 
 ## Orden de lectura (Categories primero)
 
@@ -54,11 +61,14 @@ En Cursor: `@live/...` + `@docs/protocols/...` del tier usado.
 7. **Ilustración / Chart** — chart High (sin `-NoChart`) ya trae líneas OPTI; PNG aparte si `-Ilustrate`  
 8. **Última señal** / **Calificación entrada** — vs último historial del mismo par (High; ver `how_to_use.txt` §4b)  
 
+**Context (sin Categories):** Bias estructura M5 → Estado (VIGENTE / AGOTANDO / TRANSICION) → swings. No da ENTRAR/ESPERAR.
+
 ## Jerarquía de decisión
 
 **Reglas E1 + Checklist 2M5 > Neural.**  
 Sesión NY es solo reloj informativo (no bloquea ni fuerza NO_OPERAR).  
-ML no aparece en Categories High (puede existir en Light). Auto-veredicto del script **no** es señal final.
+ML no aparece en Categories High (puede existir en Light). Auto-veredicto del script **no** es señal final.  
+Context **no** sustituye High para decidir entrada.
 
 ## Veredicto (español)
 
@@ -66,3 +76,5 @@ Usar exactamente: **ENTRAR LONG** | **ENTRAR SHORT** | **ESPERAR** | **NO_OPERAR
 
 Justificar con Categories + 2M5. **No inventar reglas**; citar `docs/strategy/` solo si hace falta detalle del plan.
 **No** exigir “estar en sesión NY” para calcular o operar.
+
+Context usa: **BULLISH / BEARISH / NEUTRAL** + **VIGENTE / AGOTANDO / TRANSICION** (no ENTRAR).

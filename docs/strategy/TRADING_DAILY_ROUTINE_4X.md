@@ -216,6 +216,10 @@ Usar `@live/btc_m5_snapshot.md` + `@docs/protocols/TRADING_LIVE_BTC_M5_ANALYSIS.
 ```powershell
 cd "D:\Danilo\Trading\Cursor Trading"
 
+# Context (sin params; consola = Bias + VIGENTE/AGOTANDO)
+.\scripts\analyze\analyze-btc-context.ps1
+.\scripts\analyze\analyze-us30-context.ps1
+
 # Una vez al inicio
 .\scripts\analyze\analyze-btc.ps1 -All -NoChart -ML -Neural
 
@@ -230,6 +234,7 @@ cd "D:\Danilo\Trading\Cursor Trading"
 
 | Tier | @ mentions | Cuándo en rutina 4× |
 |------|------------|---------------------|
+| **Context** | `@live/btc_m5_context.md` `@docs/protocols/TRADING_LIVE_BTC_CONTEXT.md` (consola basta) | On-demand antes de Light/High |
 | **Light** | `@live/btc_m5_signal.md` `@docs/protocols/TRADING_LIVE_BTC_SIGNAL_LIGHT.md` | AM #1, PM #1, PM #2 (+ AM #2 si plan claro) |
 | **High** | `@live/btc_m5_high_signal.md` `@docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md` | AM #2 por defecto; PM #2 solo si ambiguo |
 | **Super High** | `@live/btc_super_high_signal.md` `@docs/protocols/TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md` | **On-demand** — cuando tengas captura entry/SL/TP lista (**no** en rutina 4×) |
@@ -257,6 +262,9 @@ cd "D:\Danilo\Trading\Cursor Trading"
 ```powershell
 cd "D:\Danilo\Trading\Cursor Trading"
 
+# Context (sin params)
+.\scripts\analyze\analyze-us30-context.ps1
+
 # Inicio sesión US30 (equivalente a -All BTC)
 .\scripts\analyze\analyze-us30.ps1 -All -NoChart -ML -Neural
 
@@ -267,6 +275,7 @@ cd "D:\Danilo\Trading\Cursor Trading"
 
 | Tier | @ mentions |
 |------|------------|
+| **Context** | `@live/us30_m5_context.md` `@docs/protocols/TRADING_LIVE_US30_CONTEXT.md` (consola basta) |
 | **Light** | `@live/us30_m5_signal.md` `@docs/protocols/TRADING_LIVE_US30_SIGNAL_LIGHT.md` |
 | **High** | `@live/us30_m5_high_signal.md` `@docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md` |
 | Full | `@live/us30_m5_snapshot.md` `@docs/protocols/TRADING_LIVE_US30_M5_ANALYSIS.md` |

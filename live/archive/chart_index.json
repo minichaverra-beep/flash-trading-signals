@@ -87,6 +87,17 @@
       "archive": "live/archive/us30_20260910_185256_annotated.png",
       "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
       "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260910_185256_annotated.png"
+    },
+    {
+      "id": "btc-011",
+      "asset": "BTC",
+      "mode": "high",
+      "time_utc": "2026-09-11 16:24",
+      "source": "btc_m5_chart_annotated.png",
+      "latest": "live/latest/btc_latest_annotated.png",
+      "archive": "live/archive/btc_20260911_162415_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20260911_162415_annotated.png"
     }
   ]
 }

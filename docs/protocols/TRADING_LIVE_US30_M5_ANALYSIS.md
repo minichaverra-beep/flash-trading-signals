@@ -77,11 +77,21 @@ Cursor: `@live/us30_m5_signal.md` `@docs/protocols/TRADING_LIVE_US30_SIGNAL_LIGH
 
 Cursor: `@live/us30_m5_high_signal.md` `@docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md`
 
+### C2) Context (estructura M5 / vigente vs agotando — sin Cursor IA)
+
+```powershell
+.\scripts\analyze\analyze-us30-context.ps1
+```
+
+Consola: Bias + Estado. Opcional: `@live/us30_m5_context.md` `@docs/protocols/TRADING_LIVE_US30_CONTEXT.md`
+
 ### D) Los 3 a la vez
 
 ```powershell
 .\scripts\analyze\analyze-us30.ps1 -All -NoChart -ML -Neural
 ```
+
+(`-All` = Full + Light + High; **Context** corre aparte)
 
 ---
 

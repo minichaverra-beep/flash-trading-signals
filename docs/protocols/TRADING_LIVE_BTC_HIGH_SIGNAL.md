@@ -60,12 +60,13 @@ Con `-Ilustrate`: también `live/btc_m5_chart_annotated.png` (aunque `-NoChart`)
 
 | Nivel | Script | Archivo Cursor | Tokens |
 |-------|--------|----------------|--------|
+| **Context** | `scripts/analyze/analyze-btc-context.ps1` | `@live/btc_m5_context.md` (consola basta) | Minimo |
 | Light | `scripts/analyze/analyze-btc-light.ps1` | `@live/btc_m5_signal.md` | Minimo |
 | Full | `scripts/analyze/analyze-btc.ps1` | `@live/btc_m5_snapshot.md` | Medio |
 | **High** | `scripts/analyze/analyze-btc-high.ps1` | `@live/btc_m5_high_signal.md` | Alto |
 | **Super High** | `scripts/analyze/analyze-btc-superhigh.ps1` | `@live/btc_super_high_signal.md` | **Maximo (captura usuario)** |
 
-`.\scripts\analyze\analyze-btc.ps1 -All` genera Light + Full + High; **Super High solo si existe** `live/super_high_entry.png`.
+`.\scripts\analyze\analyze-btc.ps1 -All` genera Light + Full + High; **Context** es aparte (`analyze-btc-context.ps1`); **Super High solo si existe** `live/super_high_entry.png`.
 
 Ver protocolo completo: [`TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md`](TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md)
 

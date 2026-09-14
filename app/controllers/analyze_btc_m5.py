@@ -10,6 +10,7 @@ Output:
   live/btc_m5_snapshot.md      (full)
   live/btc_m5_signal.md        (light)
   live/btc_m5_high_signal.md   (high - CRT + turtle soup + checklist profundo)
+  live/btc_m5_context.md       (context - estructura M5 vigente/agotando)
   live/btc_m5_chart.png
 
 Super High (separate script — user capture):
@@ -457,9 +458,9 @@ def main() -> int:
     parser.add_argument("--no-chart", action="store_true")
     parser.add_argument(
         "--mode",
-        choices=("full", "light", "high", "both", "all"),
+        choices=("full", "light", "high", "context", "both", "all"),
         default="full",
-        help="full | light | high | both (full+light) | all (full+light+high)",
+        help="full | light | high | context | both (full+light) | all (full+light+high)",
     )
     parser.add_argument(
         "--ml",
@@ -596,6 +597,22 @@ def main() -> int:
     snap = OUT_DIR / "btc_m5_snapshot.md"
     signal = OUT_DIR / "btc_m5_signal.md"
     high = OUT_DIR / "btc_m5_high_signal.md"
+    context_md = OUT_DIR / "btc_m5_context.md"
+
+    if args.mode == "context":
+        from app.services.m5_context_analysis import analyze_m5_context, write_context_report
+
+        ctx = analyze_m5_context(m5, asset="BTC")
+        write_context_report(context_md, data, ctx, price_decimals=1)
+        print("=" * 56)
+        print(f"BTC {args.symbol}  {price:.2f}  |  CONTEXT M5")
+        print(f"Bias estructura: {ctx['bias_m5']}  |  Estado: {ctx['estado']}")
+        print(f"Swings: {ctx['structure']['lows']} · {ctx['structure']['highs']}")
+        print(f"Context:  {context_md}")
+        print("=" * 56)
+        print("Cursor -> @live/btc_m5_context.md @docs/protocols/TRADING_LIVE_BTC_CONTEXT.md")
+        print("(consola basta — no requiere Cursor IA)")
+        return 0
 
     use_ml = False
     if args.ml:

@@ -14,13 +14,14 @@ Genera reportes live (markdown + opcionales PNG) para decidir entradas según el
 
 | Tier / modo | Uso |
 |-------------|-----|
+| **Context** | Estructura M5 — BULLISH/BEARISH + VIGENTE/AGOTANDO. Sin params. Consola basta (sin Cursor IA). |
 | **Light** | Chequeo rápido |
 | **Full** | Snapshot completo (solo excepcional) |
 | **High** | **Señales** — decidir entrada (CRT + 2M5). Append al historial. |
 | **History** | **Revisión P&L** de la última Entry (`analyze-*-history.ps1`). No es señal; no append. |
 | **Super High** | Validación con captura TradingView anotada — script **aparte** (`analyze-btc-superhigh.ps1`). No se mezcla con High. |
 
-Flags opcionales High: **`-ML`** (modelo tabular), **`-Neural`** (similitud galería WIN), **`-Ilustrate`** (PNG anotado 2M5 + entrada óptima), **`-Entry <precio>`** (fill CLI → Entry usuario; Entrada óptima sigue del sistema). Solo High (`analyze-*-high.ps1`); history no lo cablea.
+Flags opcionales High: **`-ML`** (modelo tabular), **`-Neural`** (similitud galería WIN), **`-Ilustrate`** (PNG anotado 2M5 + entrada óptima), **`-Entry <precio>`** (fill CLI → Entry usuario; Entrada óptima sigue del sistema). Solo High (`analyze-*-high.ps1`); history/context no lo cablean.
 
 ## Estructura
 
@@ -49,6 +50,10 @@ Cursor Trading/
 ```powershell
 cd "D:\Danilo\Trading\Cursor Trading"
 
+# Context (sin params; Bias + VIGENTE/AGOTANDO en consola — sin Cursor IA)
+.\scripts\analyze\analyze-btc-context.ps1
+.\scripts\analyze\analyze-us30-context.ps1
+
 # BTC High (recomendado)
 .\scripts\analyze\analyze-btc-high.ps1 -NoChart -Bearish -Break -ML -Neural -Ilustrate
 
@@ -64,12 +69,14 @@ Cambia `-Bearish`/`-Bullish` y `-Break`/`-Reverse` según tu plan. Preferí siem
 
 **`-Entry`:** precio de fill (`53312`, `53312.0`, o miles europeos p. ej. `53.12.800` → 53128). El reporte separa **Entry usuario** (CLI) de **Entrada óptima** (sistema). Análisis past ignora M5 antes del toque del fill; SL/TP del plan usuario salen de estructura post-entry. Si el veredicto es ESPERAR, Categories muestra **Si entraste** + Contingencias.
 
-Guía completa (Light / Full / Super High, Categories, reglas de sesión): [how_to_use.txt](how_to_use.txt).
+Guía completa (Context / Light / Full / Super High, Categories, reglas de sesión): [how_to_use.txt](how_to_use.txt).
 
 ## Cursor
 
 Tras el script, en un chat nuevo:
 
+- BTC Context (opcional): `@live/btc_m5_context.md` + `@docs/protocols/TRADING_LIVE_BTC_CONTEXT.md`
+- US30 Context (opcional): `@live/us30_m5_context.md` + `@docs/protocols/TRADING_LIVE_US30_CONTEXT.md`
 - BTC High: `@live/btc_m5_high_signal.md` + `@docs/protocols/TRADING_LIVE_BTC_HIGH_SIGNAL.md`
 - US30 High: `@live/us30_m5_high_signal.md` + `@docs/protocols/TRADING_LIVE_US30_HIGH_SIGNAL.md`
 
