@@ -1,0 +1,24 @@
+source_image,confidence,symbol,side,entry_price,issues
+IMG-20260424-WA0045.jpg,0.3,UNKNOWN,,,missing_entry;missing_side;low_confidence;sparse_ocr
+IMG-20260515-WA0003.jpg,0.35,XAUUSD,,,missing_entry;missing_side;low_confidence
+IMG-20260518-WA0000.jpg,0.35,XAUUSD,,,missing_entry;missing_side;low_confidence
+IMG-20260526-WA0003.jpg,0.782,XAUUSD,,4543.28,missing_side
+Screenshot_20260423-223947.Exness.png,0.884,BTCUSDT,,78148.78,missing_side
+Screenshot_20260617-103915.Exness.png,0.885,BTCUSDT,,65148.43,missing_side
+Screenshot_20260627-151629.Moto App Launcher.png,0.925,BTCUSDT,,60367.72,missing_side
+Screenshot_20260708-114423.TradingView.png,0.898,BTCUSDT,,62613.29,missing_side
+Screenshot_20260729-100825.TradingView.png,0.892,BTCUSDT,,64904.27,missing_side
+Screenshot_20260731-212251.TradingView.png,0.35,BTCUSDT,,,missing_entry;missing_side;low_confidence
+Screenshot_20260801-191033.TradingView.png,0.35,BTCUSDT,,,missing_entry;missing_side;low_confidence
+Screenshot_20260806-104056.TradingView.png,0.925,BTCUSDT,,64692.04,missing_side
+Screenshot_20260806-124304.TradingView.png,0.35,BTCUSDT,,,missing_entry;missing_side;low_confidence
+Screenshot_20260811-134850.TradingView.png,0.3,UNKNOWN,,,missing_entry;missing_side;low_confidence;sparse_ocr
+Screenshot_20260812-192318.TradingView.png,0.895,BTCUSDT,,63642.82,missing_side
+Screenshot_20260824-183533.TradingView.png,0.896,BTCUSDT,,78972.23,missing_side
+Screenshot_20260828-230926.TradingView.png,0.898,BTCUSDT,,77889.11,missing_side
+Screenshot_20260831-173527.TradingView.png,0.899,BTCUSDT,,79380.3,missing_side
+Screenshot_20260905-144533.TradingView.png,0.898,BTCUSDT,,80241.56,missing_side
+Screenshot_20260907-105024.TradingView.png,0.879,BTCUSDT,,79099.31,missing_side
+Screenshot_20260909-202148.TradingView.png,0.899,BTCUSDT,,78908.084,missing_side
+Screenshot_20260915-100137.TradingView.png,0.3,UNKNOWN,,,missing_entry;missing_side;low_confidence;sparse_ocr
+Screenshot_20260916-173053.TradingView.png,0.896,BTCUSDT,,76220.844,missing_side

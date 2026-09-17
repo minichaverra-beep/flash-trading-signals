@@ -135,7 +135,7 @@ def label_outcome(
     return None
 
 
-def build_snapshot_at_index(m5: list[dict], h1: list[dict], idx: int, min_m5: int = 120) -> dict | None:
+def build_snapshot_at_index(m5: list[dict], h1: list[dict], idx: int, min_m5: int = 120, require_setup: bool = True) -> dict | None:
     if idx < min_m5:
         return None
     window = m5[: idx + 1]
@@ -160,7 +160,7 @@ def build_snapshot_at_index(m5: list[dict], h1: list[dict], idx: int, min_m5: in
         price, bias, zone, rsi_m5, confirm_long, confirm_short,
         session["in_ny_window"], pdh, pdl, price_decimals=PRICE_DECIMALS,
     )
-    if setup["direction"] == "NONE":
+    if require_setup and setup["direction"] == "NONE":
         return None
 
     return {

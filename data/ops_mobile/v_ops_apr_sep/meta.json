@@ -1,0 +1,10 @@
+{
+  "dataset_version": "v_ops_apr_sep",
+  "source": "D:\\Danilo\\Trading\\Cursor Trading\\assets\\images\\Operaciones del celular desde 1 abril hasta 17 septiembre",
+  "n_images": 102,
+  "n_trades_deduped": 100,
+  "n_duplicates_removed": 2,
+  "n_problematic": 23,
+  "created_at": "2026-09-17T11:32:26",
+  "project_root": "D:\\Danilo\\Trading\\Cursor Trading"
+}

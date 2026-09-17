@@ -213,6 +213,7 @@ def build_snapshot_at_index(
     h1: list[dict],
     idx: int,
     min_m5: int = 120,
+    require_setup: bool = True,
 ) -> dict | None:
     """Reconstruct analysis `data` dict at historical bar idx."""
     if idx < min_m5:
@@ -241,7 +242,7 @@ def build_snapshot_at_index(
         session["in_ny_window"], pdh, pdl,
     )
 
-    if setup["direction"] == "NONE":
+    if require_setup and setup["direction"] == "NONE":
         return None
 
     return {
