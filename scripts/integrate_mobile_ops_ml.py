@@ -74,10 +74,7 @@ def train_eval(X, y, algorithm: str, sample_weight=None):
             n_estimators=150, max_depth=4, learning_rate=0.08, random_state=42
         )
 
-    if algorithm == "gb":
-        clf.fit(X_train, y_train, sample_weight=w_train)
-    else:
-        clf.fit(X_train, y_train, sample_weight=w_train)
+    clf.fit(X_train, y_train, sample_weight=w_train)
 
     y_pred = clf.predict(X_test)
     metrics = {
@@ -472,7 +469,12 @@ def main() -> int:
     parser.add_argument("--horizon", type=int, default=48)
     parser.add_argument("--stride", type=int, default=3)
     parser.add_argument("--algorithm", choices=("gb", "rf", "lr"), default="gb")
-    parser.add_argument("--ops-weight", type=float, default=8.0, help="Sample weight for real ops")
+    parser.add_argument(
+        "--ops-weight",
+        type=float,
+        default=None,
+        help="Sample weight for real ops (default 8; 5 with --quick)",
+    )
     parser.add_argument("--force-download", action="store_true", default=True)
     parser.add_argument("--no-force-download", action="store_true")
     parser.add_argument("--ny-only", action="store_true")
@@ -498,9 +500,9 @@ def main() -> int:
     if args.quick:
         args.days = 90
         args.stride = max(args.stride, 12)
-        # keep user ops_weight if explicitly raised; default quick weight lighter
-        if args.ops_weight == 8.0:
-            args.ops_weight = 5.0
+    # Default weight: lighter under --quick unless user passed --ops-weight
+    if args.ops_weight is None:
+        args.ops_weight = 5.0 if args.quick else 8.0
 
     t0 = time.time()
     OUT_DIR.mkdir(parents=True, exist_ok=True)

@@ -36,7 +36,7 @@ PRICE_RE = re.compile(
     r"(?<![\d])(\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,3})?|\d{4,6}(?:[.,]\d{1,3})?)(?![\d])"
 )
 TS_RE = re.compile(r"(20\d{2})(\d{2})(\d{2})[-_]?(\d{2})(\d{2})(\d{2})")
-SIDE_LONG_RE = re.compile(r"\b(long|buy|compra|compra[r]?)\b", re.I)
+SIDE_LONG_RE = re.compile(r"\b(long|buy|comprar?)\b", re.I)
 SIDE_SHORT_RE = re.compile(r"\b(short|sell|venta|vender)\b", re.I)
 
 

@@ -26,12 +26,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Pin exact versions (S8544). Avoid `--only-binary :all:` spaced form
-      # (Sonar parser historically treated `:all:` as an unpinned package).
+      # Pin exact versions on the CLI (S8544). Use --only-binary=:all: (equals form)
+      # — spaced `--only-binary :all:` was historically misread as an unpinned package.
       - name: Install deps (dev/test + charting)
         run: |
-          python -m pip install --upgrade pip==25.0.1
-          python -m pip install -r requirements-dev.txt
+          python -m pip install --upgrade --only-binary=:all: pip==25.0.1
+          python -m pip install --only-binary=:all: pytest==8.3.5 pytest-cov==6.1.1 matplotlib==3.10.1
 
       - name: Run tests with coverage
         run: pytest --cov=app --cov-report=xml tests/
