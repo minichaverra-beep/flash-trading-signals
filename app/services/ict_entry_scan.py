@@ -128,8 +128,12 @@ def detect_liquidity_sweeps(
 def _session_killzone(session: dict | None) -> tuple[str, bool]:
     if not session:
         return "n/d", False
+    if "killzone_on" in session:
+        return str(session.get("window") or "n/d"), bool(session.get("killzone_on"))
     window = str(session.get("window") or "")
-    aligned = any(k in window for k in ("NY AM", "NY PM", "London", "08-11", "13-16"))
+    aligned = bool(session.get("in_ny_window")) or any(
+        k in window for k in ("NY AM", "NY PM", "08-10", "10-11", "14-16", "08-11")
+    )
     return window or "n/d", aligned
 
 

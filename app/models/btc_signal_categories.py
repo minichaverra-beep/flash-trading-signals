@@ -290,6 +290,33 @@ def compute_confluencia_setup(
             score = max(0.0, score - 1.0)
             notes.append("penalización dirección H1")
 
+    # Volumen Zentinel: filtro de confluencia (nunca trigger)
+    vol = data.get("zentinel_volume")
+    if not vol and data.get("m5"):
+        from app.models.zentinel_presets import classify_volume
+
+        vol = classify_volume(
+            data["m5"],
+            asset=data.get("asset_label") or data.get("symbol"),
+        )
+    from app.models.zentinel_presets import volume_confluence_points
+
+    v_score, v_max, v_note = volume_confluence_points(vol)
+    if v_max > 0:
+        max_pts += v_max
+        score += v_score
+        if v_note:
+            notes.append(v_note)
+
+    # Killzone Watchtower (soft): suma si ON, no bloquea si OFF
+    ses = data.get("session") or {}
+    max_pts += 1.0
+    if ses.get("killzone_on") or ses.get("in_ny_window"):
+        score += 1.0
+        notes.append(f"KZ {ses.get('window', 'NY')}")
+    else:
+        notes.append(f"KZ fuera ({ses.get('window', 'FUERA')})")
+
     pct = int(score / max_pts * 100) if max_pts else 0
     if pct >= 75:
         level = "ALTA"
@@ -299,7 +326,7 @@ def compute_confluencia_setup(
         level = "BAJA"
     else:
         level = "NULA"
-    detail = f"{pct}% · " + "; ".join(notes[:4])
+    detail = f"{pct}% · " + "; ".join(notes[:5])
     return level, detail
 
 
@@ -415,6 +442,23 @@ def build_advanced_table_rows(
         rows.append((
             "Rules E1 detalle",
             f"**{rules_ok}/{rules_total}** ({categories.get('rules_pct', 0)}%)",
+        ))
+
+    vol = data.get("zentinel_volume") or {}
+    if vol:
+        ratio = vol.get("ratio")
+        ratio_s = f"{ratio:.2f}×" if isinstance(ratio, (int, float)) else "n/d"
+        rows.append((
+            "Vol Zentinel (filtro)",
+            f"**{vol.get('band', 'n/d')}** · {ratio_s} · {vol.get('preset_name', '')}",
+        ))
+    zmeta = data.get("zentinel") or {}
+    ses = data.get("session") or {}
+    if zmeta or ses.get("watchtower_preset"):
+        rows.append((
+            "Watchtower KZ",
+            f"{ses.get('window', 'n/d')} · "
+            f"{ses.get('watchtower_preset') or zmeta.get('watchtower_preset', '')}",
         ))
 
     return rows

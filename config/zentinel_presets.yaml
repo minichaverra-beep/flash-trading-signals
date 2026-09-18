@@ -1,0 +1,80 @@
+# Calibraciones Zentinel (TradingView) — stack Cursor Trading
+# Fuente de verdad versionada. El pipeline Advanced/High lee vía app.models.zentinel_presets.
+# TradingView NO se lee en vivo: checklist manual + umbrales locales (volumen / killzones).
+version: "2026-09-18"
+timezone: America/New_York
+role_note: >
+  FVG Multi TF + Volumen = filtro de confluencia, NUNCA trigger.
+  Entrada = H1/CTR + zona + 2M5.
+
+markets:
+  BTC:
+    fvg_volume:
+      preset_name: Zentinel_BTC_E1
+      high: 1.7
+      extreme: 2.6
+      low: 0.75
+      very_low: 0.45
+      period: 84
+      labels: small
+      role: confluence_filter
+    watchtower:
+      preset_name: Watchtower_BTC_E1
+      killzones:
+        "off":
+          - { name: Asia, start: "19:00", end: "20:00" }
+          - { name: London, start: "02:00", end: "05:00" }
+          - { name: Lunch, start: "11:00", end: "14:00" }
+        "on":
+          - { name: NY_AM_open, start: "08:00", end: "10:00" }
+          - { name: NY_AM_mid, start: "10:00", end: "11:00" }
+          - { name: NY_PM, start: "14:00", end: "16:00" }
+      smt:
+        htf: false
+        max: 3
+        lookback: 5
+        sym1: ETH
+        sym2: ES
+      bias_table:
+        avg: 3
+        neutral_pct: 0.5
+      mno: true
+      org: false
+      pw_mid: false
+
+  US30:
+    fvg_volume:
+      preset_name: Zentinel_US30_E1
+      high: 1.6
+      extreme: 2.8
+      low: 0.70
+      very_low: 0.40
+      period: 48
+      labels: small
+      role: confluence_filter
+    watchtower:
+      preset_name: Watchtower_US30_E1
+      killzones:
+        "off":
+          - { name: Asia, start: "19:00", end: "20:00" }
+          - { name: London, start: "02:00", end: "05:00" }
+          - { name: Lunch, start: "11:00", end: "14:00" }
+        "on":
+          - { name: NY_AM_open, start: "08:00", end: "10:00" }
+          - { name: NY_AM_mid, start: "10:00", end: "11:00" }
+          - { name: NY_PM, start: "14:00", end: "16:00" }
+      smt:
+        htf: false
+        max: 3
+        lookback: 3
+        sym1: ES
+        sym2: NQ
+      bias_table:
+        avg: 3
+        neutral_pct: 0.3
+      org: true
+      org_rth: { start: "09:30", end: "16:15" }
+      ce50: true
+      labels: false
+      pw_mid: true
+      mno: false

@@ -305,6 +305,29 @@ def create_annotated_entry_chart(
         gen = data.get("generated", "")
         title = f"{asset} M5 · {gen} UTC · 2M5 + entrada óptima"
         ax.set_title(title, color="#569cd6", fontsize=12, fontweight="bold")
+
+        # Nota Zentinel (killzones NY + presets) — subtítulo corto, sin saturar
+        try:
+            from app.models.zentinel_presets import zentinel_chart_note
+
+            note = zentinel_chart_note(asset, data.get("session"))
+            ax.text(
+                0.5, 1.02, note,
+                transform=ax.transAxes,
+                color="#808080", fontsize=7, ha="center", va="bottom",
+            )
+            ses = data.get("session") or {}
+            if ses.get("in_ny_window"):
+                ax.text(
+                    0.01, 0.98,
+                    f"KZ {ses.get('window', 'NY')}",
+                    transform=ax.transAxes,
+                    color="#4ec9b0", fontsize=8, va="top",
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor="#2d2d30", edgecolor="#4ec9b0", alpha=0.85),
+                )
+        except Exception:
+            pass
+
         ax.tick_params(colors="#e0e0e0")
         for spine in ax.spines.values():
             spine.set_color("#3e3e42")

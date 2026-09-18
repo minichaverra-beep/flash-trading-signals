@@ -305,7 +305,7 @@ def main() -> int:
     pdh, pdl = pdh_pdl(h1, now)
     sh, slv = swing_levels(m5)
     zone = nearest_zone(price, sh, slv)
-    session = session_flags(now)
+    session = session_flags(now, asset="US30")
     confirm_long = two_candle_confirm(m5, "LONG")
     confirm_short = two_candle_confirm(m5, "SHORT")
     setup = suggest_setup(
@@ -357,7 +357,12 @@ def main() -> int:
         "sl_points_std": 9.0,
         "sl_points_micro": 90.0,
         "entry_override": entry_override,
+        "m5": m5,
+        "h1": h1,
     }
+    from app.models.zentinel_presets import attach_zentinel_to_data
+
+    attach_zentinel_to_data(data, asset="US30")
 
     if args.bias in ("bullish", "bearish"):
         from app.services.btc_high_analysis import apply_forced_bias

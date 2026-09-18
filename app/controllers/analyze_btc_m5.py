@@ -120,16 +120,20 @@ def h1_bias(h1: list[dict]) -> str:
     return "NEUTRAL"
 
 
-def session_flags(now_utc: datetime) -> dict:
-    ny = now_utc + NY_OFFSET
-    h = ny.hour + ny.minute / 60
-    morning = 8.0 <= h < 11.0
-    afternoon = 14.0 <= h < 17.0
+def session_flags(now_utc: datetime, *, asset: str | None = "BTC") -> dict:
+    """Killzones NY Zentinel Watchtower (08-10 · 10-11 · 14-16), chart TZ America/New_York."""
+    from app.models.zentinel_presets import classify_killzone
+
+    kz = classify_killzone(now_utc, asset=asset or "BTC")
     return {
-        "ny_local": ny.strftime("%Y-%m-%d %H:%M"),
-        "utc": now_utc.strftime("%Y-%m-%d %H:%M"),
-        "in_ny_window": morning or afternoon,
-        "window": "NY AM 08-11" if morning else ("NY PM 14-17" if afternoon else "FUERA_NY"),
+        "ny_local": kz["ny_local"],
+        "utc": kz["utc"],
+        "in_ny_window": bool(kz["in_ny_window"]),
+        "window": kz["window"],
+        "killzone_name": kz.get("killzone_name"),
+        "killzone_on": bool(kz.get("killzone_on")),
+        "watchtower_preset": kz.get("preset_name"),
+        "off_reason": kz.get("off_reason"),
     }
 
 
@@ -546,7 +550,7 @@ def main() -> int:
     pdh, pdl = pdh_pdl(h1, now)
     sh, sl = swing_levels(m5)
     zone = nearest_zone(price, sh, sl)
-    session = session_flags(now)
+    session = session_flags(now, asset="BTC")
     confirm_long = two_candle_confirm(m5, "LONG")
     confirm_short = two_candle_confirm(m5, "SHORT")
     setup = suggest_setup(
@@ -588,7 +592,12 @@ def main() -> int:
         "entry_override": entry_override,
         "asset_label": "BTC",
         "price_decimals": 2 if args.history_review else 1,
+        "m5": m5,
+        "h1": h1,
     }
+    from app.models.zentinel_presets import attach_zentinel_to_data
+
+    attach_zentinel_to_data(data, asset="BTC")
 
     if args.bias in ("bullish", "bearish"):
         from app.services.btc_high_analysis import apply_forced_bias

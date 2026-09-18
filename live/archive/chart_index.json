@@ -120,6 +120,17 @@
       "archive": "live/archive/us30_20260914_144243_annotated.png",
       "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
       "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260914_144243_annotated.png"
+    },
+    {
+      "id": "us30-029",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-09-18 16:28",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20260918_162831_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20260918_162831_annotated.png"
     }
   ]
 }

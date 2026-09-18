@@ -19,6 +19,8 @@ Este documento permite que Cursor:
 
 **Regla madre:** Los indicadores **refuerzan** el edge E1 (PF 4.77). Nunca sustituyen zona + 2 velas M5 + SL fijo.
 
+**Zentinel (2026-09):** calibraciones FVG+Vol + Watchtower NY en `config/zentinel_presets.yaml` y `docs/strategy/ZENTINEL_TV_PRESETS.md` — filtro de confluencia en el stack; checklist TV manual (no lectura en vivo).
+
 ---
 
 ## 2. Stack de indicadores — resumen

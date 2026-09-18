@@ -18,6 +18,7 @@ MOBILE_OPS_DIR = IMAGES_DIR / "Operaciones del celular desde 1 abril hasta 17 se
 OPS_MOBILE_DATA_DIR = DATA_DIR / "ops_mobile"
 TRAINING_ML_DIR = PROJECT_ROOT / "assets" / "reportes ML"  # reportes estáticos; train → app/controllers
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+CONFIG_DIR = PROJECT_ROOT / "config"
 DOCS_DIR = PROJECT_ROOT / "docs"
 DOCS_PROTOCOLS_DIR = DOCS_DIR / "protocols"
 DOCS_STRATEGY_DIR = DOCS_DIR / "strategy"

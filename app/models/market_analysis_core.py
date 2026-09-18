@@ -70,16 +70,20 @@ def h1_bias(h1: list[dict]) -> str:
     return "NEUTRAL"
 
 
-def session_flags(now_utc: datetime) -> dict:
-    ny = now_utc + NY_OFFSET
-    h = ny.hour + ny.minute / 60
-    morning = 8.0 <= h < 11.0
-    afternoon = 14.0 <= h < 17.0
+def session_flags(now_utc: datetime, *, asset: str | None = None) -> dict:
+    """Killzones NY Zentinel Watchtower (08-10 · 10-11 · 14-16), chart TZ America/New_York."""
+    from app.models.zentinel_presets import classify_killzone
+
+    kz = classify_killzone(now_utc, asset=asset or "US30")
     return {
-        "ny_local": ny.strftime("%Y-%m-%d %H:%M"),
-        "utc": now_utc.strftime("%Y-%m-%d %H:%M"),
-        "in_ny_window": morning or afternoon,
-        "window": "NY AM 08-11" if morning else ("NY PM 14-17" if afternoon else "FUERA_NY"),
+        "ny_local": kz["ny_local"],
+        "utc": kz["utc"],
+        "in_ny_window": bool(kz["in_ny_window"]),
+        "window": kz["window"],
+        "killzone_name": kz.get("killzone_name"),
+        "killzone_on": bool(kz.get("killzone_on")),
+        "watchtower_preset": kz.get("preset_name"),
+        "off_reason": kz.get("off_reason"),
     }
 
 

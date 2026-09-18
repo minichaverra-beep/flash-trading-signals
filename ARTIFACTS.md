@@ -32,3 +32,13 @@ Acceso rápido a los dos artefactos nuevos (hijos de Bitácora).
 - En Bitácora, la sección **Rutas · Artefactos** enlaza ambos.
 - Cada artefacto tiene **Rutas hermanas** al inicio.
 - Cash Management E1 (2026-09-17, generador `_build_cash_mgmt_danilo_e1.py`): ventana narrada **jul 2025 → 17 sep 2026** (~15 meses) en capas — Visual 272 ops / PF 3,16 / +$2.843 / E1 PF 4,77; Desktop abr–ago WR 71,2% (104); OCR filtrado 1 abr–17 sep: 98 ops, matched BTC **51 · WR 64,7%** (33W/18L). Tono **inversor**, UI en español, donuts + esquema E1 SVG, SL mínimo **30 pips**. Sin P&L USD OCR inventado; no re-escanear; dataset `v_ops_apr_sep` @ 2041deb.
+
+## Zentinel (TradingView → stack)
+
+| Artefacto | Ruta |
+|-----------|------|
+| Presets YAML | `config/zentinel_presets.yaml` |
+| API | `app/models/zentinel_presets.py` |
+| Doc + checklist TV | `docs/strategy/ZENTINEL_TV_PRESETS.md` |
+
+Presets: `Zentinel_BTC_E1` / `Zentinel_US30_E1` · `Watchtower_BTC_E1` / `Watchtower_US30_E1`. Cableados a confluencia (vol filtro), killzones NY en `session_flags`, Advanced e -Ilustrate. TV no se lee en vivo.

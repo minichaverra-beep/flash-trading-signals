@@ -913,6 +913,13 @@ def format_advanced_sections(
     lines += format_gallery_advanced(pats, categories)
     lines += format_trading_plan_advanced(data, ctx, combined)
     lines += format_psychology_guards(data, categories, combined)
+    try:
+        from app.models.zentinel_presets import zentinel_report_lines
+
+        lines += ["", "---", ""]
+        lines += zentinel_report_lines(data.get("asset_label"), data)
+    except Exception:
+        pass
     lines += format_cursor_advanced_block(data.get("asset_label"))
     return lines
 
@@ -2060,6 +2067,12 @@ def build_high_context(
     work["mode_bias"] = bias_mode
     work["mode_setup"] = setup_mode
     work["m5"] = m5
+    try:
+        from app.models.zentinel_presets import attach_zentinel_to_data
+
+        attach_zentinel_to_data(work, asset=work.get("asset_label") or work.get("symbol"))
+    except Exception:
+        pass
 
     crt = analyze_crt(work["price"], work.get("pdh"), work.get("pdl"), h1, m5)
     crt = adjust_crt_for_setup_mode(crt, setup_mode, work)
