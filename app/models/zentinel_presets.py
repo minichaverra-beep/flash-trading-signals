@@ -121,6 +121,9 @@ def normalize_market(asset: str | None) -> str:
         return "BTC"
     if "US30" in a or a in ("DJI", "YM", "YM=F", "^DJI"):
         return "US30"
+    # Gold: reuse US30 killzone calendar (London + NY) until a dedicated preset exists
+    if a in ("XAUUSD", "XAU", "GOLD", "GC=F", "GC"):
+        return "US30"
     return "BTC" if a.startswith("BTC") else a
 
 

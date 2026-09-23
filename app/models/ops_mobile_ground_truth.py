@@ -7,6 +7,7 @@ and builds feature vectors compatible with BTC/US30 signal models.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +20,7 @@ from app.config import DATA_DIR, MOBILE_OPS_DIR, OPS_MOBILE_DATA_DIR
 
 OPS_VERSION = "v_ops_apr_sep"
 OPS_TRADES = OPS_MOBILE_DATA_DIR / OPS_VERSION / "trades.csv"
+_WA_IMG_DATE = re.compile(r"IMG-(\d{4})(\d{2})(\d{2})", re.IGNORECASE)
 try:
     from zoneinfo import ZoneInfo
 
@@ -79,6 +81,21 @@ def parse_capture_ts(value: Any) -> datetime | None:
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=LOCAL_TZ)
+    return dt.astimezone(timezone.utc)
+
+
+def parse_ts_from_whatsapp_filename(name: Any, *, hour_local: int = 11) -> datetime | None:
+    """Fallback: IMG-YYYYMMDD-WA####.jpg → mediodía local (Bogotá) del día de captura."""
+    if name is None or (isinstance(name, float) and np.isnan(name)):
+        return None
+    m = _WA_IMG_DATE.search(str(name))
+    if not m:
+        return None
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        dt = datetime(y, mo, d, hour_local, 0, 0, tzinfo=LOCAL_TZ)
+    except ValueError:
+        return None
     return dt.astimezone(timezone.utc)
 
 
@@ -178,6 +195,10 @@ def match_ops_to_m5(
     for _, row in ops.iterrows():
         ts = parse_capture_ts(row.get("capture_ts_from_name") or row.get("entry_time"))
         if ts is None:
+            ts = parse_ts_from_whatsapp_filename(
+                row.get("source_image") or row.get("source_path")
+            )
+        if ts is None:
             continue
         entry = float(row["entry_price"])
         # Try local-as-UTC-5 first (already converted in parse), also try raw-as-UTC
@@ -189,6 +210,12 @@ def match_ops_to_m5(
                 candidates.append(naive.replace(tzinfo=timezone.utc))
         except Exception:
             pass
+        # Filename day ± a few hours (gold OCR often lacks capture_ts)
+        fn_ts = parse_ts_from_whatsapp_filename(
+            row.get("source_image") or row.get("source_path")
+        )
+        if fn_ts is not None and all(abs((c - fn_ts).total_seconds()) > 60 for c in candidates):
+            candidates.append(fn_ts)
 
         hit = None
         used_ts = ts

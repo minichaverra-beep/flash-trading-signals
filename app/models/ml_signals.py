@@ -1,4 +1,4 @@
-"""ML inference for M5 E1 signal quality — BTC and US30 models."""
+"""ML inference for M5 E1 signal quality — BTC, US30 and XAUUSD models."""
 from __future__ import annotations
 
 import json
@@ -28,6 +28,15 @@ SYMBOL_CONFIG: dict[str, dict[str, Any]] = {
         "ml_source": "us30_signal_model.joblib",
         # SL ~$9: at Dow ~42000 with ~$1/point → ~9 pts; micro ($0.10/pt) → ~90 pts
         "sl_points_note": "~9 pts ($1/pt) o ~90 pts ($0.10/pt micro)",
+    },
+    "xauusd": {
+        "model_file": "xauusd_signal_model.joblib",
+        "features_file": "xauusd_signal_features.json",
+        "sl_usd_ref": 8.0,  # ~8 USD/oz típico en ops móviles OCR
+        "price_ref": 4300.0,
+        "ml_source": "xauusd_signal_model.joblib",
+        "sl_points_note": "~8 USD/oz (proxy GC=F)",
+        "data_proxy": "GC=F",
     },
 }
 

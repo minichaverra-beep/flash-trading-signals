@@ -1,5 +1,5 @@
 """
-Integrate mobile ops ground-truth into ML (BTC/US30) + neural vision labels.
+Integrate mobile ops ground-truth into ML (BTC/US30/XAUUSD) + neural vision labels.
 
 1) Refresh market cache to cover ops range
 2) Match OCR trades → M5 bars → WIN/LOSS labels
@@ -10,6 +10,7 @@ Usage:
   python -m scripts.integrate_mobile_ops_ml
   python -m scripts.integrate_mobile_ops_ml --quick
   python -m scripts.integrate_mobile_ops_ml --skip-us30
+  python -m scripts.integrate_mobile_ops_ml --only-xauusd --quick
 """
 from __future__ import annotations
 
@@ -309,6 +310,237 @@ def run_us30(args: argparse.Namespace) -> dict:
     }
 
 
+def _label_xau_ops_on_h1(ops: pd.DataFrame, h1: list[dict], horizon_h1: int = 24) -> list[dict]:
+    """Best-effort WIN/LOSS on H1 when M5 lookback does not cover OCR dates (no invented trades)."""
+    from app.models.ops_mobile_ground_truth import (
+        find_bar_index,
+        label_with_levels,
+        parse_capture_ts,
+        parse_ts_from_whatsapp_filename,
+    )
+
+    rows: list[dict] = []
+    for _, row in ops.iterrows():
+        ts = parse_capture_ts(row.get("capture_ts_from_name") or row.get("entry_time"))
+        if ts is None:
+            ts = parse_ts_from_whatsapp_filename(
+                row.get("source_image") or row.get("source_path")
+            )
+        if ts is None or pd.isna(row.get("entry_price")) or pd.isna(row.get("side")):
+            rows.append(
+                {
+                    "trade_id": row.get("trade_id"),
+                    "source_image": row.get("source_image"),
+                    "status": "skip_incomplete",
+                    "label": None,
+                }
+            )
+            continue
+        entry = float(row["entry_price"])
+        hit = find_bar_index(
+            h1, ts, entry, window_hours=48.0, max_price_err_pct=0.35
+        )
+        if hit is None:
+            rows.append(
+                {
+                    "trade_id": row.get("trade_id"),
+                    "source_image": row.get("source_image"),
+                    "status": "no_h1_match",
+                    "label": None,
+                    "entry": entry,
+                    "ts": ts.isoformat(),
+                }
+            )
+            continue
+        idx, bar_close, perr = hit
+        side = str(row["side"]).lower()
+        sl = float(row["stop_loss"]) if pd.notna(row.get("stop_loss")) else None
+        tp = float(row["take_profit"]) if pd.notna(row.get("take_profit")) else None
+
+        def _fb(direction, entry_px, setup_sl, future, horizon):
+            # fixed RR on H1 if SL/TP missing
+            from app.models.ml_signals import sl_pct_at_price
+
+            sl_pct = sl_pct_at_price("xauusd", entry_px)
+            if direction == "LONG":
+                sl_x = setup_sl if setup_sl is not None and setup_sl < entry_px else entry_px * (1 - sl_pct)
+                risk = entry_px - sl_x
+                if risk <= 0:
+                    return None
+                tp_x = entry_px + 2.0 * risk
+                for bar in future[:horizon]:
+                    if bar["low"] <= sl_x:
+                        return 0
+                    if bar["high"] >= tp_x:
+                        return 1
+            else:
+                sl_x = setup_sl if setup_sl is not None and setup_sl > entry_px else entry_px * (1 + sl_pct)
+                risk = sl_x - entry_px
+                if risk <= 0:
+                    return None
+                tp_x = entry_px - 2.0 * risk
+                for bar in future[:horizon]:
+                    if bar["high"] >= sl_x:
+                        return 0
+                    if bar["low"] <= tp_x:
+                        return 1
+            return None
+
+        label, src = label_with_levels(
+            side, entry, sl, tp, h1[idx + 1 : idx + 1 + horizon_h1], horizon_h1, _fb
+        )
+        rows.append(
+            {
+                "trade_id": row.get("trade_id"),
+                "source_image": row.get("source_image"),
+                "status": "labeled" if label is not None else "open_or_unresolved",
+                "label": int(label) if label is not None else None,
+                "label_source": src,
+                "side": side,
+                "entry": entry,
+                "bar_time": h1[idx]["open_time"].isoformat(),
+                "price_at_bar": bar_close,
+                "price_error_pct": round(perr, 4),
+                "ts": ts.isoformat(),
+            }
+        )
+    return rows
+
+
+def run_xauusd(args: argparse.Namespace) -> dict:
+    from app.controllers import train_xauusd_signals as xau
+    from app.models.ml_signals import (
+        extract_features,
+        feature_config,
+        features_to_vector,
+        model_paths,
+    )
+    from app.services.btc_high_analysis import analyze_crt, detect_rsi_divergence, dmi_proxy
+
+    print("\n=== XAUUSD: load/fetch market data (GC=F) ===")
+    m5, h1 = xau.load_or_fetch_data(args.days, force=args.force_download)
+    print(f"M5={len(m5)} H1={len(h1)}")
+
+    m5_train, h1_train = m5, h1
+    if args.quick and m5:
+        from datetime import timedelta
+
+        cutoff = m5[-1]["open_time"] - timedelta(days=min(45, max(20, args.days)))
+        m5_train = [c for c in m5 if c["open_time"] >= cutoff]
+        h1_train = [c for c in h1 if c["open_time"] >= cutoff - timedelta(days=2)]
+        print(f"Quick baseline window: M5={len(m5_train)} H1={len(h1_train)}")
+
+    X0, y0, feature_names, meta0 = xau.build_training_dataset(
+        m5_train, h1_train, horizon=args.horizon, stride=args.stride, ny_only=args.ny_only
+    )
+    print(f"Baseline samples: {len(y0)} wr={y0.mean()*100:.1f}%")
+
+    ops = load_ops_trades(symbols={"XAUUSD"}, min_confidence=0.45)
+    # Wider windows: gold OCR often lacks capture_ts (filename day only)
+    matched = match_ops_to_m5(
+        ops,
+        m5,
+        horizon=args.horizon,
+        fallback_label_fn=xau.label_outcome,
+        max_price_err_pct=max(args.max_price_err_pct, 0.5),
+        window_hours=max(args.window_hours, 36.0),
+    )
+    print(f"Matched XAUUSD ops (M5): {len(matched)} | {match_summary(matched)}")
+
+    h1_labels = _label_xau_ops_on_h1(ops, h1)
+    pd.DataFrame(h1_labels).to_csv(OUT_DIR / "xauusd_ops_h1_labels.csv", index=False)
+
+    X_ops, y_ops, meta_ops = build_ops_feature_rows(
+        matched,
+        m5,
+        h1,
+        build_snapshot_fn=xau.build_snapshot_at_index,
+        analyze_crt_fn=analyze_crt,
+        detect_div_fn=detect_rsi_divergence,
+        dmi_fn=dmi_proxy,
+        extract_features_fn=extract_features,
+        features_to_vector_fn=features_to_vector,
+        feature_names=feature_names,
+        h1_up_to_fn=xau.h1_up_to,
+    )
+
+    clf0, m0 = train_eval(X0, y0, args.algorithm)
+    if len(y_ops):
+        X1 = np.vstack([X0, X_ops])
+        y1 = np.concatenate([y0, y_ops])
+        w = np.concatenate(
+            [np.ones(len(y0)), np.full(len(y_ops), float(args.ops_weight))]
+        )
+    else:
+        X1, y1, w = X0, y0, np.ones(len(y0))
+    clf1, m1 = train_eval(X1, y1, args.algorithm, sample_weight=w)
+
+    model_path, features_path = model_paths("xauusd")
+    if model_path.is_file():
+        shutil.copy2(model_path, model_path.with_suffix(".joblib.bak_pre_ops"))
+    joblib.dump(clf1, model_path)
+    cfg = feature_config("xauusd")
+    cfg.update(
+        {
+            "feature_names": feature_names,
+            "trained_at": datetime.now(timezone.utc).isoformat(),
+            "samples": int(len(y1)),
+            "ops_matched": int(len(matched)),
+            "ops_weight": args.ops_weight,
+            "metrics_before": m0,
+            "metrics_after": m1,
+            "ops_dataset_version": OPS_VERSION,
+            "data_source": "yfinance/Yahoo GC=F",
+            "version": "xauusd_e1_v1_ops",
+            "h1_ops_labels": h1_labels,
+            "note": (
+                "M5 match often 0: Yahoo intraday lookback vs May–Jul OCR dates. "
+                "H1 labels are diagnostic only; model is synthetic-E1 dominant."
+            ),
+        }
+    )
+    features_path.write_text(json.dumps(cfg, indent=2, default=str), encoding="utf-8")
+    pd.DataFrame([m.__dict__ for m in matched]).to_csv(
+        OUT_DIR / "xauusd_ops_matched.csv", index=False
+    )
+    write_vision_labels(matched, OUT_DIR / "xauusd_mobile_vision_labels.csv")
+    # Also export H1-labeled screenshots for neural (only resolved WIN/LOSS)
+    h1_vis = [
+        {
+            "filename": r["source_image"],
+            "label": "WIN" if r["label"] == 1 else "LOSS",
+            "trade_id": r["trade_id"],
+            "symbol": "XAUUSD",
+            "label_source": f"h1_{r.get('label_source')}",
+            "confidence": 0.5,
+        }
+        for r in h1_labels
+        if r.get("label") is not None and r.get("source_image")
+    ]
+    if h1_vis:
+        pd.DataFrame(h1_vis).to_csv(OUT_DIR / "xauusd_h1_vision_labels.csv", index=False)
+        vis = OUT_DIR / "mobile_vision_labels.csv"
+        if vis.is_file():
+            a = pd.read_csv(vis)
+            b = pd.DataFrame(h1_vis)
+            pd.concat([a, b], ignore_index=True).drop_duplicates(subset=["filename"]).to_csv(
+                vis, index=False
+            )
+
+    return {
+        "symbol": "XAUUSD",
+        "baseline_samples": int(len(y0)),
+        "ops_candidates": int(len(ops)),
+        "ops_matched": int(len(matched)),
+        "ops_feature_rows": int(len(y_ops)),
+        "match_summary": match_summary(matched),
+        "h1_labels": h1_labels,
+        "metrics_before": m0,
+        "metrics_after": m1,
+        "model_path": str(model_path),
+    }
+
+
 def update_neural_labels_and_train(args: argparse.Namespace, btc_result: dict) -> dict:
     """Copy vision labels into neural data dir and train a simple mobile vision model."""
     labels_src = OUT_DIR / "mobile_vision_labels.csv"
@@ -438,6 +670,14 @@ def write_report(results: list[dict], neural: dict, elapsed: float) -> None:
             f"- Model: `{r.get('model_path')}`",
             "",
         ]
+        if r.get("h1_labels"):
+            labeled = [x for x in r["h1_labels"] if x.get("label") is not None]
+            lines += [
+                f"- H1 diagnostic labels (fuera de M5 lookback): **{len(labeled)}** / "
+                f"{len(r['h1_labels'])} ops",
+                f"  `{json.dumps(labeled, default=str)[:500]}`",
+                "",
+            ]
     lines += [
         "## Neural / visión",
         "",
@@ -449,6 +689,8 @@ def write_report(results: list[dict], neural: dict, elapsed: float) -> None:
         "",
         f"- `{OUT_DIR / 'btc_ops_matched.csv'}`",
         f"- `{OUT_DIR / 'us30_ops_matched.csv'}`",
+        f"- `{OUT_DIR / 'xauusd_ops_matched.csv'}`",
+        f"- `{OUT_DIR / 'xauusd_ops_h1_labels.csv'}`",
         f"- `{OUT_DIR / 'mobile_vision_labels.csv'}`",
         f"- `{REPORT_PATH}`",
         "",
@@ -456,7 +698,8 @@ def write_report(results: list[dict], neural: dict, elapsed: float) -> None:
         "",
         "- Modelos previos respaldados como `*.joblib.bak_pre_ops`.",
         "- No se inventaron trades: solo OCR + velas históricas.",
-        "- US30 M5 vía yfinance suele cubrir ~60 días → pocas matches esperables.",
+        "- US30/XAUUSD M5 vía yfinance suele cubrir ~60–70 días → pocas matches si OCR es más viejo.",
+        "- XAUUSD usa proxy **GC=F**; etiquetas H1 son diagnósticas cuando M5 no cubre la fecha.",
         "",
     ]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -480,6 +723,12 @@ def main() -> int:
     parser.add_argument("--ny-only", action="store_true")
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--skip-us30", action="store_true")
+    parser.add_argument("--skip-xauusd", action="store_true")
+    parser.add_argument(
+        "--only-xauusd",
+        action="store_true",
+        help="Solo entrenar/integrar XAUUSD (salta BTC y US30)",
+    )
     parser.add_argument("--skip-neural", action="store_true")
     parser.add_argument(
         "--max-price-err-pct",
@@ -508,10 +757,18 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     results = []
     try:
-        results.append(run_btc(args))
-        if not args.skip_us30:
-            results.append(run_us30(args))
-        neural = update_neural_labels_and_train(args, results[0])
+        if args.only_xauusd:
+            results.append(run_xauusd(args))
+            neural = update_neural_labels_and_train(args, results[0]) if not args.skip_neural else {
+                "trained": False, "note": "skipped"
+            }
+        else:
+            results.append(run_btc(args))
+            if not args.skip_us30:
+                results.append(run_us30(args))
+            if not args.skip_xauusd:
+                results.append(run_xauusd(args))
+            neural = update_neural_labels_and_train(args, results[0])
         write_report(results, neural, time.time() - t0)
         print("\n" + "=" * 56)
         print(f"Report: {REPORT_PATH}")

@@ -1,4 +1,4 @@
-"""Historial ligero de Entrada óptima (High signal) — BTC / US30.
+"""Historial ligero de Entrada óptima (High signal) — BTC / US30 / XAUUSD.
 
 Esquema mínimo por registro: id, time, optimal_entry [, side].
 `side` (LONG|SHORT) es opcional pero preferible para P&L correcto.
@@ -29,14 +29,17 @@ _GOOD_PNL_PCT = 0.15  # |P&L %| ≥ 0.15% → BUENA / MALA más claro
 _ASSET_FILE = {
     "btc": "btc_signal_history.json",
     "us30": "us30_signal_history.json",
+    "xauusd": "xauusd_signal_history.json",
 }
 
 
 def normalize_asset_key(asset: str | None) -> str:
-    """Map asset_label → btc | us30."""
+    """Map asset_label → btc | us30 | xauusd."""
     a = (asset or "BTC").strip().upper()
     if "US30" in a or a in ("DJ30", "DJI", "YM"):
         return "us30"
+    if "XAU" in a or a in ("GOLD", "GC", "GC=F"):
+        return "xauusd"
     return "btc"
 
 

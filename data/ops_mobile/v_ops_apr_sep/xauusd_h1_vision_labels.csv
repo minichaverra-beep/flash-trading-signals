@@ -1,0 +1,3 @@
+filename,label,trade_id,symbol,label_source,confidence
+IMG-20260513-WA0001.jpg,LOSS,039ed97651840a49,XAUUSD,h1_real_sl_tp,0.5
+IMG-20260702-WA0001.jpg,LOSS,62745f1db947c362,XAUUSD,h1_real_sl_tp,0.5
