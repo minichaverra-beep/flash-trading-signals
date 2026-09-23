@@ -1,0 +1,235 @@
+Here is the result of "fetch" for the Page with URL https://app.notion.com/p/1ee58354488080d0af44e687146f2838 as of 2026-09-15T13:55:52.016Z:
+<page url="https://app.notion.com/p/1ee58354488080d0af44e687146f2838" icon="icons/activity_green">
+<ancestor-path></ancestor-path>
+<properties>
+{"title":"Bitácora trading v2"}
+</properties>
+<iconMetadata>{"type":"icon","icon":{"name":"activity","color":"green"}}</iconMetadata>
+<content>
+<database url="https://app.notion.com/p/1ee583544880811e9c9ef067ca0df7c7" inline="true" data-source-url="collection://1ee58354-4880-8163-b541-000bc30cfc14"></database>
+<empty-block/>
+<empty-block/>
+<span color="purple">Guía de Colores:</span>
+	- <span color="pink">Rosado: </span><span color="gray">Nuevas </span><span color="gray">**micro-reglas**</span><span color="gray"> que debo cumplir.</span>
+	- <span color="pink_bg">Resaltador rosado</span>: <span color="gray">Estamos incumpliendo las normas más de lo habitual.</span>
+	- <span color="orange">Naranja</span>: <span color="gray"> Es variable según la volatilidad.</span>
+	# <span color="blue">TRADING PLAN</span> {toggle="true"}
+		## Aspectos Generales
+		- Operare exclusivamente <span color="pink">BTC </span>y <span color="blue">US30</span><span color="green">.</span>
+		- No analizar estresado ni cansado.
+		- Estrategia 1 (<span color="green">Flopy</span><span color="red">-</span><span color="green">Scalping</span>): Solo <span color="blue">**continuaciones **</span>de tendencia en soportes o resistencias débiles que no sean macro (No mover SL y pequeño)(SL debajo del soporte)<span color="pink">.</span>
+		- <span color="gray">~~Estrategia 1.1 (Jolu-Day-trading): Solo pullbacks de continuidad si llegamos tarde al quiebre. (SL Grande)~~</span>
+		- Estrategia 2 (<span color="green">Yos-Day trading</span>): Solo turttle soup en <span color="blue">**reversiones **</span>macro (<span color="pink">Entrada donde iba a ser tu SL)(</span>Cerca al pool de liquidez).
+		- <span color="pink_bg">Evitar zonas de lateralidad micro.</span>
+		- Reconocer si estamos en el mes bueno o malo según lo que hemos recopilado de las noticias de alto impacto <span color="blue">(Crypto alza, economía global alza)</span>.
+		- No estar en más de un mercado a la vez.
+		- Si entramos a un mercado que previamente perdimos debemos dejar que pase un buen lapso de tiempo para volver a operar ese mercado.
+		- No arriesgar las ganancias del día si ya cumpliste meta.
+		- No comprometer el cierre semanal anterior.
+		- Revisar dirección del <span color="orange">VIX 15.94 en zona equilibrio.</span>
+		<empty-block/>
+		---
+		---
+		## Análisis y Confluencias
+		- <span color="pink_bg">Revisar tendencia macro en H1 y dedicarse a una sola temporalidad M5.</span>
+		- Revisar el vix si volatilidad alta  ( \> 16) no respeta soportes ni resistencias.
+		1. Aplicar rectángulo en zonas para quiebre.
+		2. Líneas horizontales en reversiones macro.
+		3. **Solo entrar cerca de las zonas de reacción.**
+		4. Notar movimientos repentinos a nuestro favor <span color="pink">(Ver la acción del precio en la vela actual)</span>.
+		5. El posible trade muestra buen rango de ganancias<span color="pink_bg"> y una solida zona de SL</span>
+		6. <span color="yellow">**Se entra solo si identificaste que se parece a las fotos de la galeria de operaciones.**</span>
+		## Gestión de Riesgo
+		- Arriesgar lo mismo en probabilidad alta y en media, ecuánime en emociones.
+		- Siempre aceptar el riesgo.
+		- Si voy contra tendencia debo bajar el riesgo.
+		- <span color="pink_bg">Si el mercado me suelta las ganancias que me salvan la cuenta o definen mi día debo cerrar aunque vaya 1:1.</span>
+		- <span color="pink">No meter más de 3 entradas en una sola operación.</span>
+		- <span color="pink_bg">Break-even si ya el precio respiró lo suficiente en profit.</span>
+		- <span color="pink">No añadir posiciones en negativo.</span>
+		- <span color="pink_bg">No expandir jamás el SL.</span>
+		- No arriesgar más del 10% por operación aunque lleve 3 días buenos.
+		- <span color="pink_bg">Ponerme un tope máximo del día de cuánto estoy dispuesto a perder, antes de poder operar.</span>
+		- Máximo 3 operaciones diarias sea cual sea el resultado final.
+		- \[RR\] 1:2.
+		<empty-block/>
+		## Psicología <span color="blue">(</span><span color="green">70%</span><span color="blue">)</span>
+		- No debo intentar recuperar lo perdido y menos si me siento emotivo.
+		- Revisar reglas si quiero entrar en drawdown.
+		- Debo aceptar que el mercado me ganó y no pedirle revancha.
+		- Si no me salto el 30% de mi capital por día mi calma se mantendrá bien.
+		- No tomar trades por FOMO.
+		- <span color="pink_bg">Evitar el parásito y solo escuchar la voz analítica.</span>
+		- Si estoy ansioso no debo operar.
+		- No arriesgar si cumplí mi meta diaria.
+<empty-block/>
+---
+
+<<<SPLIT>>>
+
+# <span color="gray">(70% uso) </span><span color="blue">Estrategia 1: CRT</span>
+
+<<<SPLIT>>>
+
+# <span color="gray">(30% uso)</span> <span color="blue">Estrategia 2: Turtle soup</span>
+
+<<<SPLIT>>>
+
+<empty-block/>
+---
+## <span color="blue">IA TIPS:</span> Gestión de riesgo {toggle="true"}
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+## <span color="blue">IA TIPS:</span> Rentabilidad de mi plan {toggle="true"}
+	
+<<<SPLIT>>>
+
+---
+## <span color="blue">IA TIPS:</span> Pendiente categorizar {toggle="true"}
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+	
+<<<SPLIT>>>
+
+<empty-block/>
+<empty-block/>
+<empty-block/>
+<empty-block/>
+---
+---
+---
+---
+---
+---
+---
+---
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+# Final Boss
+
+<<<SPLIT>>>
+
+---
+<page url="https://app.notion.com/p/1fc58354488080d18594f43cfbea955f">Marzo negativo - Abril positivo</page>
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+---
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+relleno
+
+<<<SPLIT>>>
+
+
+<<<SPLIT>>>
+
+<page url="https://app.notion.com/p/3dc58354488081ddaf20f487c18cdec1">Artefacto · Calibración señales + Plan completo</page>
+</content>
+</page>
