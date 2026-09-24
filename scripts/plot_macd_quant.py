@@ -8,11 +8,12 @@ Uso:
   python -m scripts.plot_macd_quant --symbol btc --force-refresh
   python -m scripts.plot_macd_quant --symbol us30 --days 7 --force-refresh
   python -m scripts.plot_macd_quant --symbol xauusd --bars 42
+  python -m scripts.plot_macd_quant --symbol ukoil --days 7 --force-refresh
 
 Salida por defecto: live/<symbol>_h4_macd_quant.png
 Ventana por defecto: últimos ``--days`` calendario terminando en **UTC now**
 (no la cola de un parquet viejo). Con ``--force-refresh`` (o cache stale)
-se redescargan M5/H1 antes de plotear (Binance BTC / yfinance US30·XAU).
+se redescargan M5/H1 antes de plotear (Binance BTC / yfinance US30·XAU·UKOIL).
 No publica métricas de backtest (WR/PF PENDING).
 
 Estilo panel MACD: nube azul (>0) / púrpura (<0), señal blanca, dots magenta/cyan
@@ -57,6 +58,7 @@ SYMBOL_PARQUET: dict[str, tuple[Path, Path]] = {
     "us30": (DATA_DIR / "us30_m5.parquet", DATA_DIR / "us30_h1.parquet"),
     "xau": (DATA_DIR / "xauusd_m5.parquet", DATA_DIR / "xauusd_h1.parquet"),
     "xauusd": (DATA_DIR / "xauusd_m5.parquet", DATA_DIR / "xauusd_h1.parquet"),
+    "ukoil": (DATA_DIR / "ukoil_m5.parquet", DATA_DIR / "ukoil_h1.parquet"),
 }
 
 SYMBOL_TITLE: dict[str, str] = {
@@ -64,14 +66,16 @@ SYMBOL_TITLE: dict[str, str] = {
     "us30": "US30",
     "xau": "XAUUSD",
     "xauusd": "XAUUSD",
+    "ukoil": "UKOIL",
 }
 
-# Clave de archivo live (xauusd → xau)
+# Clave de archivo live (xauusd → xau; ukoil → ukoil)
 SYMBOL_FILE_KEY: dict[str, str] = {
     "btc": "btc",
     "us30": "us30",
     "xau": "xau",
     "xauusd": "xau",
+    "ukoil": "ukoil",
 }
 
 BG = "#0e0e12"
@@ -94,7 +98,7 @@ DOT_DOWN = "#22d3ee"  # cyan valles / SELL
 def normalize_symbol(symbol: str) -> str:
     key = symbol.lower().strip()
     if key not in SYMBOL_PARQUET:
-        raise ValueError(f"Símbolo no soportado: {symbol} (btc|us30|xau|xauusd)")
+        raise ValueError(f"Símbolo no soportado: {symbol} (btc|us30|xau|xauusd|ukoil)")
     return key
 
 
@@ -211,7 +215,7 @@ def refresh_symbol_parquets(
     """Descarga M5/H1 hasta UTC now y actualiza parquet en ``data/``.
 
     - btc: Binance BTCUSDT (append incremental desde último cache o lookback).
-    - us30 / xau: yfinance / Yahoo (mismo fetch que train_* / analyze_*).
+    - us30 / xau / ukoil: yfinance / Yahoo (mismo fetch que train_* / analyze_*).
     """
     key = normalize_symbol(symbol)
     m5_p, h1_p = SYMBOL_PARQUET[key]
@@ -254,7 +258,7 @@ def refresh_symbol_parquets(
         )
         return meta
 
-    # us30 / xau — yfinance (misma ruta que train_*)
+    # us30 / xau / ukoil — yfinance (misma ruta que train_*)
     if key == "us30":
         from app.models.us30_data import DEFAULT_TICKERS, fetch_us30_klines
 
@@ -263,6 +267,14 @@ def refresh_symbol_parquets(
         m5_bars = min(lookback_days * 24 * 12, 5000)
         h1_bars = min(lookback_days * 24, 2000)
         label = "US30"
+    elif key == "ukoil":
+        from app.models.ukoil_data import DEFAULT_TICKERS, fetch_ukoil_klines
+
+        tickers = DEFAULT_TICKERS
+        fetch_fn = fetch_ukoil_klines
+        m5_bars = min(lookback_days * 24 * 12, 8000)
+        h1_bars = min(lookback_days * 24, 4000)
+        label = "UKOIL"
     else:
         from app.models.xauusd_data import DEFAULT_TICKERS, fetch_xauusd_klines
 
@@ -597,7 +609,7 @@ def main(argv: list[str] | None = None) -> int:
         "--symbol",
         default="btc",
         choices=sorted(SYMBOL_PARQUET.keys()),
-        help="Activo: btc|us30|xau|xauusd (default btc)",
+        help="Activo: btc|us30|xau|xauusd|ukoil (default btc)",
     )
     parser.add_argument(
         "--parquet",

@@ -111,6 +111,7 @@ vision labels┘  (evaluación / gating Neural, no label tabular) ──┘
 | US30 M5 | `data/us30_m5.parquet` | **5 000** filas · `2026-08-06` → `2026-09-01` |
 | US30 H1 | `data/us30_h1.parquet` | **720** filas · `2026-07-20` → `2026-09-01` |
 | XAU M5/H1 | `data/xauusd_*.parquet` | 8 000 / 2 160 (fuera del edge E1 primario; solo referencia) |
+| UKOIL M5/H1 | `data/ukoil_*.parquet` | Yahoo **`BZ=F`** (ICE Brent) como proxy UKOIL; solo MACD-quant (sin pipeline E1) |
 | OCR trades | `data/ops_mobile/v_ops_apr_sep/trades.csv` | **100** tras dedupe (`meta.json`: 102 imgs, 2 dup) |
 | BTC matched | `…/btc_ops_matched.csv` | **53** · label 1=**33** · 0=**20** → **WR 62.3%** |
 | US30 matched | `…/us30_ops_matched.csv` | **VACÍO** (size 2 B) |
@@ -257,7 +258,7 @@ Pesos High actuales (`DEEP_LEARNING_SIGNALS.md`):
 | Soft-filter | `macd_soft_filter_ok(direction, row)` sobre **última H4 cerrada** → `True` si Hist a favor (LONG>0 / SHORT<0), `False` en contra, `None` sin datos |
 | Confluencia | `macd_confluence_points` + cable en `compute_confluencia_setup` (max 1.0 pts; flag `categories['macd_soft_filter_ok']`) |
 | Attach analyze | `attach_macd_quant_to_data` → `build_h4_frame_from_data` en `analyze_*_m5` + High |
-| Mini-chart PNG | `python -m scripts.plot_macd_quant` → `live/btc_h4_macd_quant.png` (ventana ~7 días / ~42 H4; también `--symbol us30\|xau\|xauusd`) |
+| Mini-chart PNG | `python -m scripts.plot_macd_quant` → `live/btc_h4_macd_quant.png` (ventana ~7 días / ~42 H4; también `--symbol us30\|xau\|xauusd\|ukoil`) |
 | UI «Nuevo análisis» | Flash Signals `POST /api/signals/macd-quant/analyze` → regenera PNG H4 semana |
 | Ref visual | [live/btc_h4_macd_quant.png](../../live/btc_h4_macd_quant.png) |
 
@@ -280,7 +281,7 @@ Pesos High actuales (`DEEP_LEARNING_SIGNALS.md`):
 | Panel / illustrate | Mini-chart 2 paneles **H4**: `python -m scripts.plot_macd_quant` → `live/*_h4_macd_quant.png` |
 | Flash Signals UI | Ruta `/macd-quant` · PNG `/api/signals/macd-chart` · **Nuevo análisis** `POST /api/signals/macd-quant/analyze` · artifact Wiki |
 | TradingView | Export manual de periodos OOS ganadores a preset; **TV no se lee en vivo** |
-| Scripts | `analyze-btc-high.ps1 -ML -Advanced`; plot MACD H4: `python -m scripts.plot_macd_quant [--symbol btc\|us30\|xau] [--days 7]` |
+| Scripts | `analyze-btc-high.ps1 -ML -Advanced`; plot MACD H4: `python -m scripts.plot_macd_quant [--symbol btc\|us30\|xau\|ukoil] [--days 7]` |
 | Live refs | Filtros vs `live/btc_m5_high_signal.md` / `us30_…` (entradas M5); PNG MACD: `live/btc_h4_macd_quant.png` |
 
 ---
