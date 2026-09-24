@@ -198,7 +198,7 @@ def extract_features(
         "rule_ny_session": 1.0 if data.get("session", {}).get("in_ny_window") else 0.0,
         "rule_e1_only": rule_map.get("Solo E1", 0.0),
         "rule_h1_bias": rule_map.get("Tendencia H1 alineada", 0.0),
-        "rule_near_zone": rule_map.get("Cerca de zona clave", 0.0),
+        "rule_near_zone": 0.0,  # regla retirada — feature fija 0 hasta retrain
         "rule_2m5_confirm": rule_map.get("2 velas M5 confirman", 0.0),
         "rule_rr_min": rule_map.get("R:R mínimo 1:2", 0.0),
         "rule_rsi_ok": rule_map.get("RSI no contradice", 0.0),

@@ -40,7 +40,11 @@ def load_neural_model():
     if mode == "simple":
         clf = artifact.get("classifier") if isinstance(artifact, dict) else artifact
         return "simple", clf
-    raise RuntimeError("Unknown neural model format")
+    raise RuntimeError(
+        f"Unknown or unreadable neural model format at {MODEL_PATH} "
+        f"(load_model_artifact returned mode={mode!r}). "
+        "Retrain or ensure the .pt is a torch checkpoint with state_dict."
+    )
 
 
 def prob_to_grade(prob_win: float) -> str:
@@ -152,7 +156,9 @@ def augment_categories_neural(categories: dict, chart_path: Path | None) -> dict
         return categories
     try:
         pred = predict_chart_similarity(chart_path)
-    except Exception:
+    except Exception as exc:
+        # Do not pad 50% — leave neural absent, but surface why (UI was stuck at 0%/n/d).
+        print(f"WARN neural inference failed ({chart_path.name}): {type(exc).__name__}: {exc}")
         return categories
     out = dict(categories)
     out["neural_prob_win"] = pred["prob_win"]

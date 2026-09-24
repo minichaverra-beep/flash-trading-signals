@@ -133,6 +133,7 @@ def suggest_setup(
     pdh: float | None,
     pdl: float | None,
     price_decimals: int = 1,
+    asset: str = "BTC",
 ) -> dict:
     verdict = "OBSERVAR"
     direction = "NONE"
@@ -156,13 +157,12 @@ def suggest_setup(
         elif price < pdl:
             reasons.append(f"Precio < PDL {pdl:.{price_decimals}f} → sesgo bajista CRT")
 
-    near_zone = zone["dist_pct"] is not None and zone["dist_pct"] <= 0.15
-    if near_zone:
+    # Zona S/R = contexto (entry/SL); ya no es gate ni fuerza ESPERAR
+    if zone.get("dist_pct") is not None and zone.get("level") is not None:
         reasons.append(
-            f"Cerca de {zone['type']} @ {zone['level']:.{price_decimals}f} ({zone['dist_pct']:.3f}%)"
+            f"Zona ref {zone['type']} @ {zone['level']:.{price_decimals}f} "
+            f"({zone['dist_pct']:.3f}%)"
         )
-    else:
-        red_flags.append("Lejos de swing S/R débil (>0.15%) — esperar zona")
 
     if rsi_m5 is not None:
         if direction == "LONG" and rsi_m5 > 70:
@@ -179,33 +179,47 @@ def suggest_setup(
     elif direction != "NONE":
         red_flags.append("Sin 2 velas M5 de confirmación")
 
-    hard = [r for r in red_flags if "NEUTRAL" in r or "Lejos" in r or "Sin 2" in r]
-    if direction != "NONE" and not hard and near_zone:
+    hard = [r for r in red_flags if "NEUTRAL" in r or "Sin 2" in r]
+    if direction != "NONE" and not hard:
         verdict = "SETUP_A+"
-    elif direction != "NONE" and len(hard) <= 1 and near_zone:
+    elif direction != "NONE" and len(hard) <= 1:
         verdict = "SETUP_B_ESPERAR"
     elif direction != "NONE":
         verdict = "NO_TRADE"
     else:
         verdict = "OBSERVAR"
 
-    sl = tp = rr = None
+    sl = tp = rr = entry = None
+    # Daytrader: entry cerca del spot; SL ≤ 60 pips (pip size por mercado); TP 1:2
+    from app.models.market_pips import DEFAULT_RR, clamp_sl_tp, pull_entry_toward_price
+
     if direction == "LONG" and zone["level"]:
-        sl = min(zone["level"], price) * 0.998 if zone["type"] == "soporte_debil" else price * 0.997
-        risk = abs(price - sl)
-        tp = price + 2 * risk
-        rr = 2.0
+        raw_entry = min(zone["level"], price) if zone["type"] == "soporte_debil" else price
+        entry = pull_entry_toward_price(raw_entry, price, direction, blend=0.70)
+        raw_sl = (
+            min(zone["level"], entry) * 0.998
+            if zone["type"] == "soporte_debil"
+            else entry * 0.997
+        )
+        sl, tp, _, _ = clamp_sl_tp(entry, raw_sl, None, direction, asset, rr=DEFAULT_RR)
+        rr = DEFAULT_RR
     elif direction == "SHORT" and zone["level"]:
-        sl = max(zone["level"], price) * 1.002 if zone["type"] == "resistencia_debil" else price * 1.003
-        risk = abs(sl - price)
-        tp = price - 2 * risk
-        rr = 2.0
+        raw_entry = max(zone["level"], price) if zone["type"] == "resistencia_debil" else price
+        entry = pull_entry_toward_price(raw_entry, price, direction, blend=0.70)
+        raw_sl = (
+            max(zone["level"], entry) * 1.002
+            if zone["type"] == "resistencia_debil"
+            else entry * 1.003
+        )
+        sl, tp, _, _ = clamp_sl_tp(entry, raw_sl, None, direction, asset, rr=DEFAULT_RR)
+        rr = DEFAULT_RR
 
     return {
         "verdict": verdict,
         "direction": direction,
         "reasons": reasons,
         "red_flags": red_flags,
+        "entry": entry,
         "sl": sl,
         "tp": tp,
         "rr": rr,

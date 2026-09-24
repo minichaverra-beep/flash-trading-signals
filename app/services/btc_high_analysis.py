@@ -43,14 +43,15 @@ def apply_forced_bias(data: dict, bias_mode: str) -> dict:
         setup["sl"], setup["tp"], setup["rr"] = sl, price - 2 * risk, 2.0
     near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
     confirm = out["confirm_long"] if direction == "LONG" else out["confirm_short"]
-    # Sesión NY no es hard-block para SETUP_A+
-    hard = [r for r in setup["red_flags"] if any(k in r for k in ("Lejos", "Sin 2"))]
-    if not hard and near and confirm:
+    # Sesión NY y distancia a zona no son hard-block para SETUP_A+
+    hard = [r for r in setup["red_flags"] if "Sin 2" in r]
+    if not hard and confirm:
         setup["verdict"] = "SETUP_A+"
-    elif not hard and near:
+    elif not hard:
         setup["verdict"] = "SETUP_B_ESPERAR"
     elif direction != "NONE":
         setup["verdict"] = "NO_TRADE"
+    _ = near  # contexto entry; no gate
     out["setup"] = setup
     out["forced_bias"] = bias_mode
     return out
@@ -434,7 +435,7 @@ def compute_advanced_scorecard(
     used_keys: list[str] = []
 
     w = HIGH_FUSION_WEIGHTS
-    rows.append(("Rules E1 (8)", f"{rules_ok}/{rules_total}", f"{int(w['rules_e1']*100)}%", f"{rules_pct:.0f}% OK"))
+    rows.append(("Rules E1", f"{rules_ok}/{rules_total}", f"{int(w['rules_e1']*100)}%", f"{rules_pct:.0f}% OK"))
     scores.append((rules_pct, w["rules_e1"]))
     used_keys.append("rules_e1")
 
@@ -796,13 +797,13 @@ def format_trading_plan_advanced(data: dict, ctx: dict, combined: float) -> list
         ]
     checks = [
         ("Bias H1 alineado", data["bias_h1"] in ("BULLISH", "BEARISH")),
-        ("Zona ≤0.15%", zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15),
         ("2 velas M5 confirmación", data["confirm_long"] if direction == "LONG" else data["confirm_short"]),
         ("Rules E1 ≥63%", ctx["categories"]["rules_pct"] >= 63),
         ("Extendidas ≥70%", ctx["ext_pct"] >= 70),
         ("Sin fakeout contra", not any("fakeout" in f.lower() for f in ctx["flags"][:3])),
         ("SL ~$9 definido", s.get("sl") is not None),
         ("R:R 1:2", s.get("rr") is not None),
+        ("Entry/SL/TP definidos", s.get("entry") is not None and s.get("sl") is not None),
     ]
     lines += [
         "- **Invalidación:** cierre M5 fuera zona / CRT invalid / fakeout contra dirección",
@@ -918,6 +919,12 @@ def format_advanced_sections(
 
         lines += ["", "---", ""]
         lines += zentinel_report_lines(data.get("asset_label"), data)
+    except Exception:
+        pass
+    try:
+        from app.models.macd_quant import macd_report_lines
+
+        lines += macd_report_lines(data)
     except Exception:
         pass
     lines += format_cursor_advanced_block(data.get("asset_label"))
@@ -1615,7 +1622,7 @@ def _compute_optimal_entry_core(
             "opti_2m5": "n/d",
             "opti_action": "ESPERAR",
             "trigger": "Definir bias y zona S/R",
-            "confirmacion": "2 velas M5 en dirección en zona ≤0.15%",
+            "confirmacion": "2 velas M5 en dirección (zona = contexto entry, no gate)",
             "entry": None,
             "sl": None,
             "tp": None,
@@ -1628,17 +1635,38 @@ def _compute_optimal_entry_core(
 
     in_zone_2 = _candles_in_zone(data.get("m5", []), zone)
 
-    zone_pct = 0.0010 if scalp else 0.0015
-    entry_ratio = 0.28 if scalp else 0.35
+    # Daytrader: zona más estrecha + entry más cerca del precio spot
+    zone_pct = 0.0006 if scalp else 0.0009
+    entry_ratio = 0.12 if scalp else 0.18
+
+    from app.models.market_pips import (
+        DEFAULT_RR,
+        asset_from_data,
+        clamp_sl_tp,
+        pull_entry_toward_price,
+    )
+
+    asset = asset_from_data(data)
 
     if direction == "SHORT":
         zone_lo = level * (1 - zone_pct)
         zone_hi = level
         entry = level - (level - zone_lo) * entry_ratio
+        entry = pull_entry_toward_price(entry, price, direction, blend=0.55)
         sl = level * 1.002 if ztype == "resistencia_debil" else level * 1.003
-        risk = abs(sl - entry)
-        tp = entry - 2 * risk
         color_word = "rojas"
+    else:
+        zone_lo = level
+        zone_hi = level * (1 + zone_pct)
+        entry = level + (zone_hi - level) * entry_ratio
+        entry = pull_entry_toward_price(entry, price, direction, blend=0.55)
+        sl = level * 0.998 if ztype == "soporte_debil" else level * 0.997
+        color_word = "verdes"
+
+    sl, tp, risk, sl_clamped = clamp_sl_tp(
+        entry, sl, None, direction, asset, rr=DEFAULT_RR,
+    )
+    if direction == "SHORT":
         invalidacion = f"Cierre M5 > {sl:{fmt}} o breakout > {level:{fmt}} sin rechazo"
         trigger = (
             f"Retest {zone_lo:{fmt}}–{zone_hi:{fmt}} ({ztype} @ {level:{fmt}}) "
@@ -1646,13 +1674,6 @@ def _compute_optimal_entry_core(
         )
         opti_2m5 = f"Nuevas 2 {color_word} en zona tras retest (no las actuales lejos)"
     else:
-        zone_lo = level
-        zone_hi = level * (1 + zone_pct)
-        entry = level + (zone_hi - level) * entry_ratio
-        sl = level * 0.998 if ztype == "soporte_debil" else level * 0.997
-        risk = abs(entry - sl)
-        tp = entry + 2 * risk
-        color_word = "verdes"
         invalidacion = f"Cierre M5 < {sl:{fmt}} o breakdown < {level:{fmt}} sin reclaim"
         trigger = (
             f"Retest {zone_lo:{fmt}}–{zone_hi:{fmt}} ({ztype} @ {level:{fmt}}) "
@@ -1663,8 +1684,9 @@ def _compute_optimal_entry_core(
     if near and confirm and in_zone_2:
         ahora_action = f"ENTRAR {direction}"
         opti_action = f"ENTRAR {direction} (condiciones actuales OK)"
-    elif confirm and (not near or not in_zone_2):
-        ahora_action = f"ESPERAR {direction}"
+    elif confirm:
+        # 2M5 OK → accionable; zona ≤0.15% ya no fuerza ESPERAR
+        ahora_action = f"ENTRAR {direction}"
         opti_action = f"ENTRAR {direction}"
     else:
         ahora_action = f"ESPERAR {direction}" if direction != "NONE" else "ESPERAR"
@@ -1691,12 +1713,13 @@ def _compute_optimal_entry_core(
         "opti_2m5": opti_2m5,
         "opti_action": opti_action,
         "trigger": trigger,
-        "confirmacion": f"2 velas M5 {color_word} consecutivas con cierres en zona ≤0.15%",
+        "confirmacion": f"2 velas M5 {color_word} consecutivas (zona ref info)",
         "entry": entry,
         "sl": sl,
         "tp": tp,
-        "rr": 2.0,
+        "rr": DEFAULT_RR,
         "risk_pts": risk,
+        "sl_clamped_60pips": sl_clamped,
         "zone_lo": zone_lo,
         "zone_hi": zone_hi,
         "invalidacion": invalidacion,
@@ -1759,7 +1782,7 @@ def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) ->
         "|---|-----------|-------------------------|",
         f"| Precio | **{opt['ahora_price']:{fmt}}** | Retest **{opt.get('opti_zone', 'n/d')}** |",
         f"| 2M5 {direction} | {opt['ahora_2m5']} | {opt.get('opti_2m5', 'n/d')} |",
-        f"| Cerca zona | {'✅' if opt.get('ahora_near') else '❌'} ({opt.get('ahora_dist', 'n/d')}) | ✅ ≤0.15% de {opt.get('level', 0):{fmt}} |",
+        f"| Zona (info) | {opt.get('ahora_dist', 'n/d')} de ref | contexto entry @ {opt.get('level', 0):{fmt}} |",
         f"| Acción | **{opt['ahora_action']}** | **{opt.get('opti_action', 'ESPERAR')}** |",
         "",
         "### Plan concreto",
@@ -1864,10 +1887,12 @@ def format_2m5_valid_invalid(data: dict, direction: str) -> list[str]:
         ok_label = f"✅ SHORT OK: [R][R] en {zone_label}"
         if last2 == ["R", "R"] and near and in_zone_2:
             ok_note = "**VÁLIDO** — Últimas 2 rojas en zona ≤0.15%"
-        elif last2 == ["R", "R"] and not near:
-            ok_note = f"**ESPERAR** — [R][R] sí pero {zone.get('dist_pct', 0):.2f}% lejos; retest"
+        elif last2 == ["R", "R"]:
+            ok_note = (
+                f"**VÁLIDO** — [R][R] (zona a {zone.get('dist_pct', 0):.2f}% · info, no gate)"
+            )
         else:
-            ok_note = "Referencia — requiere 2 rojas **nuevas** en retest"
+            ok_note = "Referencia — requiere 2 rojas **nuevas** en dirección"
         lines.append(f"| {ok_label} | {ok_note} | Patrón válido SHORT en resistencia |")
         lines.append("| ❌ NO: [G][R] | **INVÁLIDO** | 1ª vela verde invalida secuencia SHORT |")
         lines.append(
@@ -1879,10 +1904,12 @@ def format_2m5_valid_invalid(data: dict, direction: str) -> list[str]:
         ok_label = f"✅ LONG OK: [G][G] en {zone_label}"
         if last2 == ["G", "G"] and near and in_zone_2:
             ok_note = "**VÁLIDO** — Últimas 2 verdes en zona ≤0.15%"
-        elif last2 == ["G", "G"] and not near:
-            ok_note = f"**ESPERAR** — [G][G] sí pero {zone.get('dist_pct', 0):.2f}% lejos; retest"
+        elif last2 == ["G", "G"]:
+            ok_note = (
+                f"**VÁLIDO** — [G][G] (zona a {zone.get('dist_pct', 0):.2f}% · info, no gate)"
+            )
         else:
-            ok_note = "Referencia — requiere 2 verdes **nuevas** en retest"
+            ok_note = "Referencia — requiere 2 verdes **nuevas** en dirección"
         lines.append(f"| {ok_label} | {ok_note} | Patrón válido LONG en soporte |")
         lines.append("| ❌ NO: [R][G] | **INVÁLIDO** | 1ª vela roja invalida secuencia LONG |")
         lines.append(
@@ -1898,14 +1925,11 @@ def format_2m5_valid_invalid(data: dict, direction: str) -> list[str]:
 
 def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -> list[str]:
     """Markdown: checklist 2M5 con ✅/❌ live (sesión = info, no ítem bloqueante)."""
-    zone = data["zone"]
-    near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
     confirm = (
         data.get("confirm_long", False) if direction == "LONG"
         else data.get("confirm_short", False) if direction == "SHORT"
         else False
     )
-    in_zone_2 = _candles_in_zone(data.get("m5", []), zone)
     rsi = data.get("rsi_m5")
     rsi_ok = True
     if rsi is not None and direction == "LONG" and rsi > 70:
@@ -1926,10 +1950,9 @@ def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -
         crt_ok = False
 
     items = [
-        (f"Cerca de zona ({zone.get('type', 'S/R')} @ {zone.get('level', 0):.0f})", near),
         (
             f"2 velas M5 confirman {direction}" if direction in ("LONG", "SHORT") else "2 velas M5 confirman",
-            confirm and in_zone_2 if direction in ("LONG", "SHORT") else confirm,
+            confirm,
         ),
         ("Bias H1 alineado o bias CLI forzado", bias_ok),
         ("RSI M5 + CRT premium/discount coherentes", rsi_ok and crt_ok),
@@ -1952,9 +1975,10 @@ def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -
     for label, ok in items:
         mark = "✅" if ok else "❌"
         lines.append(f"- [{mark}] {label}")
+    n = len(items)
     lines += [
         "",
-        f"**{'Las 5 ✅ → 2M5 OK. Si falta una → ESPERAR.' if all_ok else 'Falta al menos 1 ítem → ESPERAR.'}**",
+        f"**{'Las ' + str(n) + ' ✅ → 2M5 OK. Si falta una → ESPERAR.' if all_ok else 'Falta al menos 1 ítem → ESPERAR.'}**",
         "",
         "---",
         "",
@@ -2071,6 +2095,12 @@ def build_high_context(
         from app.models.zentinel_presets import attach_zentinel_to_data
 
         attach_zentinel_to_data(work, asset=work.get("asset_label") or work.get("symbol"))
+    except Exception:
+        pass
+    try:
+        from app.models.macd_quant import attach_macd_quant_to_data
+
+        attach_macd_quant_to_data(work)
     except Exception:
         pass
 

@@ -50,15 +50,16 @@ El script escribe **Veredicto + Categories compacto + CRT resumen + red flags** 
 7. BE en 1:1 si el precio respiró
 8. **Rules ≥70%** siempre (ideal A+ con ≥75%)
 
-### 7 reglas E1 del script (`btc_signal_categories.py`)
+### 6 reglas E1 del script (`btc_signal_categories.py`)
 
 1. Solo E1 (no E2)
 2. Tendencia H1 alineada
-3. Cerca de zona clave (≤0.15%)
-4. 2 velas M5 confirman
-5. R:R mínimo 1:2
-6. RSI no contradice
-7. Rango CRT coherente
+3. 2 velas M5 confirman
+4. R:R mínimo 1:2
+5. RSI no contradice
+6. Rango CRT coherente
+
+> **Retirada:** «Cerca de zona clave (≤0.15%)» — la zona sigue alimentando entry/SL pero **no** degrada a ESPERAR ni baja Rules %.
 
 **Jerarquía:** el auto-veredicto del script **NO es señal final** — TradingView (CRT MTF + RSI TORYS) decide.
 

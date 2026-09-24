@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 
-E1_RULES_TOTAL = 7  # sin Sesión NY (reloj opcional; no bloquea checklist)
+E1_RULES_TOTAL = 6  # sin Sesión NY ni "Cerca de zona clave" (zona = contexto, no gate)
 
 
 
@@ -209,24 +209,17 @@ def compute_confluencia_setup(
             notes.append(f"ML {ml * 100:.0f}% gris")
 
     direction = data.get("setup", {}).get("direction", "NONE")
-    near = (
-        data.get("zone", {}).get("dist_pct") is not None
-        and data["zone"]["dist_pct"] <= 0.15
-    )
     confirm = (
         data.get("confirm_long", False) if direction == "LONG"
         else data.get("confirm_short", False) if direction == "SHORT"
         else False
     )
     max_pts += 2
-    if confirm and near:
+    if confirm:
         score += 2
-        notes.append("2M5+zona OK")
-    elif confirm or near:
-        score += 1
-        notes.append("2M5 o zona parcial")
+        notes.append("2M5 OK")
     else:
-        notes.append("2M5/zona no listos")
+        notes.append("2M5 no listo")
 
     setup_mode = (data.get("mode_setup") or "auto").lower()
     max_pts += 2
@@ -307,6 +300,21 @@ def compute_confluencia_setup(
         score += v_score
         if v_note:
             notes.append(v_note)
+
+    # MACD-quant: soft-filter E1 (nunca trigger solo). Ver macd_quant.py / brief E1.
+    mq = data.get("macd_quant")
+    if mq and mq.get("available"):
+        from app.models.macd_quant import macd_confluence_points
+
+        m_score, m_max, m_note = macd_confluence_points(direction, mq)
+        if m_max > 0:
+            max_pts += m_max
+            score += m_score
+            if m_note:
+                notes.append(m_note)
+            # Flag Ext/filtro para scorecard / tablas (sin inventar pesos de fusión)
+            categories["macd_soft_filter_ok"] = mq.get("soft_filter_ok")
+            categories["macd_filter_role"] = "confluence_filter"
 
     # Killzone Watchtower (soft): suma si ON, no bloquea si OFF
     ses = data.get("session") or {}
@@ -390,24 +398,16 @@ def build_advanced_table_rows(
     if ext_pct is not None:
         rows.append(("Score Rules extendido", f"**{ext_pct}%**"))
 
-    near = (
-        data.get("zone", {}).get("dist_pct") is not None
-        and data["zone"]["dist_pct"] <= 0.15
-    )
     confirm = (
         data.get("confirm_long", False) if direction == "LONG"
         else data.get("confirm_short", False) if direction == "SHORT"
         else False
     )
     if direction in ("LONG", "SHORT"):
-        if confirm and near:
-            m5_state = f"VÁLIDO {direction} (2M5+zona)"
-        elif confirm:
-            m5_state = f"2M5 sí · lejos zona ({data.get('zone', {}).get('dist_pct', 0):.2f}%)"
-        elif near:
-            m5_state = "En zona · falta 2M5"
+        if confirm:
+            m5_state = f"VÁLIDO {direction} (2M5)"
         else:
-            m5_state = "Inválido / esperar"
+            m5_state = "Falta 2M5 — ESPERAR"
         rows.append(("Estado 2M5", m5_state))
 
     rows.append((
@@ -451,6 +451,16 @@ def build_advanced_table_rows(
         rows.append((
             "Vol Zentinel (filtro)",
             f"**{vol.get('band', 'n/d')}** · {ratio_s} · {vol.get('preset_name', '')}",
+        ))
+    mq = data.get("macd_quant") or {}
+    if mq.get("available"):
+        soft = mq.get("soft_filter_ok")
+        soft_s = "OK" if soft is True else ("en contra" if soft is False else "n/d")
+        hist = mq.get("histogram")
+        hist_s = f"{hist:.4g}" if isinstance(hist, (int, float)) else "n/d"
+        rows.append((
+            "MACD-quant (filtro)",
+            f"**{soft_s}** · Hist {hist_s} · never trigger",
         ))
     zmeta = data.get("zentinel") or {}
     ses = data.get("session") or {}
@@ -1137,7 +1147,10 @@ def score_e1_rules_8(
 
 ) -> tuple[int, int, int, list[tuple[str, bool, str]]]:
 
-    """Reglas E1 evaluables por script (8). Retorna (ok, total, pct, items)."""
+    """Reglas E1 evaluables por script (6). Retorna (ok, total, pct, items).
+
+    Sin Sesión NY ni "Cerca de zona clave" (zona = contexto entry/SL, no gate).
+    """
 
     s = data["setup"]
 
@@ -1152,8 +1165,6 @@ def score_e1_rules_8(
         else False
 
     )
-
-    near = data["zone"].get("dist_pct") is not None and data["zone"]["dist_pct"] <= 0.15
 
     forced = data.get("forced_bias")
     if forced == "bullish":
@@ -1183,13 +1194,12 @@ def score_e1_rules_8(
     else:
         solo_ok, solo_note = (not e2_eligible), "Operar solo E1"
 
+    # Sin "Cerca de zona clave": la zona alimenta entry/SL pero no degrada a WAIT
     items = [
 
         ("Solo E1", solo_ok, solo_note),
 
         ("Tendencia H1 alineada", bias_ok, label_direction(effective_bias)),
-
-        ("Cerca de zona clave", near, f"a {data['zone'].get('dist_pct', 0):.3f}%" if near else "lejos"),
 
         ("2 velas M5 confirman", confirm, "Velas confirman" if confirm else "Falta confirmación"),
 

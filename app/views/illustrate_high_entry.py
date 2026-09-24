@@ -79,20 +79,18 @@ def _zone_edges(opt: dict) -> tuple[float | None, float | None]:
 
 
 def _callout_text(opt: dict) -> str:
-    """Spanish callout: ESPERAR retest vs ENTRAR OPTI."""
-    near = bool(opt.get("ahora_near"))
+    """Spanish callout: ESPERAR confirmación vs ENTRAR (zona no fuerza wait)."""
     confirm = str(opt.get("ahora_2m5", "")).lower().startswith("sí") or str(
         opt.get("ahora_2m5", "")
     ).lower().startswith("si")
     action = str(opt.get("ahora_action", "ESPERAR"))
-    if "ENTRAR" in action.upper() and near and confirm:
-        return "2M5 OK en zona → ENTRAR"
-    if confirm and not near:
-        dist = opt.get("ahora_dist", "n/d")
-        return f"2R lejos zona ({dist}) → ESPERAR retest"
-    if near and not confirm:
-        return "En zona sin 2M5 → ESPERAR confirmación"
-    return "Sin setup → ESPERAR"
+    if "ENTRAR" in action.upper() and confirm:
+        return "2M5 OK → ENTRAR"
+    if "ENTRAR" in action.upper():
+        return "Setup listo → ENTRAR"
+    if confirm:
+        return "2M5 OK · revisar bias/SL"
+    return "Sin 2M5 → ESPERAR confirmación"
 
 
 def _candle_label(c: dict) -> str:

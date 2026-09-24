@@ -325,7 +325,9 @@ def _recalc_sl_tp_from_entry(
     data: dict,
     dec: int,
 ) -> tuple[float, float, float]:
-    """Structural SL/TP 1:2 from refined entry (same rules as core)."""
+    """Structural SL/TP 1:2 from refined entry; clamp SL ≤ 60 pips per market."""
+    from app.models.market_pips import DEFAULT_RR, asset_from_data, clamp_sl_tp
+
     level = zone.get("level")
     ztype = zone.get("type", "zona")
     fmt = f".{dec}f"
@@ -337,8 +339,6 @@ def _recalc_sl_tp_from_entry(
             sl = entry * 1.003
         if sl <= entry:
             sl = entry * 1.003
-        risk = abs(sl - entry)
-        tp = entry - 2 * risk
     else:
         if level:
             sl = float(level) * 0.998 if ztype == "soporte_debil" else float(level) * 0.997
@@ -346,8 +346,10 @@ def _recalc_sl_tp_from_entry(
             sl = entry * 0.997
         if sl >= entry:
             sl = entry * 0.997
-        risk = abs(entry - sl)
-        tp = entry + 2 * risk
+
+    sl, tp, risk, _ = clamp_sl_tp(
+        entry, sl, None, direction, asset_from_data(data), rr=DEFAULT_RR,
+    )
     return sl, tp, risk
 
 

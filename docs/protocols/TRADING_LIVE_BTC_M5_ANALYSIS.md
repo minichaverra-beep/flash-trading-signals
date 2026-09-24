@@ -183,11 +183,10 @@ Responde en este formato:
 **ML prob:** XX% (si `--ml`) — bucket según §5.3
 **Neural galería:** XX% WIN (si `--neural`) — bucket según §5.5
 
-### Checklist E1 (7 reglas del script)
+### Checklist E1 (6 reglas del script)
 | Regla | Estado | Nota |
 | Solo E1 | ✅/❌ | |
 | Tendencia H1 alineada | ✅/❌ | |
-| Cerca de zona clave | ✅/❌ | |
 | 2 velas M5 | ✅/❌ | |
 | R:R ≥ 1:2 | ✅/❌ | |
 | RSI no contradice | ✅/❌ | |
@@ -250,7 +249,7 @@ Cuando Danilo pida análisis live, Cursor **debe**:
 
 **Inmutables del plan** (`../strategy/TRADING_VISUAL_CONTEXT.md` §4): Solo E1 90%+ · SL ~$9 · R:R 1:2 · máx. 3 ops/día · 2 SL = límite riesgo diario · BE 1:1 · Rules >70%. Sesión NY = reloj info (no gate).
 
-**7 reglas E1 del script** (`btc_signal_categories.py`): Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente.
+**6 reglas E1 del script** (`btc_signal_categories.py`): Solo E1 · H1 alineado · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente. *(Zona S/R = contexto entry; no gate.)*
 
 **Jerarquía:** script refuerza → TradingView (CRT MTF + RSI TORYS) decide. Auto-veredicto **NO es señal final**. E2 solo watchlist — default NO ENTRAR E2.
 
@@ -276,11 +275,10 @@ Leer primero la sección **Veredicto** y **Categories** del snapshot (auto-gener
 **ML prob:** XX% (si `--ml`) — bucket según §5.3
 **Neural galería:** XX% WIN (si `--neural`) — bucket según §5.5
 
-### Checklist E1 (7 reglas del script)
+### Checklist E1 (6 reglas del script)
 | Regla | Estado | Nota |
 | Solo E1 | ✅/❌ | |
 | Tendencia H1 alineada | ✅/❌ | |
-| Cerca de zona clave | ✅/❌ | |
 | 2 velas M5 | ✅/❌ | |
 | R:R ≥ 1:2 | ✅/❌ | |
 | RSI no contradice | ✅/❌ | |

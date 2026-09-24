@@ -243,7 +243,8 @@ class TestComputeOptimalEntry:
         assert "ENTRAR LONG" in opt["ahora_action"]
         assert opt["tp"] > opt["entry"] > opt["sl"]
 
-    def test_far_from_zone_esperar(self):
+    def test_far_from_zone_still_entrar_with_confirm(self):
+        """Zona lejos ya no fuerza ESPERAR si hay 2M5."""
         data = make_data(
             dist_pct=0.35,  # > 0.15%
             confirm_short=True,
@@ -251,8 +252,7 @@ class TestComputeOptimalEntry:
         )
         opt = compute_optimal_entry(data, "SHORT", make_crt(), data["zone"])
         assert opt["ahora_near"] is False
-        assert "ESPERAR" in opt["ahora_action"]
-        # OPTI sigue apuntando a entrar en retest
+        assert "ENTRAR SHORT" in opt["ahora_action"]
         assert "ENTRAR SHORT" in opt["opti_action"]
 
     def test_direction_none_graceful(self):
@@ -292,8 +292,8 @@ class TestComputeOptimalEntry:
         reward_l = abs(opt_l["tp"] - opt_l["entry"])
         assert abs(reward_l / risk_l - 2.0) < 1e-9
 
-    def test_ahora_esperar_when_confirm_not_in_zone(self):
-        """2M5 color OK pero cierres fuera de zona → AHORA ESPERAR (alinea checklist)."""
+    def test_ahora_entrar_when_confirm_even_if_closes_outside_zone(self):
+        """2M5 OK → AHORA ENTRAR; cierres fuera de zona ya no fuerzan ESPERAR."""
         data = make_data(
             price=53440.0,
             direction="LONG",
@@ -304,7 +304,7 @@ class TestComputeOptimalEntry:
             m5=[_green(53530), _green(53540)],
         )
         opt = compute_optimal_entry(data, "LONG", make_crt("DISCOUNT"), data["zone"])
-        assert "ESPERAR" in opt["ahora_action"]
+        assert "ENTRAR LONG" in opt["ahora_action"]
 
 
 class TestIctEntryRefinement:
@@ -654,12 +654,12 @@ class TestOptimizeSlTpFromPast:
 # ---------------------------------------------------------------------------
 
 class TestFormat2m5Checklist:
-    """Checklist de 5 ítems con ✅/❌."""
+    """Checklist 2M5 (sin ítem 'Cerca de zona'; zona no es gate)."""
 
     def _joined(self, lines: list[str]) -> str:
         return "\n".join(lines)
 
-    def test_all_five_pass_short_ny_near_confirm(self):
+    def test_all_pass_short_ny_near_confirm(self):
         m5 = [
             _c(100_040, 100_055, 100_030, 100_035),
             _c(100_035, 100_045, 100_020, 100_025),
@@ -677,10 +677,10 @@ class TestFormat2m5Checklist:
         )
         crt = make_crt(premium_discount="PREMIUM")
         text = self._joined(format_2m5_checklist(data, "SHORT", data["session"], crt))
-        assert text.count("✅") >= 5
-        assert "Las 5 ✅" in text or "2M5 OK" in text
+        assert text.count("✅") >= 4
+        assert "2M5 OK" in text
         assert "Sesión NY activa" not in text
-        assert "❌" not in text.replace("## Checklist 2M5", "")
+        assert "Cerca de zona" not in text
 
     def test_session_outside_ny_is_info_not_blocking_row(self):
         """Sesión fuera NY = reloj info; no fila bloqueante en checklist 2M5."""
@@ -697,8 +697,7 @@ class TestFormat2m5Checklist:
         assert "[❌] Sesión NY" not in text
         assert "[❌] Sesión NY activa" not in text
         assert "Reloj (info)" in text or "info" in text.lower()
-        # Checklist sigue evaluando zona/2M5 aunque fuera NY
-        assert "Cerca de zona" in text
+        assert "Cerca de zona" not in text
         assert "2 velas M5 confirman SHORT" in text
 
     def test_missing_2m5_fails_item(self):
@@ -709,13 +708,16 @@ class TestFormat2m5Checklist:
         assert "2 velas M5 confirman SHORT" in text
         assert "[❌] 2 velas M5 confirman SHORT" in text
 
-    def test_far_from_zone_fails_near_item(self):
+    def test_far_from_zone_does_not_block_checklist(self):
+        """Distancia a zona ya no degrada checklist ni fuerza WAIT."""
         data = make_data(dist_pct=0.40, confirm_short=True, in_ny=True, direction="SHORT")
         text = self._joined(
             format_2m5_checklist(data, "SHORT", data["session"], make_crt())
         )
-        assert "Cerca de zona" in text
-        assert "[❌] Cerca de zona" in text
+        assert "Cerca de zona" not in text
+        assert "[❌] Cerca de zona" not in text
+        assert "2 velas M5 confirman SHORT" in text
+        assert "[✅] 2 velas M5 confirman SHORT" in text
 
     def test_long_all_pass_with_discount(self):
         level = 99_950.0
@@ -739,7 +741,8 @@ class TestFormat2m5Checklist:
         text = self._joined(
             format_2m5_checklist(data, "LONG", data["session"], make_crt("DISCOUNT", "BULLISH"))
         )
-        assert text.count("✅") >= 5
+        assert text.count("✅") >= 4
+        assert "Cerca de zona" not in text
 
 
 # ---------------------------------------------------------------------------
@@ -752,7 +755,8 @@ class TestSessionNotBlockingStatus:
         ok, total, pct, items = score_e1_rules_8(data, make_crt(), None, None, None)
         labels = [lab for lab, _, _ in items]
         assert "Sesión NY" not in labels
-        assert total == 7
+        assert "Cerca de zona clave" not in labels
+        assert total == 6
         assert ok >= 1
 
     def test_format_recomendacion_ignores_fuera_ny(self):
@@ -778,6 +782,26 @@ class TestSessionNotBlockingStatus:
         )
         assert not any("NY" in r for r in s2["red_flags"])
 
+    def test_suggest_setup_far_zone_still_a_plus_with_confirm(self):
+        """Lejos de zona ya no fuerza NO_TRADE / ESPERAR si hay confirm + bias."""
+        from app.controllers.analyze_btc_m5 import suggest_setup
+        from app.models.market_analysis_core import suggest_setup as suggest_core
+
+        zone = {"level": 100_050.0, "type": "resistencia_debil", "dist_pct": 0.45}
+        s = suggest_setup(
+            100_040.0, "BEARISH", zone, 45.0, False, True, True, None, None,
+        )
+        assert not any("Lejos" in r for r in s["red_flags"])
+        assert s["verdict"] == "SETUP_A+"
+        assert s["direction"] == "SHORT"
+        s2 = suggest_core(
+            53700.0, "BEARISH",
+            {"level": 53735.0, "type": "resistencia_debil", "dist_pct": 0.50},
+            45.0, False, True, True, None, None, asset="US30",
+        )
+        assert not any("Lejos" in r for r in s2["red_flags"])
+        assert s2["verdict"] == "SETUP_A+"
+
     def test_derive_verdict_not_forced_by_fuera_ny(self):
         data = make_data(
             in_ny=False,
@@ -788,15 +812,33 @@ class TestSessionNotBlockingStatus:
         )
         data["setup"]["verdict"] = "SETUP_A+"
         data["setup"]["rr"] = 2.0
-        cats = {"rules_pct": 85, "rules_ok": 6, "rules_total": 7}
+        data["setup"]["entry"] = 100_040.0
+        data["setup"]["sl"] = 100_100.0
+        data["setup"]["tp"] = 99_920.0
+        cats = {"rules_pct": 83, "rules_ok": 5, "rules_total": 6}
         crt = make_crt()
         flags = collect_red_flags(data, crt)
         assert not any("ventana NY" in f or "FUERA" in f.upper() or "fuera NY" in f.lower() for f in flags)
         assert not any(f == "Fuera ventana NY — NO_OPERAR" for f in flags)
         v = derive_e1_verdict(data, cats, crt=crt)
-        # Fuera NY ya no fuerza NO_OPERAR; con rules altos + confirm puede ENTRAR/ESPERAR
-        assert v in ("ENTRAR", "ESPERAR")
+        assert v == "ENTRAR"
 
+    def test_derive_verdict_far_zone_still_entrar(self):
+        data = make_data(
+            in_ny=True,
+            direction="SHORT",
+            bias_h1="BEARISH",
+            confirm_short=True,
+            dist_pct=0.50,
+        )
+        data["setup"]["verdict"] = "SETUP_A+"
+        data["setup"]["rr"] = 2.0
+        data["setup"]["entry"] = 100_040.0
+        data["setup"]["sl"] = 100_100.0
+        data["setup"]["tp"] = 99_920.0
+        cats = {"rules_pct": 83, "rules_ok": 5, "rules_total": 6}
+        v = derive_e1_verdict(data, cats, crt=make_crt())
+        assert v == "ENTRAR"
 
 # ---------------------------------------------------------------------------
 # 3c. Break vs Reverse

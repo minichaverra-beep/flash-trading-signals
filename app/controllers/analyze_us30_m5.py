@@ -311,6 +311,7 @@ def main() -> int:
     setup = suggest_setup(
         price, bias, zone, rsi_m5, confirm_long, confirm_short,
         session["in_ny_window"], pdh, pdl, price_decimals=PRICE_DECIMALS,
+        asset="US30",
     )
 
     chart_path = OUT_DIR / CHART_FILE
@@ -363,6 +364,12 @@ def main() -> int:
     from app.models.zentinel_presets import attach_zentinel_to_data
 
     attach_zentinel_to_data(data, asset="US30")
+    try:
+        from app.models.macd_quant import attach_macd_quant_to_data
+
+        attach_macd_quant_to_data(data)
+    except Exception:
+        pass
 
     if args.bias in ("bullish", "bearish"):
         from app.services.btc_high_analysis import apply_forced_bias

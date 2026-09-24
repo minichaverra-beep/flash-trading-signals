@@ -160,9 +160,23 @@ def derive_e1_verdict(
             return "ESPERAR"
 
     if direction == "NONE" or data["bias_h1"] == "NEUTRAL":
-        return "ESPERAR"
+        # Bias CLI forzado puede operar pese a H1 NEUTRAL
+        forced = (data.get("forced_bias") or data.get("mode_bias") or "auto").lower()
+        if forced not in ("bullish", "bearish") or direction == "NONE":
+            return "ESPERAR"
 
-    if rules_pct >= 75 and s.get("verdict") == "SETUP_A+":
+    confirm = (
+        data["confirm_long"] if direction == "LONG"
+        else data["confirm_short"] if direction == "SHORT"
+        else False
+    )
+    has_levels = bool(s.get("entry") and s.get("sl") and s.get("tp"))
+    # Accionable: reglas OK + 2M5 + niveles (zona ya no es gate)
+    if confirm and has_levels and rules_pct >= 67 and (
+        s.get("verdict") == "SETUP_A+" or rules_pct >= 83
+    ):
+        return "ENTRAR"
+    if rules_pct >= 75 and s.get("verdict") == "SETUP_A+" and confirm:
         return "ENTRAR"
     if rules_pct >= 63:
         return "ESPERAR"

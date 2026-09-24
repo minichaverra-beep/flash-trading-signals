@@ -116,9 +116,10 @@ Ver protocolo completo: [`TRADING_LIVE_BTC_SUPER_HIGH_SIGNAL.md`](TRADING_LIVE_B
 
 Solo E1 90%+ · SL ~$9 · R:R 1:2 · máx. 3 ops/día · **2 SL = límite riesgo diario** · BE 1:1 · **Rules >70%**
 
-### 7 reglas E1 del script (checklist / status signal)
+### 6 reglas E1 del script (checklist / status signal)
 
-Solo E1 · H1 alineado · zona ≤0.15% · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente
+Solo E1 · H1 alineado · 2 M5 · R:R 1:2 · RSI no contradice · CRT coherente  
+*(«Cerca de zona clave» retirada — no bloquea ni degrada a ESPERAR.)*
 
 > **Sesión NY** no es fila de status signal ni fuerza `NO_OPERAR`. Puede aparecer como reloj informativo (header/Reloj); **no** es requisito para calcular ni operar.
 
@@ -164,7 +165,7 @@ Referencia: TRADING_VISUAL SS1.2, SS7 | PF E1=4.77 vs mixto 3.16
 | **50–62%** | **C** | ESPERAR — setup insuficiente |
 | **<50%** | inválido | **NO_OPERAR** |
 
-Score extendido (High): 7 reglas E1 + extendidas (DMI, 2SL/3ops, SL $9) — meta **>70%** en extendidas.
+Score extendido (High): 6 reglas E1 + extendidas (DMI, 2SL/3ops, SL $9) — meta **>70%** en extendidas.
 
 **Galería WIN:** cruzar siempre con `../strategy/TRADING_OPERATIONS_DESKTOP_CONTEXT.md` §5.1 cuando aplique — citar match `BTC-xx-xx-xx` o "sin match".
 
@@ -373,7 +374,7 @@ TURTLE SOUP (E2) — SOLO WATCHLIST:
 - E2 = reversión macro, SL grande, max 1/semana — NO mezclar con E1 $9
 
 SCORE:
-- 7 reglas E1 (Categories) + reglas extendidas (DMI, 2SL/3ops, SL $9)
+- 6 reglas E1 (Categories) + reglas extendidas (DMI, 2SL/3ops, SL $9)
 - Rules ≥75% → setup A+ histórico E1 (~82% WR)
 - Rules 63-74% → B, WR global ~67%
 - Rules <50% → NO_OPERAR

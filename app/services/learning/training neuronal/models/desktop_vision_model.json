@@ -1,0 +1,17 @@
+{
+  "architecture": "resnet18",
+  "class_names": [
+    "WIN",
+    "LOSS"
+  ],
+  "image_size": 224,
+  "mode": "torch",
+  "metrics": {
+    "accuracy": 0.8,
+    "precision_win": 0.8125,
+    "recall_win": 0.9286,
+    "train_n": 84,
+    "val_n": 20
+  },
+  "trained_at": "2026-09-01T15:37:22.785732+00:00"
+}

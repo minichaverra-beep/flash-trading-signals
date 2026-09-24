@@ -329,22 +329,62 @@ def predict_simple(clf, paths: list[Path]) -> tuple[list[str], list[float]]:
     return preds, confs
 
 
+def _write_model_meta_sidecar(checkpoint: dict) -> None:
+    """Persist architecture/metrics JSON next to .pt (optional, speeds next load)."""
+    import json
+
+    meta = {
+        k: checkpoint[k]
+        for k in (
+            "architecture",
+            "class_names",
+            "image_size",
+            "mode",
+            "metrics",
+            "trained_at",
+        )
+        if k in checkpoint
+    }
+    if not meta:
+        return
+    try:
+        MODEL_META_PATH.parent.mkdir(parents=True, exist_ok=True)
+        MODEL_META_PATH.write_text(
+            json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def load_model_artifact():
-    """Load torch or joblib checkpoint from MODEL_PATH."""
+    """Load torch or joblib checkpoint from MODEL_PATH.
+
+    Current `desktop_vision_model.pt` is a **full torch checkpoint** (state_dict +
+    meta keys). Older layout was weights-only .pt + sidecar .json. Never fall through
+    to joblib on a torch file — that raises UnpicklingError and left Neural at n/d.
+    """
     if not MODEL_PATH.is_file():
         return None, None
     try:
         import json
         import torch
 
+        loaded = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
+        if isinstance(loaded, dict) and "state_dict" in loaded:
+            _write_model_meta_sidecar(loaded)
+            return "torch", loaded
         if MODEL_META_PATH.is_file():
-            state_dict = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
             meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
-            return "torch", {"state_dict": state_dict, **meta}
+            return "torch", {"state_dict": loaded, **meta}
     except Exception:
         pass
-    from joblib import load
-    return "simple", load(MODEL_PATH)
+    try:
+        from joblib import load
+
+        return "simple", load(MODEL_PATH)
+    except Exception:
+        return None, None
 
 
 def model_available() -> bool:
@@ -357,13 +397,24 @@ def load_torch_model(device=None):
 
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if not MODEL_PATH.is_file() or not MODEL_META_PATH.is_file():
-        raise FileNotFoundError(
-            f"Model not found: {MODEL_PATH} (expected metadata at {MODEL_META_PATH})"
+    if not MODEL_PATH.is_file():
+        raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
+
+    # Always open the .pt first: it may be a full checkpoint OR weights-only.
+    loaded = torch.load(MODEL_PATH, map_location=device, weights_only=False)
+    if isinstance(loaded, dict) and "state_dict" in loaded:
+        checkpoint = loaded
+        if not MODEL_META_PATH.is_file():
+            _write_model_meta_sidecar(checkpoint)
+    elif MODEL_META_PATH.is_file():
+        meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
+        checkpoint = {**meta, "state_dict": loaded}
+    else:
+        raise RuntimeError(
+            f"Unsupported neural checkpoint format at {MODEL_PATH} "
+            "(expected dict with state_dict, or weights + .json sidecar)"
         )
-    state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=True)
-    checkpoint = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
-    checkpoint["state_dict"] = state_dict
+
     arch = checkpoint.get("architecture", "resnet18")
     model = build_cnn_model(arch, num_classes=len(CLASS_NAMES), pretrained=False)
     model.load_state_dict(checkpoint["state_dict"])
