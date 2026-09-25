@@ -507,7 +507,7 @@ def compute_advanced_scorecard(
         for k, (_, wt) in zip(used_keys, scores)
     } if total_w else {}
 
-    rows.append(("**Score combinado**", f"**{combined:.0f}%**", "100%", "pesos renormalizados"))
+    rows.append(("**Probabilidad de éxito**", f"**{combined:.0f}%**", "100%", "pesos renormalizados"))
     return combined, rows
 
 

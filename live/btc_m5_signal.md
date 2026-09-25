@@ -1,39 +1,33 @@
 # BTC M5 Signal (light)
 
-**NO_OPERAR** | **77286** | NY:NO FUERA_NY | H1:BEARISH
-**BANDO:** BULLISH | **REC:** NO_OPERAR — fin sesión (LONG)
+**ESPERAR** | **84166** | NY PM 14-16 | H1:NEUTRAL
+**BANDO:** AUTO | **REC:** ESPERAR (sin dirección)
 
-## Veredicto: NO_OPERAR
+## Veredicto: ESPERAR
 
 **E1/E2:** E1 primario
 **Tendencia:** Sin dirección
-**Reglas:** **5 de 8** (62%) | Extendidas: **75%**
-**Calidad:** Setup débil
+**Reglas:** **3 de 6** (50%) | Extendidas: **66%**
+**Calidad:** No operar
 **Probabilidad histórica:** **~67%** — probabilidad histórica (~67%)
 
 ## Categories
 
-| Bando usado | **BULLISH** | Bando mercado (H1) | **BEARISH** |
-| Recomendación | **NO_OPERAR — fin sesión (LONG)** |
-| Acción | No operar | Tendencia | **Sin dirección** |
-| Reglas | **5 de 8** (62%) | Calidad | **Setup débil** |
-| Prob. hist. | **~67%** — probabilidad histórica (~67%) | Sesión | **Fuera NY** |
-| ML prob. win | **17.3%** (C, conf. high) |
-| Neural galería | **78% WIN** (B, ✓ galería) |
+| Bando usado | **AUTO** | Bando mercado (H1) | **NEUTRAL** |
+| Recomendación | **ESPERAR (sin dirección)** |
+| Acción | Esperar | Tendencia | **Sin dirección** |
+| Reglas | **3 de 6** (50%) | Calidad | **No operar** |
+| Prob. hist. | **~67%** — probabilidad histórica (~67%) | Reloj | **Tarde NY** (info) |
 
 ### CRT
 
-- PD: Por debajo del mínimo ayer | H1: Dentro del rango H1
-- 0.5: DISCOUNT (mid 78321) | Fakeout: ninguno
-- Acción E1: Shorts E1 rechazo resistencia (premium)
+- PD: En rango (PDH–PDL) | H1: Posible giro alcista (H1)
+- 0.5: DISCOUNT (mid 85389) | Fakeout: ninguno
+- Acción E1: No forzar; esperar pending CRT HTF
 
 ### Red flags
 
-- Fuera ventana NY — NO_OPERAR
-- Precio < PDL — no long contra rango bajista CRT
-- Fuera de ventana NY (regla 2)
-- Sin 2 velas M5 de confirmación
-- _(+1 más en tier Full/High)_
+- Bias H1 NEUTRAL — no forzar dirección
 
 **Cursor (max 5 líneas):** Veredicto + dir + 1 regla clave + invalidación.
-*2026-09-01 22:03 UTC · BTCUSDT · E1 only · no auto-ejecutar*
+*2026-09-24 18:09 UTC · BTCUSDT · E1 only · no auto-ejecutar*

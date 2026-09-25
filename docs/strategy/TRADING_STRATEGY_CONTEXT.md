@@ -86,7 +86,7 @@ Este documento permite que Cursor:
 
 ### Dirección (premium/discount)
 
-`En descuento` · `Pre-equilibrio` · `Premium` · `Macro-Pre-equilibrio` · `Test`
+`En descuento` · `Pre-equilibrio` · `Premium` · `Macro-Pre-equilibrio` · `Test` · `Dirección`
 
 ---
 

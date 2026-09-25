@@ -1,36 +1,33 @@
 # US30 M5 Signal (light)
 
-**NO_OPERAR** | **51969.0** | FUERA_NY (Lunch) | H1:NEUTRAL
-**BANDO:** BULLISH | **REC:** NO_OPERAR LONG
+**ESPERAR** | **51698.0** | NY PM 14-16 | H1:NEUTRAL
+**BANDO:** AUTO | **REC:** ESPERAR (sin dirección)
 
-## Veredicto: NO_OPERAR
+## Veredicto: ESPERAR
 
 **E1/E2:** E1 primario
 **Tendencia:** Sin dirección
-**Reglas:** **5 de 7** (71%) | Extendidas: **81%**
-**Calidad:** Setup medio
-**Probabilidad histórica:** **~69%** — histórico E1 BTC (71% reglas OK)
+**Reglas:** **3 de 6** (50%) | Extendidas: **66%**
+**Calidad:** No operar
+**Probabilidad histórica:** **~67%** — probabilidad histórica (~67%)
 
 ## Categories
 
-| Bando usado | **BULLISH** | Bando mercado (H1) | **NEUTRAL** |
-| Recomendación | **NO_OPERAR LONG** |
-| Acción | No operar | Tendencia | **Sin dirección** |
-| Reglas | **5 de 7** (71%) | Calidad | **Setup medio** |
-| Prob. hist. | **~69%** — histórico E1 BTC (71% reglas OK) | Reloj | **Fuera NY** (info) |
-| ML prob. win | **100.0%** (A+, conf. high) |
+| Bando usado | **AUTO** | Bando mercado (H1) | **NEUTRAL** |
+| Recomendación | **ESPERAR (sin dirección)** |
+| Acción | Esperar | Tendencia | **Sin dirección** |
+| Reglas | **3 de 6** (50%) | Calidad | **No operar** |
+| Prob. hist. | **~67%** — probabilidad histórica (~67%) | Reloj | **Tarde NY** (info) |
 
 ### CRT
 
-- PD: Por debajo del mínimo ayer | H1: Posible giro bajista (H1)
-- 0.5: DISCOUNT (mid 52312) | Fakeout: ninguno
+- PD: Por debajo del mínimo ayer | H1: Dentro del rango H1
+- 0.5: DISCOUNT (mid 52100) | Fakeout: ninguno
 - Acción E1: Shorts E1 rechazo resistencia (premium)
 
 ### Red flags
 
-- Precio < PDL — no long contra rango bajista CRT
-- CRT H1 pending bear — no entrar long contra invalid reciente
-- Sin 2 velas M5 — ESPERAR (regla dura)
+- Bias H1 NEUTRAL — no forzar dirección
 
 **Cursor (max 5 líneas):** Veredicto + dir + 1 regla clave + invalidación.
-*2026-09-18 17:20 UTC · US30 · E1 only · no auto-ejecutar*
+*2026-09-24 18:09 UTC · US30 · E1 only · no auto-ejecutar*

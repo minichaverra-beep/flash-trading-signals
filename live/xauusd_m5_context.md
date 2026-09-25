@@ -1,21 +1,19 @@
 # XAUUSD M5 CONTEXT — estructura / vigencia
 
-**Mercado **BEARISH** — movimiento **AGOTANDO** (cuidado con continuación ciega)**
+**Mercado en **TRANSICIÓN** — sin bando M5 dominante**
 
-- Generado: `2026-09-23 15:46` UTC
-- Precio: `4319.70`
-- Bias estructura M5: **BEARISH**
-- Estado del impulso: **AGOTANDO**
-- Swings lows: `LL 4317.30->4313.90`
-- Swings highs: `HH 4330.20->4335.00`
-- EMA9/21: `4323.06` / `4325.69`
-- RSI M5: `43.7` · ATR: `5.99` · Extensión: `2.56×ATR`
-- Ratio cuerpos: `0.48` · Rechazo mecha: `False` · Swing fallido: `False` · Confirm 3 velas: `False`
+- Generado: `2026-09-24 18:09` UTC
+- Precio: `4300.20`
+- Bias estructura M5: **NEUTRAL**
+- Estado del impulso: **TRANSICION**
+- Swings lows: `HL 4279.50->4287.20`
+- Swings highs: `LH 4324.30->4320.70`
+- EMA9/21: `4298.68` / `4299.65`
+- RSI M5: `34.5` · ATR: `4.58` · Extensión: `1.21×ATR`
+- Ratio cuerpos: `1.03` · Rechazo mecha: `False` · Swing fallido: `False` · Confirm 3 velas: `False`
 
 ## Lectura
-- Impulso estirado 2.56×ATR (≥2.55)
-- RSI M5 43.7
-- Cuerpos recientes contraídos (0.48× base)
+- Estructura M5 mixta — sin bando claro
 
 ## Cómo usar
 - Esto **no es señal de entrada** (sin Entry/SL/TP).
