@@ -1,6 +1,8 @@
 """Unit tests for daytrader pip / SL clamp helpers."""
 from __future__ import annotations
 
+import pytest
+
 from app.models.market_pips import (
     MAX_SL_PIPS,
     clamp_sl_tp,
@@ -39,3 +41,42 @@ def test_pull_entry_toward_price_no_chase():
     assert pull_entry_toward_price(100.0, 110.0, "LONG", blend=0.5) == 105.0
     # LONG already at/above price → no chase
     assert pull_entry_toward_price(110.0, 100.0, "LONG", blend=0.5) == 110.0
+
+
+def test_raw_sl_long_ignores_resistencia_level():
+    """Chart bug: LONG + resistencia must not SL = level*0.997 under the zone."""
+    from app.models.market_pips import raw_sl_from_zone
+
+    level = 84_078.2
+    entry_low = 83_849.7
+    sl_low = raw_sl_from_zone(entry_low, "LONG", {"level": level, "type": "resistencia_debil"})
+    assert abs(sl_low - entry_low * 0.997) < 1e-6
+    # Old bug used level*0.997 (=83826) and squeezed TP under resistance
+    assert abs(sl_low - (level * 0.997)) > 1.0
+
+
+def test_raw_sl_long_uses_soporte():
+    from app.models.market_pips import raw_sl_from_zone
+
+    entry = 83_900.0
+    level = 83_850.0
+    sl = raw_sl_from_zone(entry, "LONG", {"level": level, "type": "soporte_debil"})
+    assert abs(sl - level * 0.998) < 1e-6
+
+
+def test_raw_entry_long_at_resistencia_uses_spot():
+    from app.models.market_pips import raw_entry_from_zone
+
+    price = 84_078.2
+    entry, lo, hi = raw_entry_from_zone(
+        price, "LONG", {"level": price, "type": "resistencia_debil"},
+    )
+    assert abs(entry - price) < 1e-6
+    assert lo == price
+
+
+def test_actual_rr():
+    from app.models.market_pips import actual_rr
+
+    assert actual_rr(100.0, 90.0, 120.0) == pytest.approx(2.0)
+    assert actual_rr(100.0, 100.0, 120.0) is None

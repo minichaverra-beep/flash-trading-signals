@@ -78,6 +78,51 @@ def _zone_edges(opt: dict) -> tuple[float | None, float | None]:
     return float(level), level * (1 + 0.0015)
 
 
+def _rr_tag(opt: dict, entry: float | None, sl: float | None, tp: float | None) -> str:
+    """Label fragment with realized R:R (not a hard-coded 1:2 lie)."""
+    from app.models.market_pips import actual_rr
+
+    rr = actual_rr(entry, sl, tp)
+    if rr is None:
+        rr = opt.get("rr")
+    if rr is None:
+        return ""
+    src = opt.get("sl_tp_source")
+    if src == "past" and opt.get("tp_source") == "past_structure":
+        return f"past 1:{rr:.1f}"
+    if src == "past":
+        return f"1:{rr:.1f} past"
+    return f"1:{rr:.1f}"
+
+
+def _place_level_labels(
+    ax,
+    levels: list[tuple[float, str, str]],
+    *,
+    x: float,
+    yrange: float,
+    fontsize: int,
+) -> None:
+    """Right-side labels stacked so TP/Entry/SL never sit on top of each other."""
+    if not levels:
+        return
+    # Sort high→low; nudge label y when two prices are closer than ~3% of range
+    ordered = sorted(levels, key=lambda t: t[0], reverse=True)
+    min_gap = max(yrange * 0.04, 1e-6)
+    placed_y: list[float] = []
+    for price, text, color in ordered:
+        y = float(price)
+        for prev in placed_y:
+            if abs(y - prev) < min_gap:
+                y = prev - min_gap
+        placed_y.append(y)
+        ax.text(
+            x, y, text,
+            color=color, fontsize=fontsize, va="center", ha="left",
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="#1e1e1e", edgecolor=color, alpha=0.85),
+        )
+
+
 def _callout_text(opt: dict) -> str:
     """Spanish callout: ESPERAR confirmación vs ENTRAR (zona no fuerza wait)."""
     confirm = str(opt.get("ahora_2m5", "")).lower().startswith("sí") or str(
@@ -207,66 +252,64 @@ def create_annotated_entry_chart(
 
         y_lo = min(c["low"] for c in show)
         y_hi = max(c["high"] for c in show)
+        # Include Entry/SL/TP/zone so daytrader levels are never clipped off-chart
+        for v in (level, entry, sl, tp, user_entry, zone_lo, zone_hi):
+            if v is not None:
+                y_lo = min(y_lo, float(v))
+                y_hi = max(y_hi, float(v))
+        for sc_e, _sc_src in scalp_entries[:3]:
+            y_lo = min(y_lo, float(sc_e))
+            y_hi = max(y_hi, float(sc_e))
         yrange = (y_hi - y_lo) or abs(show[-1]["close"]) * 0.01
+        pad_y = yrange * 0.06
+        ax.set_ylim(y_lo - pad_y, y_hi + pad_y)
         off = yrange * 0.025
+
+        label_items: list[tuple[float, str, str]] = []
+        label_x = n + 0.6
 
         if level is not None:
             ax.axhline(level, color="#c586c0", linewidth=lw_zone, linestyle="-", alpha=0.9)
-            ax.text(
-                n - 0.5, level + off,
-                f"{ztype} {level:{fmt}}",
-                color="#c586c0", fontsize=fs_label, va="bottom", fontweight="bold",
-            )
+            label_items.append((float(level), f"{ztype} {level:{fmt}}", "#c586c0"))
         if zone_lo is not None and level is not None and abs(zone_lo - level) > 1e-9:
             edge = zone_lo if direction == "SHORT" else zone_hi
             if edge is not None:
                 ax.axhline(edge, color="#c586c0", linewidth=1, linestyle=":", alpha=0.7)
         if entry is not None:
             ax.axhline(entry, color="#4fc1ff", linewidth=1.2, linestyle="--", alpha=0.9)
-            ax.text(2, entry + off, f"Entrada OPTI ~{entry:{fmt}}", color="#4fc1ff", fontsize=fs_label, va="bottom")
+            label_items.append((float(entry), f"Entrada OPTI {entry:{fmt}}", "#4fc1ff"))
         for idx, (sc_e, sc_src) in enumerate(scalp_entries[:3]):
             if entry is not None and abs(float(sc_e) - float(entry)) < 10 ** (-dec):
                 continue
             ax.axhline(sc_e, color="#9cdcfe", linewidth=0.9, linestyle=":", alpha=0.75)
-            ax.text(
-                4 + idx * 2.5, float(sc_e) + off * (idx + 1),
-                f"Scalp {idx + 1} ~{float(sc_e):{fmt}}",
-                color="#9cdcfe", fontsize=fs_label - 1, va="bottom",
+            label_items.append(
+                (float(sc_e), f"Scalp {idx + 1} {float(sc_e):{fmt}}", "#9cdcfe"),
             )
         if user_entry is not None:
-            # Distinct color/label when user fill differs from system optimal
             same = entry is not None and abs(float(user_entry) - float(entry)) < 10 ** (-dec)
             if not same:
                 ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
-                ax.text(
-                    2, float(user_entry) - off,
-                    f"Entry usuario ~{user_entry:{fmt}}",
-                    color="#dcdcaa", fontsize=9, va="top",
+                label_items.append(
+                    (float(user_entry), f"Entry usuario {user_entry:{fmt}}", "#dcdcaa"),
                 )
             elif entry is None:
                 ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
-                ax.text(
-                    2, float(user_entry) + off,
-                    f"Entry usuario ~{user_entry:{fmt}}",
-                    color="#dcdcaa", fontsize=9, va="bottom",
+                label_items.append(
+                    (float(user_entry), f"Entry usuario {user_entry:{fmt}}", "#dcdcaa"),
                 )
+        rr_lbl = _rr_tag(opt, entry if user_entry is None else user_entry, sl, tp)
+        who = " usuario" if user_entry is not None else ""
         if sl is not None:
-            sl_tag = "past" if opt.get("sl_tp_source") == "past" else ("1:2" if opt.get("sl_tp_source") == "fallback" else "")
-            who = " usuario" if user_entry is not None else ""
-            sl_lbl = f"SL{who} {sl_tag} ~{sl:{fmt}}" if sl_tag else f"SL{who} ~{sl:{fmt}}"
             ax.axhline(sl, color="#f44747", linewidth=1, linestyle="--", alpha=0.85)
-            ax.text(2, sl + off, sl_lbl, color="#f44747", fontsize=9, va="bottom")
+            sl_txt = f"SL{who} {sl:{fmt}}" + (f" · {rr_lbl}" if rr_lbl and tp is None else "")
+            label_items.append((float(sl), sl_txt, "#f44747"))
         if tp is not None:
-            if opt.get("sl_tp_source") == "past":
-                tp_tag = "past" if opt.get("tp_source") == "past_structure" else "1:2 past"
-            elif opt.get("sl_tp_source") == "fallback":
-                tp_tag = "1:2"
-            else:
-                tp_tag = "1:2"
-            who = " usuario" if user_entry is not None else ""
             ax.axhline(tp, color="#6a9955", linewidth=1, linestyle="--", alpha=0.85)
-            ax.text(2, tp - off, f"TP{who} {tp_tag} ~{tp:{fmt}}", color="#6a9955", fontsize=9, va="top")
+            tp_txt = f"TP{who} {rr_lbl} {tp:{fmt}}".replace("  ", " ").strip()
+            label_items.append((float(tp), tp_txt, "#6a9955"))
 
+        _place_level_labels(ax, label_items, x=label_x, yrange=yrange, fontsize=fs_label)
+        ax.set_xlim(-0.5, n + 8)
         callout = _callout_text(opt)
         last = show[-1]
         anchor_y = level - off * 3 if level is not None else last["close"]

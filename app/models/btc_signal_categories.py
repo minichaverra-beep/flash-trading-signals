@@ -8,17 +8,15 @@ E1_RULES_TOTAL = 6  # sin Sesión NY ni "Cerca de zona clave" (zona = contexto, 
 
 
 
-# TRADING_WINRATE_STATS.md — E1 continuación / E2 reversión
-
+# TRADING_WINRATE_STATS.md — anclas históricas (techo, no default)
+# WR_BTC_E1 82% = techo A+ histórico; NO aplicar a setups mediocres.
 WR_BTC_E1 = 82.0
-
+WR_BTC_E1_REALISTIC_CAP = 74.0  # techo operativo daytrader (evita 82% decorativo)
 WR_BTC_GLOBAL = 69.0
-
 WR_GLOBAL = 67.0
-
 WR_BTC_E2 = 61.1  # E2 BTC proxy
-
 WR_E2_GLOBAL = 63.1  # E2 global proxy
+WR_FLOOR = 48.0  # mínimo mostrable antes de N/A
 
 
 
@@ -234,11 +232,20 @@ def compute_confluencia_setup(
             notes.append("E2 no operable")
     elif setup_mode == "break":
         hard = False
+        pd_zone = (crt or {}).get("premium_discount", "")
+        # Break alcista en PREMIUM / bajista en DISCOUNT = chase (mala entrada)
+        location_bad = (
+            (direction == "LONG" and pd_zone == "PREMIUM")
+            or (direction == "SHORT" and pd_zone == "DISCOUNT")
+        )
         if crt:
             if direction == "LONG" and (crt.get("fakeout_pdh") or crt.get("pd_reading") == "BEARISH"):
                 hard = True
             if direction == "SHORT" and (crt.get("fakeout_pdl") or crt.get("pd_reading") == "BULLISH"):
                 hard = True
+        if location_bad:
+            hard = True
+            notes.append(f"Break vs {pd_zone} (chase)")
         if direction in ("LONG", "SHORT") and not hard:
             score += 2
             notes.append("Break operable")
@@ -1258,55 +1265,126 @@ def session_category(window: str) -> str:
 
 
 def winrate_estimate(
-
     rules_pct: int,
-
     gallery_patterns: list[str] | None = None,
-
     setup_mode: str = "auto",
-
+    *,
+    data: dict | None = None,
+    crt: dict | None = None,
+    categories: dict | None = None,
 ) -> tuple[str, str]:
+    """Tasa de acierto estimada — proporcional a calidad, no un 82% fijo.
 
-    """Retorna (valor mostrado, fuente/nota). No inventa WR sin base."""
-
+    Antes: rules≥75% O patrón WIN → siempre ~82% (irreal).
+    Ahora:
+      - curva por % reglas (100% → ~72 base E1; 83% → ~66; 63% → ~58)
+      - galería WIN/LOSS ajusta ±pts, no sustituye el techo
+      - PREMIUM+LONG / DISCOUNT+SHORT (esp. Break) resta fuerte
+      - Acuerdo entre capas BAJA/NULA resta; ALTA suma poco
+      - techo operativo 74% (82% solo referencia histórica, no default)
+    """
     reverse = (setup_mode or "auto").lower() == "reverse"
-    wr_top = WR_BTC_E2 if reverse else WR_BTC_E1
-    wr_mid = WR_E2_GLOBAL if reverse else WR_BTC_GLOBAL
+    mode = (setup_mode or "auto").lower()
     src_tag = "E2 reversión BTC" if reverse else "E1 BTC"
+    notes: list[str] = []
 
+    if rules_pct < 50:
+        return "N/A", f"solo {rules_pct}% reglas — setup insuficiente"
+
+    # Base curve: interpolate rules → WR (no flat 82% plateau)
+    if reverse:
+        # E2: techo histórico ~61%, suelo ~52%
+        wr = 52.0 + (WR_BTC_E2 - 52.0) * max(0.0, min(1.0, (rules_pct - 50) / 50.0))
+    else:
+        # E1: 50% reglas → ~52; 75% → ~64; 100% → ~72 (cap realista, no 82)
+        wr = 52.0 + (WR_BTC_E1_REALISTIC_CAP - 52.0) * max(
+            0.0, min(1.0, (rules_pct - 50) / 50.0),
+        )
+    notes.append(f"{rules_pct}% reglas")
+
+    # Gallery: soft adj, never overwrite with flat 82%
     if gallery_patterns:
-
         wins = [p for p in gallery_patterns if p.startswith("WIN:")]
-
         losses = [p for p in gallery_patterns if p.startswith("LOSS:")]
-
         if wins and not losses:
+            wr += 3.0
+            notes.append("patron WIN similar +3")
+        elif losses and not wins:
+            wr -= 12.0
+            notes.append("patron LOSS similar -12")
+        elif wins and losses:
+            wr -= 4.0
+            notes.append("patrones mixtos -4")
 
-            return f"~{wr_top:.0f}%", f"patrón ganador similar · histórico {src_tag}"
+    # Location: break/continuation against PD zone
+    direction = None
+    if data:
+        direction = (data.get("setup") or {}).get("direction")
+    pd = (crt or {}).get("premium_discount", "") if crt else ""
+    if direction == "LONG" and pd == "PREMIUM":
+        cut = 12.0 if mode == "break" else 7.0
+        wr -= cut
+        notes.append(f"LONG en PREMIUM -{cut:.0f}")
+    elif direction == "SHORT" and pd == "DISCOUNT":
+        cut = 12.0 if mode == "break" else 7.0
+        wr -= cut
+        notes.append(f"SHORT en DISCOUNT -{cut:.0f}")
+    elif direction == "LONG" and pd == "DISCOUNT":
+        wr += 2.0
+        notes.append("LONG en DISCOUNT +2")
+    elif direction == "SHORT" and pd == "PREMIUM":
+        wr += 2.0
+        notes.append("SHORT en PREMIUM +2")
 
-        if losses and not wins:
+    # Acuerdo entre capas
+    conf_level = str((categories or {}).get("confluencia_setup") or "").upper()
+    conf_pct = (categories or {}).get("confluencia_pct")
+    if conf_pct is None and categories and categories.get("confluencia_detalle"):
+        import re
+        m = re.search(r"(\d+(?:\.\d+)?)\s*%", str(categories["confluencia_detalle"]))
+        if m:
+            conf_pct = float(m.group(1))
+    if conf_level == "ALTA" or (conf_pct is not None and conf_pct >= 75):
+        wr += 2.0
+        notes.append("acuerdo ALTA +2")
+    elif conf_level == "BAJA" or (conf_pct is not None and 25 <= (conf_pct or 0) < 50):
+        wr -= 8.0
+        notes.append("acuerdo BAJA -8")
+    elif conf_level == "NULA" or (conf_pct is not None and conf_pct < 25):
+        wr -= 12.0
+        notes.append("acuerdo NULA -12")
+    elif conf_level == "MEDIA" or (conf_pct is not None and 50 <= (conf_pct or 0) < 75):
+        wr -= 2.0
+        notes.append("acuerdo MEDIA -2")
 
-            return "baja", "patrón perdedor similar — evitar"
+    # Fusion score already blended (if present): soft pull toward it
+    fusion = (categories or {}).get("fusion_score")
+    if fusion is not None:
+        try:
+            f = float(fusion)
+            # 15% pull toward fusion so tasa != probabilidad pero no diverge absurda
+            wr = 0.85 * wr + 0.15 * f
+            notes.append(f"ancla fusion {f:.0f}%")
+        except (TypeError, ValueError):
+            pass
 
-        if wins and losses:
+    # H1 conflict
+    if data:
+        bias = data.get("bias_h1", "NEUTRAL")
+        if (direction == "LONG" and bias == "BEARISH") or (
+            direction == "SHORT" and bias == "BULLISH"
+        ):
+            wr -= 6.0
+            notes.append(f"H1 {bias} vs {direction} -6")
 
-            return "mixta", "patrones mixtos — revisar en TV"
+    # Clamp to realistic band
+    cap = WR_BTC_E2 + 4.0 if reverse else WR_BTC_E1_REALISTIC_CAP
+    wr = max(WR_FLOOR, min(cap, wr))
 
-
-
-    if rules_pct >= 75:
-
-        return f"~{wr_top:.0f}%", f"histórico {src_tag} ({rules_pct}% reglas OK)"
-
-    if rules_pct >= 63:
-
-        return f"~{wr_mid:.0f}%", f"histórico {src_tag} ({rules_pct}% reglas OK)"
-
-    if rules_pct >= 50:
-
-        return f"~{WR_GLOBAL:.0f}%", f"probabilidad histórica (~{WR_GLOBAL:.0f}%)"
-
-    return "N/A", f"solo {rules_pct}% reglas — setup insuficiente"
+    # Round to int for display; keep ~ prefix (estimate, not oracle)
+    wr_i = int(round(wr))
+    src = f"histórico {src_tag} · " + "; ".join(notes[:4])
+    return f"~{wr_i}%", src
 
 
 
@@ -1341,7 +1419,11 @@ def build_categories(
     signal_dir = derive_signal_direction(data, crt, dmi)
 
     wr_val, wr_src = winrate_estimate(
-        rules_pct, gallery_patterns, setup_mode=data.get("mode_setup", "auto"),
+        rules_pct,
+        gallery_patterns,
+        setup_mode=data.get("mode_setup", "auto"),
+        data=data,
+        crt=crt,
     )
 
     mode_bias = data.get("mode_bias", "auto")

@@ -402,6 +402,61 @@ def _direction_penalty(data: dict) -> tuple[float, str]:
     return 1.0, ""
 
 
+def _location_penalty(data: dict, crt: dict, setup_mode: str) -> tuple[float, str]:
+    """Penalize continuation/break against premium-discount location.
+
+    LONG/break bullish in PREMIUM (and SHORT in DISCOUNT) is chase — the
+    classic bad entry that inflated Probabilidad de éxito while Acuerdo
+    entre capas was already BAJA.
+    """
+    direction = data.get("setup", {}).get("direction", "NONE")
+    pd = (crt or {}).get("premium_discount", "")
+    mode = (setup_mode or data.get("mode_setup") or "auto").lower()
+    if direction == "LONG" and pd == "PREMIUM":
+        if mode == "break":
+            return 0.72, "Break alcista en PREMIUM (chase)"
+        return 0.88, "LONG en PREMIUM"
+    if direction == "SHORT" and pd == "DISCOUNT":
+        if mode == "break":
+            return 0.72, "Break bajista en DISCOUNT (chase)"
+        return 0.88, "SHORT en DISCOUNT"
+    return 1.0, ""
+
+
+def _confluencia_pct(categories: dict) -> float | None:
+    """Parse acuerdo entre capas % from confluencia_detalle or explicit field."""
+    import re
+
+    if categories.get("confluencia_pct") is not None:
+        try:
+            return float(categories["confluencia_pct"])
+        except (TypeError, ValueError):
+            pass
+    detail = str(categories.get("confluencia_detalle") or "")
+    # "38% · Rules …" or "MEDIA — 38% · …"
+    m = re.search(r"(\d+(?:\.\d+)?)\s*%", detail)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def _blend_acuerdo_into_success(
+    combined: float, categories: dict,
+) -> tuple[float, str | None]:
+    """Fold Acuerdo entre capas into Probabilidad de éxito (photo1 → photo2).
+
+    Weighted blend so BAJA 38% cannot leave a glossy 73% standing alone.
+    """
+    pct = _confluencia_pct(categories)
+    if pct is None:
+        return combined, None
+    level = str(categories.get("confluencia_setup") or "")
+    # 62% fusion layers + 38% acuerdo entre capas
+    blended = 0.62 * float(combined) + 0.38 * float(pct)
+    note = f"blend 62/38 con acuerdo {level} {pct:.0f}%".strip()
+    return blended, note
+
+
 def compute_advanced_scorecard(
     data: dict,
     ctx: dict,
@@ -415,12 +470,26 @@ def compute_advanced_scorecard(
     Pesos base (renormalizados si falta ML/Neural/E2):
       Rules E1 28% · Extendidas 12% · CRT 12% · Neural gated 25% · ML gated 18% · E2 5%
     Neural ausente → no relleno 50%; se redistribuye. Low conf → shrink a neutro.
+
+    Post-fuse:
+      1) Penalización H1 vs dirección
+      2) Penalización PREMIUM/DISCOUNT vs Break/LONG
+      3) Blend Acuerdo entre capas → Probabilidad de éxito
     """
-    from app.models.btc_signal_categories import _crt_coherent
+    from app.models.btc_signal_categories import _crt_coherent, compute_confluencia_setup
     from app.models.btc_neural_signals import (
         gated_prob_toward_neutral,
         neural_gate_factor,
     )
+
+    # Ensure acuerdo entre capas exists before blending into success %
+    if not categories.get("confluencia_detalle"):
+        conf_level, conf_detail = compute_confluencia_setup(
+            categories, data, crt=crt, e2=e2,
+        )
+        categories["confluencia_setup"] = conf_level
+        categories["confluencia_detalle"] = conf_detail
+        categories["confluencia_pct"] = _confluencia_pct(categories)
 
     rules_pct = float(categories.get("rules_pct", 0) or 0)
     rules_ok = categories.get("rules_ok", 0)
@@ -501,13 +570,30 @@ def compute_advanced_scorecard(
         combined *= dir_mult
         rows.append(("Penalización dirección", f"×{dir_mult:.2f}", "—", dir_note))
 
+    loc_mult, loc_note = _location_penalty(data, crt, setup_mode)
+    if loc_mult < 1.0:
+        combined *= loc_mult
+        rows.append(("Penalización ubicación", f"×{loc_mult:.2f}", "—", loc_note))
+
+    categories["fusion_pre_acuerdo"] = round(combined, 1)
+    blended, blend_note = _blend_acuerdo_into_success(combined, categories)
+    if blend_note:
+        conf_pct = _confluencia_pct(categories)
+        rows.append((
+            "Acuerdo entre capas",
+            f"{conf_pct:.0f}%" if conf_pct is not None else "n/d",
+            "38%",
+            blend_note,
+        ))
+        combined = blended
+
     categories["fusion_score"] = round(combined, 1)
     categories["fusion_weights"] = {
         k: round(wt / total_w, 3)
         for k, (_, wt) in zip(used_keys, scores)
     } if total_w else {}
 
-    rows.append(("**Probabilidad de éxito**", f"**{combined:.0f}%**", "100%", "pesos renormalizados"))
+    rows.append(("**Probabilidad de éxito**", f"**{combined:.0f}%**", "100%", "pesos + acuerdo entre capas"))
     return combined, rows
 
 
@@ -899,6 +985,18 @@ def format_advanced_sections(
     combined, score_rows = compute_advanced_scorecard(
         data, ctx, categories, crt, e2, setup_mode,
     )
+    # Refresh tasa de acierto now that fusion_score + acuerdo existen
+    from app.models.btc_signal_categories import winrate_estimate
+    wr_val, wr_src = winrate_estimate(
+        int(categories.get("rules_pct") or 0),
+        data.get("gallery_patterns"),
+        setup_mode=setup_mode,
+        data=data,
+        crt=crt,
+        categories=categories,
+    )
+    categories["winrate"] = wr_val
+    categories["winrate_source"] = wr_src
     lines: list[str] = [
         "",
         "---",
@@ -1454,20 +1552,24 @@ def _apply_entry_override_naive_rr(
     rr = 2.0
     note = fallback_note or "SL/TP 1:2 (fallback; sin estructura pasada segura)"
 
-    if direction == "SHORT":
-        if level:
-            sl = level * 1.002 if ztype == "resistencia_debil" else level * 1.003
+    from app.models.market_pips import raw_sl_from_zone
+
+    if direction in ("SHORT", "LONG"):
+        if level is not None:
+            sl = raw_sl_from_zone(entry, direction, {"level": level, "type": ztype})
         elif out.get("sl") is not None:
             sl = float(out["sl"])
+            if direction == "SHORT" and sl <= entry:
+                sl = entry * 1.003
+            elif direction == "LONG" and sl >= entry:
+                sl = entry * 0.997
         else:
-            sl = entry * 1.003
-        if sl <= entry:
-            sl = entry * 1.003
+            sl = raw_sl_from_zone(entry, direction, None)
         risk = abs(sl - entry)
         if risk <= 0:
             risk = max(entry * 0.003, 10 ** (-dec))
-            sl = entry + risk
-        tp = entry - rr * risk
+            sl = entry + risk if direction == "SHORT" else entry - risk
+        tp = entry - rr * risk if direction == "SHORT" else entry + rr * risk
         out.update({
             "valid": True,
             "sl": sl,
@@ -1480,41 +1582,14 @@ def _apply_entry_override_naive_rr(
             "sl_tp_note": note,
             "opti_action": f"ENTRAR {direction} (Entry usuario)",
             "invalidacion": (
-                f"Cierre M5 > {sl:{fmt}} o breakout sin rechazo "
-                f"(Entry usuario {entry:{fmt}})"
+                (
+                    f"Cierre M5 > {sl:{fmt}} o breakout sin rechazo "
+                    if direction == "SHORT"
+                    else f"Cierre M5 < {sl:{fmt}} o breakdown sin reclaim "
+                )
+                + f"(Entry usuario {entry:{fmt}})"
             ),
-            "trigger": f"Entry usuario CLI @ {entry:{fmt}} (SHORT)",
-        })
-    elif direction == "LONG":
-        if level:
-            sl = level * 0.998 if ztype == "soporte_debil" else level * 0.997
-        elif out.get("sl") is not None:
-            sl = float(out["sl"])
-        else:
-            sl = entry * 0.997
-        if sl >= entry:
-            sl = entry * 0.997
-        risk = abs(entry - sl)
-        if risk <= 0:
-            risk = max(entry * 0.003, 10 ** (-dec))
-            sl = entry - risk
-        tp = entry + rr * risk
-        out.update({
-            "valid": True,
-            "sl": sl,
-            "tp": tp,
-            "rr": rr,
-            "risk_pts": risk,
-            "sl_source": "fallback_1to2",
-            "tp_source": "fallback_1to2",
-            "sl_tp_source": "fallback",
-            "sl_tp_note": note,
-            "opti_action": f"ENTRAR {direction} (Entry usuario)",
-            "invalidacion": (
-                f"Cierre M5 < {sl:{fmt}} o breakdown sin reclaim "
-                f"(Entry usuario {entry:{fmt}})"
-            ),
-            "trigger": f"Entry usuario CLI @ {entry:{fmt}} (LONG)",
+            "trigger": f"Entry usuario CLI @ {entry:{fmt}} ({direction})",
         })
     else:
         out["valid"] = True
@@ -1643,25 +1718,20 @@ def _compute_optimal_entry_core(
         DEFAULT_RR,
         asset_from_data,
         clamp_sl_tp,
-        pull_entry_toward_price,
+        raw_entry_from_zone,
+        raw_sl_from_zone,
     )
 
     asset = asset_from_data(data)
 
-    if direction == "SHORT":
-        zone_lo = level * (1 - zone_pct)
-        zone_hi = level
-        entry = level - (level - zone_lo) * entry_ratio
-        entry = pull_entry_toward_price(entry, price, direction, blend=0.55)
-        sl = level * 1.002 if ztype == "resistencia_debil" else level * 1.003
-        color_word = "rojas"
-    else:
-        zone_lo = level
-        zone_hi = level * (1 + zone_pct)
-        entry = level + (zone_hi - level) * entry_ratio
-        entry = pull_entry_toward_price(entry, price, direction, blend=0.55)
-        sl = level * 0.998 if ztype == "soporte_debil" else level * 0.997
-        color_word = "verdes"
+    entry, zone_lo, zone_hi = raw_entry_from_zone(
+        price, direction, zone, zone_pct=zone_pct, entry_ratio=entry_ratio, blend=0.55,
+    )
+    if zone_lo is None or zone_hi is None:
+        zone_lo = level * (1 - zone_pct) if direction == "SHORT" else level
+        zone_hi = level if direction == "SHORT" else level * (1 + zone_pct)
+    sl = raw_sl_from_zone(entry, direction, zone)
+    color_word = "rojas" if direction == "SHORT" else "verdes"
 
     sl, tp, risk, sl_clamped = clamp_sl_tp(
         entry, sl, None, direction, asset, rr=DEFAULT_RR,
@@ -2223,6 +2293,22 @@ def write_high_signal(
     conf_level, conf_detail = compute_confluencia_setup(cats, data, crt=crt, e2=e2)
     cats["confluencia_setup"] = conf_level
     cats["confluencia_detalle"] = conf_detail
+    # Explicit % for UI (Acuerdo entre capas) and fusion blend
+    import re as _re
+    _m = _re.search(r"(\d+(?:\.\d+)?)\s*%", conf_detail or "")
+    cats["confluencia_pct"] = float(_m.group(1)) if _m else None
+    # Recompute tasa de acierto with acuerdo + ubicación (más realista que ~82% fijo)
+    from app.models.btc_signal_categories import winrate_estimate
+    wr_val, wr_src = winrate_estimate(
+        int(cats.get("rules_pct") or 0),
+        data.get("gallery_patterns"),
+        setup_mode=setup_mode,
+        data=data,
+        crt=crt,
+        categories=cats,
+    )
+    cats["winrate"] = wr_val
+    cats["winrate_source"] = wr_src
     if advanced:
         cats["advanced"] = True
         cats["advanced_rows"] = build_advanced_table_rows(

@@ -325,28 +325,16 @@ def _recalc_sl_tp_from_entry(
     data: dict,
     dec: int,
 ) -> tuple[float, float, float]:
-    """Structural SL/TP 1:2 from refined entry; clamp SL ≤ 60 pips per market."""
-    from app.models.market_pips import DEFAULT_RR, asset_from_data, clamp_sl_tp
+    """Structural SL/TP 1:2 from refined entry; clamp SL ≤ 60 pips per market.
 
-    level = zone.get("level")
-    ztype = zone.get("type", "zona")
-    fmt = f".{dec}f"
-    _ = fmt
-    if direction == "SHORT":
-        if level:
-            sl = float(level) * 1.002 if ztype == "resistencia_debil" else float(level) * 1.003
-        else:
-            sl = entry * 1.003
-        if sl <= entry:
-            sl = entry * 1.003
-    else:
-        if level:
-            sl = float(level) * 0.998 if ztype == "soporte_debil" else float(level) * 0.997
-        else:
-            sl = entry * 0.997
-        if sl >= entry:
-            sl = entry * 0.997
+    Zone level only anchors SL when type matches direction (soporte→LONG,
+    resistencia→SHORT). Otherwise SL is % beyond entry — avoids LONG under
+    resistencia with SL=level*0.997 deep below price.
+    """
+    from app.models.market_pips import DEFAULT_RR, asset_from_data, clamp_sl_tp, raw_sl_from_zone
 
+    _ = dec
+    sl = raw_sl_from_zone(entry, direction, zone)
     sl, tp, risk, _ = clamp_sl_tp(
         entry, sl, None, direction, asset_from_data(data), rr=DEFAULT_RR,
     )
@@ -366,9 +354,22 @@ def refine_entry_with_ict(
     if opt.get("entry") is None:
         return opt
 
+    from app.models.market_pips import asset_from_data, max_sl_distance
+
     ict = scan_ict_context(data, direction, crt, zone)
     base_entry = float(opt["entry"])
+    price = float(data.get("price") or ict.get("price") or base_entry)
     cands = _collect_entry_candidates(base_entry, direction, ict, zone or {})
+
+    # Daytrader: never park OPTI/SL/TP more than max SL distance from spot
+    # (was producing Entry/TP/SL ~200+ pts under resistencia while price sat on it).
+    scalp = bool(data.get("history_mode") or data.get("scalp_mode"))
+    if not scalp:
+        max_dist = max_sl_distance(asset_from_data(data))
+        near = [c for c in cands if abs(float(c[0]) - price) <= max_dist + 1e-9]
+        if near:
+            cands = near
+
     best_entry, best_src, best_score = max(cands, key=lambda x: x[2])
 
     out = dict(opt)
@@ -380,7 +381,7 @@ def refine_entry_with_ict(
         out["ict_refined"] = False
         out["ict_source"] = "zona base (sin cambio ICT)"
         out["ict_note"] = _build_ict_note(ict, base_entry, base_entry, best_src, refined=False)
-        if data.get("history_mode") or data.get("scalp_mode"):
+        if scalp:
             out["scalp_entries"] = build_scalp_entry_levels(
                 out, data, direction, crt, zone, limit=3,
             )
@@ -422,7 +423,7 @@ def refine_entry_with_ict(
         f"+ 2 velas M5 {'verdes' if direction == 'LONG' else 'rojas'} en zona"
     )
     out["ict_note"] = _build_ict_note(ict, base_entry, best_entry, best_src, refined=True)
-    if data.get("history_mode") or data.get("scalp_mode"):
+    if scalp:
         out["scalp_entries"] = build_scalp_entry_levels(
             out, data, direction, crt, zone, limit=3,
         )

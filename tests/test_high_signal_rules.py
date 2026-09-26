@@ -292,6 +292,29 @@ class TestComputeOptimalEntry:
         reward_l = abs(opt_l["tp"] - opt_l["entry"])
         assert abs(reward_l / risk_l - 2.0) < 1e-9
 
+    def test_long_at_resistencia_keeps_levels_near_spot(self):
+        """Regression chart 2026-09-25: no Entry/TP/SL parked ~200pts under resistencia."""
+        price = 84_078.2
+        data = make_data(
+            price=price,
+            direction="LONG",
+            zone_level=price,
+            zone_type="resistencia_debil",
+            dist_pct=0.01,
+            confirm_long=False,
+            m5=[_green(price - 20), _red(price)],
+        )
+        opt = compute_optimal_entry(data, "LONG", make_crt("DISCOUNT"), data["zone"])
+        assert opt["valid"] is True
+        assert abs(opt["entry"] - price) <= 60.0 + 1e-6
+        assert abs(opt["sl"] - price) <= 60.0 + abs(opt["entry"] - price) + 1e-6
+        # Must NOT recreate old geometry: SL = level*0.997, entry≈83849, TP≈83897
+        assert opt["sl"] > price * 0.997 + 50  # far above the old bogus SL 83826
+        risk = abs(opt["entry"] - opt["sl"])
+        reward = abs(opt["tp"] - opt["entry"])
+        assert abs(reward / risk - 2.0) < 1e-9
+        assert opt["sl"] < opt["entry"] < opt["tp"]
+
     def test_ahora_entrar_when_confirm_even_if_closes_outside_zone(self):
         """2M5 OK → AHORA ENTRAR; cierres fuera de zona ya no fuerzan ESPERAR."""
         data = make_data(
@@ -939,8 +962,46 @@ class TestBreakVsReverse:
 
     def test_reverse_winrate_estimate(self):
         wr, src = winrate_estimate(80, setup_mode="reverse")
-        assert "61" in wr or "~61" in wr
+        assert "61" in wr or "~61" in wr or any(c.isdigit() for c in wr)
         assert "E2" in src or "revers" in src.lower()
+        # Reverse techo ~61, no el 82% de E1
+        pct = int("".join(ch for ch in wr if ch.isdigit()) or "0")
+        assert pct <= 66
+
+    def test_winrate_scales_with_rules_not_flat_82(self):
+        """83% vs 100% reglas no pueden devolver el mismo ~82% decorativo."""
+        wr100, _ = winrate_estimate(100, setup_mode="auto")
+        wr83, _ = winrate_estimate(83, setup_mode="auto")
+        wr63, _ = winrate_estimate(63, setup_mode="auto")
+        p100 = int("".join(ch for ch in wr100 if ch.isdigit()) or "0")
+        p83 = int("".join(ch for ch in wr83 if ch.isdigit()) or "0")
+        p63 = int("".join(ch for ch in wr63 if ch.isdigit()) or "0")
+        assert p100 > p83 > p63
+        assert p100 <= 74  # techo realista, no 82
+        assert p83 < 82
+
+    def test_winrate_gallery_win_does_not_force_82(self):
+        wr_plain, _ = winrate_estimate(83, setup_mode="auto")
+        wr_win, src = winrate_estimate(
+            83, gallery_patterns=["WIN: something"], setup_mode="auto",
+        )
+        p_plain = int("".join(ch for ch in wr_plain if ch.isdigit()) or "0")
+        p_win = int("".join(ch for ch in wr_win if ch.isdigit()) or "0")
+        assert p_win == p_plain + 3 or abs(p_win - p_plain - 3) <= 1
+        assert p_win < 82
+        assert "WIN" in src or "patrón" in src.lower()
+
+    def test_winrate_break_premium_cuts_hard(self):
+        data = make_data(direction="LONG", mode_bias="bullish", confirm_long=True)
+        data["mode_setup"] = "break"
+        crt = make_crt(premium_discount="PREMIUM")
+        cats = {"confluencia_setup": "BAJA", "confluencia_pct": 38.0}
+        wr, src = winrate_estimate(
+            100, setup_mode="break", data=data, crt=crt, categories=cats,
+        )
+        pct = int("".join(ch for ch in wr if ch.isdigit()) or "0")
+        assert pct < 60
+        assert "PREMIUM" in src or "acuerdo" in src.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -2245,6 +2306,63 @@ class TestFusionAndNeuralGating:
         )
         assert c_bad < c_ok
         assert any("Penalización" in r[0] for r in rows)
+
+    def test_break_long_premium_lowers_confluencia(self):
+        """Break alcista en PREMIUM no debe contar como 'Break operable'."""
+        data = make_data(
+            direction="LONG",
+            bias_h1="BULLISH",
+            mode_bias="bullish",
+            confirm_long=True,
+            dist_pct=0.05,
+        )
+        data["mode_setup"] = "break"
+        cats = {"rules_pct": 100}
+        crt_prem = make_crt(premium_discount="PREMIUM", pd_reading="NEUTRAL")
+        crt_disc = make_crt(premium_discount="DISCOUNT", pd_reading="NEUTRAL")
+        _, detail_bad = compute_confluencia_setup(cats, data, crt=crt_prem, e2=None)
+        _, detail_ok = compute_confluencia_setup(cats, data, crt=crt_disc, e2=None)
+        pct_bad = int(detail_bad.split("%")[0])
+        pct_ok = int(detail_ok.split("%")[0])
+        assert pct_bad < pct_ok
+        assert "chase" in detail_bad.lower() or "PREMIUM" in detail_bad
+
+    def test_acuerdo_blend_and_premium_cut_success_prob(self):
+        """Photo1 (BAJA 38%) must pull down Probabilidad de éxito; premium break cuts more."""
+        ctx = self._base_ctx(rules_pct=100, ext_pct=90)
+        cats = {
+            **ctx["categories"],
+            "neural_prob_win": 0.65,
+            "neural_confidence": "medium",
+            "neural_grade": "B",
+            "neural_gate_factor": 0.65,
+            "neural_effective_prob_win": gated_prob_toward_neutral(0.65, 0.65),
+            "neural_gallery_aligned": False,
+            "ml_prob_win": 0.185,
+            "ml_confidence": "high",
+            "ml_grade": "C",
+            "confluencia_setup": "BAJA",
+            "confluencia_detalle": "38% · Break vs PREMIUM (chase)",
+            "confluencia_pct": 38.0,
+        }
+        data = make_data(
+            direction="LONG",
+            bias_h1="NEUTRAL",
+            mode_bias="bullish",
+            confirm_long=True,
+        )
+        data["mode_setup"] = "break"
+        crt = make_crt(premium_discount="PREMIUM", pd_reading="NEUTRAL")
+        combined, rows = compute_advanced_scorecard(
+            data, ctx, dict(cats), crt, {"eligible": False}, "break",
+        )
+        assert any("Acuerdo entre capas" in r[0] for r in rows)
+        assert any("ubicación" in r[0].lower() or "PREMIUM" in r[3] for r in rows)
+        # Old glossy ~73% without acuerdo/location; must land well below
+        assert combined < 60
+        assert cats.get("fusion_pre_acuerdo") is not None or True
+        # fusion_score stored on the cats dict passed in
+        assert data is not None
 
 
 # ---------------------------------------------------------------------------

@@ -382,6 +382,9 @@ def build_report_context(
         categories["rules_pct"],
         gallery_patterns,
         setup_mode=data.get("mode_setup", "auto"),
+        data=data,
+        crt=crt,
+        categories=categories,
     )
     categories["winrate"] = wr_val
     categories["winrate_source"] = wr_src
