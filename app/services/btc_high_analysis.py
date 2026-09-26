@@ -403,23 +403,29 @@ def _direction_penalty(data: dict) -> tuple[float, str]:
 
 
 def _location_penalty(data: dict, crt: dict, setup_mode: str) -> tuple[float, str]:
-    """Penalize continuation/break against premium-discount location.
+    """Factor ubicación Premium/Discount vs dirección (ICT).
 
-    LONG/break bullish in PREMIUM (and SHORT in DISCOUNT) is chase — the
-    classic bad entry that inflated Probabilidad de éxito while Acuerdo
-    entre capas was already BAJA.
+    LONG@PREMIUM / SHORT@DISCOUNT = chase (resta).
+    LONG@DISCOUNT / SHORT@PREMIUM = zona a favor (suma suave).
+    Break chase corta más fuerte; Reverse premia más el extremo correcto.
     """
     direction = data.get("setup", {}).get("direction", "NONE")
     pd = (crt or {}).get("premium_discount", "")
     mode = (setup_mode or data.get("mode_setup") or "auto").lower()
-    if direction == "LONG" and pd == "PREMIUM":
+    pd_u = str(pd or "").upper()
+
+    if direction == "LONG" and pd_u == "PREMIUM":
         if mode == "break":
             return 0.72, "Break alcista en PREMIUM (chase)"
         return 0.88, "LONG en PREMIUM"
-    if direction == "SHORT" and pd == "DISCOUNT":
+    if direction == "SHORT" and pd_u == "DISCOUNT":
         if mode == "break":
             return 0.72, "Break bajista en DISCOUNT (chase)"
         return 0.88, "SHORT en DISCOUNT"
+    if direction == "LONG" and pd_u == "DISCOUNT":
+        return (1.06 if mode == "reverse" else 1.03), "LONG en DISCOUNT (zona a favor)"
+    if direction == "SHORT" and pd_u == "PREMIUM":
+        return (1.06 if mode == "reverse" else 1.03), "SHORT en PREMIUM (zona a favor)"
     return 1.0, ""
 
 
@@ -571,9 +577,10 @@ def compute_advanced_scorecard(
         rows.append(("Penalización dirección", f"×{dir_mult:.2f}", "—", dir_note))
 
     loc_mult, loc_note = _location_penalty(data, crt, setup_mode)
-    if loc_mult < 1.0:
+    if loc_mult != 1.0:
         combined *= loc_mult
-        rows.append(("Penalización ubicación", f"×{loc_mult:.2f}", "—", loc_note))
+        label = "Bonificación ubicación" if loc_mult > 1.0 else "Penalización ubicación"
+        rows.append((label, f"×{loc_mult:.2f}", "—", loc_note))
 
     categories["fusion_pre_acuerdo"] = round(combined, 1)
     blended, blend_note = _blend_acuerdo_into_success(combined, categories)
@@ -2312,7 +2319,7 @@ def write_high_signal(
     if advanced:
         cats["advanced"] = True
         cats["advanced_rows"] = build_advanced_table_rows(
-            cats, data, opt=opt, ext_pct=ctx.get("ext_pct"), e2=e2,
+            cats, data, opt=opt, ext_pct=ctx.get("ext_pct"), e2=e2, crt=crt,
         )
     else:
         cats.pop("advanced", None)

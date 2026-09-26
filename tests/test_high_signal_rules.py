@@ -1003,6 +1003,21 @@ class TestBreakVsReverse:
         assert pct < 60
         assert "PREMIUM" in src or "acuerdo" in src.lower()
 
+    def test_winrate_bias_align_and_pd_favor(self):
+        data = make_data(direction="SHORT", mode_bias="bearish", confirm_short=True)
+        data["bias_h1"] = "BEARISH"
+        data["mode_setup"] = "reverse"
+        crt = make_crt(premium_discount="PREMIUM")
+        cats = {"confluencia_setup": "MEDIA", "confluencia_pct": 55.0}
+        wr, src = winrate_estimate(
+            83, setup_mode="reverse", data=data, crt=crt, categories=cats,
+        )
+        assert "PREMIUM" in src
+        assert "a favor" in src.lower()
+        assert "H1 BEARISH" in src or "BEARISH a favor" in src
+        pct = int("".join(ch for ch in wr if ch.isdigit()) or "0")
+        assert pct >= 48
+
 
 # ---------------------------------------------------------------------------
 # 4. Segunda indicación (H1 NEUTRAL)

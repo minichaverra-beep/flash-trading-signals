@@ -351,13 +351,18 @@ def build_advanced_table_rows(
     opt: dict | None = None,
     ext_pct: int | None = None,
     e2: dict | None = None,
+    crt: dict | None = None,
 ) -> list[tuple[str, str]]:
     """Filas extra (español) para Categories cuando advanced=True. Solo métricas reales."""
     rows: list[tuple[str, str]] = []
     dec = int((opt or {}).get("dec", data.get("price_decimals", 1)))
     fmt = f".{dec}f"
     price = data.get("price")
-    direction = data.get("setup", {}).get("direction", "NONE")
+    direction = (
+        categories.get("direction")
+        or data.get("setup", {}).get("direction")
+        or "NONE"
+    )
 
     if opt and opt.get("rr") is not None:
         rows.append(("R:R", f"1:{opt['rr']:.0f}"))
@@ -401,6 +406,23 @@ def build_advanced_table_rows(
     wr = categories.get("winrate")
     if wr:
         rows.append(("Winrate setup", f"{wr} — {categories.get('winrate_source', '')}".rstrip(" —")))
+
+    # Desglose avanzado: zona PD + bias (claros en Categories / Advanced)
+    crt_obj = crt if isinstance(crt, dict) else {}
+    pd_zone = str(crt_obj.get("premium_discount") or "").upper()
+    setup_mode_pd = (data.get("mode_setup") or "auto").lower()
+    if direction in ("LONG", "SHORT") and pd_zone:
+        _pd_d, pd_note = _pd_zone_adjustment(direction, pd_zone, setup_mode_pd)
+        if pd_note:
+            rows.append(("Zona PD vs dirección", pd_note))
+        else:
+            rows.append(("Zona PD vs dirección", f"{direction} · {pd_zone} (sin ajuste)"))
+    _bias_d, bias_note = _bias_adjustment(
+        direction if direction in ("LONG", "SHORT") else None,
+        data,
+    )
+    if bias_note:
+        rows.append(("Bias vs dirección", bias_note))
 
     if ext_pct is not None:
         rows.append(("Score Rules extendido", f"**{ext_pct}%**"))
@@ -1264,6 +1286,86 @@ def session_category(window: str) -> str:
 
 
 
+def _pd_zone_adjustment(
+    direction: str | None,
+    pd: str,
+    mode: str,
+) -> tuple[float, str | None]:
+    """Ajuste tasa por Premium/Discount vs dirección (ICT: long discount / short premium).
+
+    Break chase (LONG@PREMIUM / SHORT@DISCOUNT) corta más fuerte.
+    Reverse (E2) premia más la zona a favor (turtle soup en extremo correcto).
+    """
+    if not direction or direction not in ("LONG", "SHORT"):
+        return 0.0, None
+    pd_u = (pd or "").upper()
+    if pd_u.startswith("EQUILIBRIO") or pd_u in ("EQ", "EQUILIBRIUM"):
+        return 0.0, "EQUILIBRIO 0"
+
+    against = (direction == "LONG" and pd_u == "PREMIUM") or (
+        direction == "SHORT" and pd_u == "DISCOUNT"
+    )
+    favor = (direction == "LONG" and pd_u == "DISCOUNT") or (
+        direction == "SHORT" and pd_u == "PREMIUM"
+    )
+
+    if against:
+        if mode == "break":
+            cut = 12.0
+            tag = "chase Break"
+        elif mode == "reverse":
+            cut = 7.0
+            tag = "E2 vs zona"
+        else:
+            cut = 7.0
+            tag = "vs zona"
+        return -cut, f"{direction} en {pd_u} -{cut:.0f} ({tag})"
+
+    if favor:
+        # E2 turtle soup vive en el extremo correcto; Break continuation también lo prefiere
+        boost = 4.0 if mode == "reverse" else 2.0
+        tag = "E2 a favor" if mode == "reverse" else "zona a favor"
+        return boost, f"{direction} en {pd_u} +{boost:.0f} ({tag})"
+
+    return 0.0, None
+
+
+def _bias_adjustment(
+    direction: str | None,
+    data: dict | None,
+) -> tuple[float, str | None]:
+    """Ajuste tasa por bias H1 / CLI vs dirección del setup."""
+    if not data or not direction or direction not in ("LONG", "SHORT"):
+        return 0.0, None
+    bias = str(data.get("bias_h1") or "NEUTRAL").upper()
+    mode_bias = str(data.get("mode_bias") or "auto").lower()
+
+    aligned_h1 = (direction == "LONG" and bias == "BULLISH") or (
+        direction == "SHORT" and bias == "BEARISH"
+    )
+    conflict_h1 = (direction == "LONG" and bias == "BEARISH") or (
+        direction == "SHORT" and bias == "BULLISH"
+    )
+    aligned_cli = (direction == "LONG" and mode_bias == "bullish") or (
+        direction == "SHORT" and mode_bias == "bearish"
+    )
+    conflict_cli = (direction == "LONG" and mode_bias == "bearish") or (
+        direction == "SHORT" and mode_bias == "bullish"
+    )
+
+    if conflict_h1:
+        return -6.0, f"H1 {bias} vs {direction} -6"
+    if aligned_h1:
+        return 4.0, f"H1 {bias} a favor +4"
+    if conflict_cli and bias == "NEUTRAL":
+        return -3.0, f"CLI {mode_bias.upper()} vs {direction} -3"
+    if aligned_cli and bias == "NEUTRAL":
+        return 2.0, f"CLI {mode_bias.upper()} a favor +2"
+    if bias == "NEUTRAL":
+        return 0.0, "H1 NEUTRAL 0"
+    return 0.0, None
+
+
 def winrate_estimate(
     rules_pct: int,
     gallery_patterns: list[str] | None = None,
@@ -1275,18 +1377,20 @@ def winrate_estimate(
 ) -> tuple[str, str]:
     """Tasa de acierto estimada — proporcional a calidad, no un 82% fijo.
 
-    Antes: rules≥75% O patrón WIN → siempre ~82% (irreal).
-    Ahora:
-      - curva por % reglas (100% → ~72 base E1; 83% → ~66; 63% → ~58)
-      - galería WIN/LOSS ajusta ±pts, no sustituye el techo
-      - PREMIUM+LONG / DISCOUNT+SHORT (esp. Break) resta fuerte
+    Factores (en orden de prioridad en el desglose):
+      - zona Premium/Discount vs dirección (chase resta; zona a favor suma)
+      - bias H1 / CLI vs dirección (alineado suma; conflicto resta)
       - Acuerdo entre capas BAJA/NULA resta; ALTA suma poco
-      - techo operativo 74% (82% solo referencia histórica, no default)
+      - galería WIN/LOSS ±pts (no sustituye el techo)
+      - curva por % reglas + ancla suave a fusion_score
+      - techo operativo 74% E1 / ~65% E2 (82% solo referencia histórica)
     """
     reverse = (setup_mode or "auto").lower() == "reverse"
     mode = (setup_mode or "auto").lower()
     src_tag = "E2 reversión BTC" if reverse else "E1 BTC"
-    notes: list[str] = []
+    # Notas priorizadas: PD, bias, acuerdo, patrón, reglas, fusion
+    notes_priority: list[str] = []
+    notes_tail: list[str] = []
 
     if rules_pct < 50:
         return "N/A", f"solo {rules_pct}% reglas — setup insuficiente"
@@ -1300,41 +1404,26 @@ def winrate_estimate(
         wr = 52.0 + (WR_BTC_E1_REALISTIC_CAP - 52.0) * max(
             0.0, min(1.0, (rules_pct - 50) / 50.0),
         )
-    notes.append(f"{rules_pct}% reglas")
+    notes_tail.append(f"{rules_pct}% reglas")
 
-    # Gallery: soft adj, never overwrite with flat 82%
-    if gallery_patterns:
-        wins = [p for p in gallery_patterns if p.startswith("WIN:")]
-        losses = [p for p in gallery_patterns if p.startswith("LOSS:")]
-        if wins and not losses:
-            wr += 3.0
-            notes.append("patron WIN similar +3")
-        elif losses and not wins:
-            wr -= 12.0
-            notes.append("patron LOSS similar -12")
-        elif wins and losses:
-            wr -= 4.0
-            notes.append("patrones mixtos -4")
-
-    # Location: break/continuation against PD zone
     direction = None
     if data:
         direction = (data.get("setup") or {}).get("direction")
     pd = (crt or {}).get("premium_discount", "") if crt else ""
-    if direction == "LONG" and pd == "PREMIUM":
-        cut = 12.0 if mode == "break" else 7.0
-        wr -= cut
-        notes.append(f"LONG en PREMIUM -{cut:.0f}")
-    elif direction == "SHORT" and pd == "DISCOUNT":
-        cut = 12.0 if mode == "break" else 7.0
-        wr -= cut
-        notes.append(f"SHORT en DISCOUNT -{cut:.0f}")
-    elif direction == "LONG" and pd == "DISCOUNT":
-        wr += 2.0
-        notes.append("LONG en DISCOUNT +2")
-    elif direction == "SHORT" and pd == "PREMIUM":
-        wr += 2.0
-        notes.append("SHORT en PREMIUM +2")
+
+    pd_delta, pd_note = _pd_zone_adjustment(direction, str(pd or ""), mode)
+    if pd_delta:
+        wr += pd_delta
+    if pd_note:
+        notes_priority.append(pd_note)
+
+    bias_delta, bias_note = _bias_adjustment(direction, data)
+    if bias_delta:
+        wr += bias_delta
+    if bias_note and bias_delta != 0:
+        notes_priority.append(bias_note)
+    elif bias_note and bias_note.startswith("H1 NEUTRAL"):
+        notes_tail.append(bias_note)
 
     # Acuerdo entre capas
     conf_level = str((categories or {}).get("confluencia_setup") or "").upper()
@@ -1346,16 +1435,30 @@ def winrate_estimate(
             conf_pct = float(m.group(1))
     if conf_level == "ALTA" or (conf_pct is not None and conf_pct >= 75):
         wr += 2.0
-        notes.append("acuerdo ALTA +2")
+        notes_priority.append("acuerdo ALTA +2")
     elif conf_level == "BAJA" or (conf_pct is not None and 25 <= (conf_pct or 0) < 50):
         wr -= 8.0
-        notes.append("acuerdo BAJA -8")
+        notes_priority.append("acuerdo BAJA -8")
     elif conf_level == "NULA" or (conf_pct is not None and conf_pct < 25):
         wr -= 12.0
-        notes.append("acuerdo NULA -12")
+        notes_priority.append("acuerdo NULA -12")
     elif conf_level == "MEDIA" or (conf_pct is not None and 50 <= (conf_pct or 0) < 75):
         wr -= 2.0
-        notes.append("acuerdo MEDIA -2")
+        notes_priority.append("acuerdo MEDIA -2")
+
+    # Gallery: soft adj, never overwrite with flat 82%
+    if gallery_patterns:
+        wins = [p for p in gallery_patterns if p.startswith("WIN:")]
+        losses = [p for p in gallery_patterns if p.startswith("LOSS:")]
+        if wins and not losses:
+            wr += 3.0
+            notes_priority.append("patron WIN similar +3")
+        elif losses and not wins:
+            wr -= 12.0
+            notes_priority.append("patron LOSS similar -12")
+        elif wins and losses:
+            wr -= 4.0
+            notes_priority.append("patrones mixtos -4")
 
     # Fusion score already blended (if present): soft pull toward it
     fusion = (categories or {}).get("fusion_score")
@@ -1364,18 +1467,9 @@ def winrate_estimate(
             f = float(fusion)
             # 15% pull toward fusion so tasa != probabilidad pero no diverge absurda
             wr = 0.85 * wr + 0.15 * f
-            notes.append(f"ancla fusion {f:.0f}%")
+            notes_tail.append(f"ancla fusión {f:.0f}%")
         except (TypeError, ValueError):
             pass
-
-    # H1 conflict
-    if data:
-        bias = data.get("bias_h1", "NEUTRAL")
-        if (direction == "LONG" and bias == "BEARISH") or (
-            direction == "SHORT" and bias == "BULLISH"
-        ):
-            wr -= 6.0
-            notes.append(f"H1 {bias} vs {direction} -6")
 
     # Clamp to realistic band
     cap = WR_BTC_E2 + 4.0 if reverse else WR_BTC_E1_REALISTIC_CAP
@@ -1383,7 +1477,9 @@ def winrate_estimate(
 
     # Round to int for display; keep ~ prefix (estimate, not oracle)
     wr_i = int(round(wr))
-    src = f"histórico {src_tag} · " + "; ".join(notes[:4])
+    # Prioridad: PD · bias · acuerdo · patrón; cola: reglas · fusión (máx 5)
+    notes = (notes_priority + notes_tail)[:5]
+    src = f"histórico {src_tag} · " + "; ".join(notes)
     return f"~{wr_i}%", src
 
 
