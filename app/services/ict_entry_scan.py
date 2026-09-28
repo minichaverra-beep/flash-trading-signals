@@ -400,11 +400,7 @@ def refine_entry_with_ict(
 
     zone_lo = out.get("zone_lo")
     zone_hi = out.get("zone_hi")
-    if direction == "LONG" and zone_lo is not None and zone_hi is not None:
-        out["zone_lo"] = min(float(zone_lo), best_entry)
-        out["zone_hi"] = max(float(zone_hi), best_entry)
-        out["opti_zone"] = f"{out['zone_lo']:{fmt}}–{out['zone_hi']:{fmt}}"
-    elif direction == "SHORT" and zone_lo is not None and zone_hi is not None:
+    if direction in ("LONG", "SHORT") and zone_lo is not None and zone_hi is not None:
         out["zone_lo"] = min(float(zone_lo), best_entry)
         out["zone_hi"] = max(float(zone_hi), best_entry)
         out["opti_zone"] = f"{out['zone_lo']:{fmt}}–{out['zone_hi']:{fmt}}"

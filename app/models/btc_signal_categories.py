@@ -18,13 +18,30 @@ WR_BTC_E2 = 61.1  # E2 BTC proxy
 WR_E2_GLOBAL = 63.1  # E2 global proxy
 WR_FLOOR = 48.0  # mínimo mostrable antes de N/A
 
+VERDICT_A_PLUS = "SETUP_A+"
+LABEL_NO_OPERAR = "No operar"
+SESSION_NY_AM = "NY AM"
+SESSION_NY_PM = "NY PM"
+MD_CATEGORIES_HEADER = "## Categories"
+GALLERY_WIN_ALIGNED = "alineado con patrones WIN desktop"
+GALLERY_WIN_LOW = "baja similitud con galería WIN"
+
+
+def _confirm_for_direction(data: dict, direction: str | None) -> bool:
+    """Confirmación 2M5 del lado del setup (False si no hay dirección)."""
+    if direction == "LONG":
+        return bool(data.get("confirm_long", False))
+    if direction == "SHORT":
+        return bool(data.get("confirm_short", False))
+    return False
+
 
 
 
 
 def verdict_to_signal(setup: dict) -> str:
     v = setup["verdict"]
-    if v == "SETUP_A+":
+    if v == VERDICT_A_PLUS:
         return "ENTRAR"
     if v == "SETUP_B_ESPERAR":
         return "ESPERAR"
@@ -207,11 +224,7 @@ def compute_confluencia_setup(
             notes.append(f"ML {ml * 100:.0f}% gris")
 
     direction = data.get("setup", {}).get("direction", "NONE")
-    confirm = (
-        data.get("confirm_long", False) if direction == "LONG"
-        else data.get("confirm_short", False) if direction == "SHORT"
-        else False
-    )
+    confirm = _confirm_for_direction(data, direction)
     max_pts += 2
     if confirm:
         score += 2
@@ -427,11 +440,7 @@ def build_advanced_table_rows(
     if ext_pct is not None:
         rows.append(("Score Rules extendido", f"**{ext_pct}%**"))
 
-    confirm = (
-        data.get("confirm_long", False) if direction == "LONG"
-        else data.get("confirm_short", False) if direction == "SHORT"
-        else False
-    )
+    confirm = _confirm_for_direction(data, direction)
     if direction in ("LONG", "SHORT"):
         if confirm:
             m5_state = f"VÁLIDO {direction} (2M5)"
@@ -484,7 +493,7 @@ def build_advanced_table_rows(
     mq = data.get("macd_quant") or {}
     if mq.get("available"):
         soft = mq.get("soft_filter_ok")
-        soft_s = "OK" if soft is True else ("en contra" if soft is False else "n/d")
+        soft_s = {True: "OK", False: "en contra"}.get(soft, "n/d") if isinstance(soft, bool) else "n/d"
         hist = mq.get("histogram")
         hist_s = f"{hist:.4g}" if isinstance(hist, (int, float)) else "n/d"
         rows.append((
@@ -744,7 +753,7 @@ def label_signal(sig: str) -> str:
 
         "ESPERAR": "Esperar",
 
-        "NO_OPERAR": "No operar",
+        "NO_OPERAR": LABEL_NO_OPERAR,
 
         "OBSERVAR": "Esperar",
 
@@ -784,11 +793,11 @@ def label_auto_verdict(v: str) -> str:
 
     return {
 
-        "SETUP_A+": "Setup fuerte",
+        VERDICT_A_PLUS: "Setup fuerte",
 
         "SETUP_B_ESPERAR": "Esperar confirmación",
 
-        "NO_TRADE": "No operar",
+        "NO_TRADE": LABEL_NO_OPERAR,
 
         "OBSERVAR": "Esperar",
 
@@ -808,7 +817,7 @@ def label_grade(g: str) -> str:
 
         "C": "Setup débil",
 
-        "SKIP": "No operar",
+        "SKIP": LABEL_NO_OPERAR,
 
     }.get(g, g)
 
@@ -818,7 +827,7 @@ def label_grade(g: str) -> str:
 
 def label_session(s: str) -> str:
 
-    return {"NY AM": "Mañana NY", "NY PM": "Tarde NY", "FUERA": "Fuera NY"}.get(s, s)
+    return {SESSION_NY_AM: "Mañana NY", SESSION_NY_PM: "Tarde NY", "FUERA": "Fuera NY"}.get(s, s)
 
 
 
@@ -1010,11 +1019,7 @@ def derive_signal_direction(
 
         pd = crt.get("pd_reading", "n/a")
 
-        if signal == "BULLISH" and pd == "BEARISH":
-
-            signal = "NEUTRAL"
-
-        elif signal == "BEARISH" and pd == "BULLISH":
+        if (signal, pd) in (("BULLISH", "BEARISH"), ("BEARISH", "BULLISH")):
 
             signal = "NEUTRAL"
 
@@ -1170,7 +1175,7 @@ def score_e1_rules_8(
 
     div: dict | None = None,
 
-    dmi: dict | None = None,
+    _dmi: dict | None = None,
 
     e2: dict | None = None,
 
@@ -1185,15 +1190,7 @@ def score_e1_rules_8(
 
     direction = s["direction"]
 
-    confirm = (
-
-        data["confirm_long"] if direction == "LONG"
-
-        else data["confirm_short"] if direction == "SHORT"
-
-        else False
-
-    )
+    confirm = _confirm_for_direction(data, direction)
 
     forced = data.get("forced_bias")
     if forced == "bullish":
@@ -1256,7 +1253,7 @@ def setup_grade(verdict: str) -> str:
 
     return {
 
-        "SETUP_A+": "A+",
+        VERDICT_A_PLUS: "A+",
 
         "SETUP_B_ESPERAR": "B",
 
@@ -1272,18 +1269,26 @@ def setup_grade(verdict: str) -> str:
 
 def session_category(window: str) -> str:
 
-    if "NY AM" in window:
+    if SESSION_NY_AM in window:
 
-        return "NY AM"
+        return SESSION_NY_AM
 
-    if "NY PM" in window:
+    if SESSION_NY_PM in window:
 
-        return "NY PM"
+        return SESSION_NY_PM
 
     return "FUERA"
 
 
 
+
+
+_DIR_SIGN = {"LONG": 1, "SHORT": -1}
+_PD_FAVOR = {"LONG": "DISCOUNT", "SHORT": "PREMIUM"}
+_PD_AGAINST = {"LONG": "PREMIUM", "SHORT": "DISCOUNT"}
+# Recorte por zona en contra según modo: (pts, etiqueta)
+_PD_AGAINST_CUT = {"break": (12.0, "chase Break"), "reverse": (7.0, "E2 vs zona")}
+_PD_AGAINST_CUT_DEFAULT = (7.0, "vs zona")
 
 
 def _pd_zone_adjustment(
@@ -1296,35 +1301,19 @@ def _pd_zone_adjustment(
     Break chase (LONG@PREMIUM / SHORT@DISCOUNT) corta más fuerte.
     Reverse (E2) premia más la zona a favor (turtle soup en extremo correcto).
     """
-    if not direction or direction not in ("LONG", "SHORT"):
+    if direction not in _DIR_SIGN:
         return 0.0, None
     pd_u = (pd or "").upper()
     if pd_u.startswith("EQUILIBRIO") or pd_u in ("EQ", "EQUILIBRIUM"):
         return 0.0, "EQUILIBRIO 0"
 
-    against = (direction == "LONG" and pd_u == "PREMIUM") or (
-        direction == "SHORT" and pd_u == "DISCOUNT"
-    )
-    favor = (direction == "LONG" and pd_u == "DISCOUNT") or (
-        direction == "SHORT" and pd_u == "PREMIUM"
-    )
-
-    if against:
-        if mode == "break":
-            cut = 12.0
-            tag = "chase Break"
-        elif mode == "reverse":
-            cut = 7.0
-            tag = "E2 vs zona"
-        else:
-            cut = 7.0
-            tag = "vs zona"
+    if pd_u == _PD_AGAINST[direction]:
+        cut, tag = _PD_AGAINST_CUT.get(mode, _PD_AGAINST_CUT_DEFAULT)
         return -cut, f"{direction} en {pd_u} -{cut:.0f} ({tag})"
 
-    if favor:
+    if pd_u == _PD_FAVOR[direction]:
         # E2 turtle soup vive en el extremo correcto; Break continuation también lo prefiere
-        boost = 4.0 if mode == "reverse" else 2.0
-        tag = "E2 a favor" if mode == "reverse" else "zona a favor"
+        boost, tag = (4.0, "E2 a favor") if mode == "reverse" else (2.0, "zona a favor")
         return boost, f"{direction} en {pd_u} +{boost:.0f} ({tag})"
 
     return 0.0, None
@@ -1335,35 +1324,112 @@ def _bias_adjustment(
     data: dict | None,
 ) -> tuple[float, str | None]:
     """Ajuste tasa por bias H1 / CLI vs dirección del setup."""
-    if not data or not direction or direction not in ("LONG", "SHORT"):
+    if not data or direction not in _DIR_SIGN:
         return 0.0, None
     bias = str(data.get("bias_h1") or "NEUTRAL").upper()
     mode_bias = str(data.get("mode_bias") or "auto").lower()
+    sign = _DIR_SIGN[direction]
 
-    aligned_h1 = (direction == "LONG" and bias == "BULLISH") or (
-        direction == "SHORT" and bias == "BEARISH"
-    )
-    conflict_h1 = (direction == "LONG" and bias == "BEARISH") or (
-        direction == "SHORT" and bias == "BULLISH"
-    )
-    aligned_cli = (direction == "LONG" and mode_bias == "bullish") or (
-        direction == "SHORT" and mode_bias == "bearish"
-    )
-    conflict_cli = (direction == "LONG" and mode_bias == "bearish") or (
-        direction == "SHORT" and mode_bias == "bullish"
-    )
-
-    if conflict_h1:
+    h1 = sign * {"BULLISH": 1, "BEARISH": -1}.get(bias, 0)
+    if h1 < 0:
         return -6.0, f"H1 {bias} vs {direction} -6"
-    if aligned_h1:
+    if h1 > 0:
         return 4.0, f"H1 {bias} a favor +4"
-    if conflict_cli and bias == "NEUTRAL":
+    if bias != "NEUTRAL":
+        return 0.0, None
+
+    cli = sign * {"bullish": 1, "bearish": -1}.get(mode_bias, 0)
+    if cli < 0:
         return -3.0, f"CLI {mode_bias.upper()} vs {direction} -3"
-    if aligned_cli and bias == "NEUTRAL":
+    if cli > 0:
         return 2.0, f"CLI {mode_bias.upper()} a favor +2"
-    if bias == "NEUTRAL":
-        return 0.0, "H1 NEUTRAL 0"
+    return 0.0, "H1 NEUTRAL 0"
+
+
+def _first_percent(text: str) -> float | None:
+    """Primer «NN%» / «NN.N %» del texto, sin regex con backtracking."""
+    idx = text.find("%")
+    while idx != -1:
+        j = idx - 1
+        while j >= 0 and text[j] == " ":
+            j -= 1
+        end = j + 1
+        while j >= 0 and (text[j].isdigit() or text[j] == "."):
+            j -= 1
+        num = text[j + 1:end]
+        if any(ch.isdigit() for ch in num):
+            try:
+                return float(num)
+            except ValueError:
+                pass
+        idx = text.find("%", idx + 1)
+    return None
+
+
+def _base_winrate(rules_pct: int, reverse: bool) -> float:
+    """Curva reglas → WR (sin meseta plana de 82%)."""
+    t = max(0.0, min(1.0, (rules_pct - 50) / 50.0))
+    # E2: techo histórico ~61%, suelo ~52%
+    # E1: 50% reglas → ~52; 75% → ~64; 100% → ~72 (cap realista, no 82)
+    top = WR_BTC_E2 if reverse else WR_BTC_E1_REALISTIC_CAP
+    return 52.0 + (top - 52.0) * t
+
+
+def _acuerdo_level(categories: dict | None) -> str | None:
+    """Nivel de acuerdo entre capas (etiqueta o % de confluencia)."""
+    cats = categories or {}
+    level = str(cats.get("confluencia_setup") or "").upper()
+    pct = cats.get("confluencia_pct")
+    if pct is None and cats.get("confluencia_detalle"):
+        pct = _first_percent(str(cats["confluencia_detalle"]))
+    for name, in_band in _ACUERDO_BANDS:
+        if level == name or (pct is not None and in_band(pct)):
+            return name
+    return None
+
+
+# Orden de evaluación: etiqueta explícita o banda de % (primera que encaje)
+_ACUERDO_BANDS = (
+    ("ALTA", lambda p: p >= 75),
+    ("BAJA", lambda p: 25 <= p < 50),
+    ("NULA", lambda p: p < 25),
+    ("MEDIA", lambda p: 50 <= p < 75),
+)
+
+
+_ACUERDO_ADJ = {
+    "ALTA": (2.0, "acuerdo ALTA +2"),
+    "BAJA": (-8.0, "acuerdo BAJA -8"),
+    "NULA": (-12.0, "acuerdo NULA -12"),
+    "MEDIA": (-2.0, "acuerdo MEDIA -2"),
+}
+
+
+def _gallery_adjustment(gallery_patterns: list[str] | None) -> tuple[float, str | None]:
+    """Galería: ajuste suave, nunca sobrescribe con 82% plano."""
+    if not gallery_patterns:
+        return 0.0, None
+    wins = any(p.startswith("WIN:") for p in gallery_patterns)
+    losses = any(p.startswith("LOSS:") for p in gallery_patterns)
+    if wins and losses:
+        return -4.0, "patrones mixtos -4"
+    if wins:
+        return 3.0, "patron WIN similar +3"
+    if losses:
+        return -12.0, "patron LOSS similar -12"
     return 0.0, None
+
+
+def _fusion_anchor(wr: float, categories: dict | None) -> tuple[float, str | None]:
+    """15% de tirón hacia fusion_score: tasa != probabilidad pero no diverge absurda."""
+    fusion = (categories or {}).get("fusion_score")
+    if fusion is None:
+        return wr, None
+    try:
+        f = float(fusion)
+    except (TypeError, ValueError):
+        return wr, None
+    return 0.85 * wr + 0.15 * f, f"ancla fusión {f:.0f}%"
 
 
 def winrate_estimate(
@@ -1385,91 +1451,47 @@ def winrate_estimate(
       - curva por % reglas + ancla suave a fusion_score
       - techo operativo 74% E1 / ~65% E2 (82% solo referencia histórica)
     """
-    reverse = (setup_mode or "auto").lower() == "reverse"
     mode = (setup_mode or "auto").lower()
+    reverse = mode == "reverse"
     src_tag = "E2 reversión BTC" if reverse else "E1 BTC"
-    # Notas priorizadas: PD, bias, acuerdo, patrón, reglas, fusion
-    notes_priority: list[str] = []
-    notes_tail: list[str] = []
 
     if rules_pct < 50:
         return "N/A", f"solo {rules_pct}% reglas — setup insuficiente"
 
-    # Base curve: interpolate rules → WR (no flat 82% plateau)
-    if reverse:
-        # E2: techo histórico ~61%, suelo ~52%
-        wr = 52.0 + (WR_BTC_E2 - 52.0) * max(0.0, min(1.0, (rules_pct - 50) / 50.0))
-    else:
-        # E1: 50% reglas → ~52; 75% → ~64; 100% → ~72 (cap realista, no 82)
-        wr = 52.0 + (WR_BTC_E1_REALISTIC_CAP - 52.0) * max(
-            0.0, min(1.0, (rules_pct - 50) / 50.0),
-        )
-    notes_tail.append(f"{rules_pct}% reglas")
+    wr = _base_winrate(rules_pct, reverse)
+    # Notas priorizadas: PD, bias, acuerdo, patrón; cola: reglas, fusión
+    notes_priority: list[str] = []
+    notes_tail: list[str] = [f"{rules_pct}% reglas"]
 
-    direction = None
-    if data:
-        direction = (data.get("setup") or {}).get("direction")
-    pd = (crt or {}).get("premium_discount", "") if crt else ""
+    direction = (data.get("setup") or {}).get("direction") if data else None
+    pd = str((crt or {}).get("premium_discount") or "")
 
-    pd_delta, pd_note = _pd_zone_adjustment(direction, str(pd or ""), mode)
-    if pd_delta:
-        wr += pd_delta
+    pd_delta, pd_note = _pd_zone_adjustment(direction, pd, mode)
+    wr += pd_delta
     if pd_note:
         notes_priority.append(pd_note)
 
     bias_delta, bias_note = _bias_adjustment(direction, data)
-    if bias_delta:
-        wr += bias_delta
-    if bias_note and bias_delta != 0:
+    wr += bias_delta
+    if bias_note and bias_delta:
         notes_priority.append(bias_note)
     elif bias_note and bias_note.startswith("H1 NEUTRAL"):
         notes_tail.append(bias_note)
 
-    # Acuerdo entre capas
-    conf_level = str((categories or {}).get("confluencia_setup") or "").upper()
-    conf_pct = (categories or {}).get("confluencia_pct")
-    if conf_pct is None and categories and categories.get("confluencia_detalle"):
-        import re
-        m = re.search(r"(\d+(?:\.\d+)?)\s*%", str(categories["confluencia_detalle"]))
-        if m:
-            conf_pct = float(m.group(1))
-    if conf_level == "ALTA" or (conf_pct is not None and conf_pct >= 75):
-        wr += 2.0
-        notes_priority.append("acuerdo ALTA +2")
-    elif conf_level == "BAJA" or (conf_pct is not None and 25 <= (conf_pct or 0) < 50):
-        wr -= 8.0
-        notes_priority.append("acuerdo BAJA -8")
-    elif conf_level == "NULA" or (conf_pct is not None and conf_pct < 25):
-        wr -= 12.0
-        notes_priority.append("acuerdo NULA -12")
-    elif conf_level == "MEDIA" or (conf_pct is not None and 50 <= (conf_pct or 0) < 75):
-        wr -= 2.0
-        notes_priority.append("acuerdo MEDIA -2")
+    level = _acuerdo_level(categories)
+    if level:
+        delta, note = _ACUERDO_ADJ[level]
+        wr += delta
+        notes_priority.append(note)
 
-    # Gallery: soft adj, never overwrite with flat 82%
-    if gallery_patterns:
-        wins = [p for p in gallery_patterns if p.startswith("WIN:")]
-        losses = [p for p in gallery_patterns if p.startswith("LOSS:")]
-        if wins and not losses:
-            wr += 3.0
-            notes_priority.append("patron WIN similar +3")
-        elif losses and not wins:
-            wr -= 12.0
-            notes_priority.append("patron LOSS similar -12")
-        elif wins and losses:
-            wr -= 4.0
-            notes_priority.append("patrones mixtos -4")
+    gal_delta, gal_note = _gallery_adjustment(gallery_patterns)
+    wr += gal_delta
+    if gal_note:
+        notes_priority.append(gal_note)
 
-    # Fusion score already blended (if present): soft pull toward it
-    fusion = (categories or {}).get("fusion_score")
-    if fusion is not None:
-        try:
-            f = float(fusion)
-            # 15% pull toward fusion so tasa != probabilidad pero no diverge absurda
-            wr = 0.85 * wr + 0.15 * f
-            notes_tail.append(f"ancla fusión {f:.0f}%")
-        except (TypeError, ValueError):
-            pass
+    wr, fusion_note = _fusion_anchor(wr, categories)
+    if fusion_note:
+        notes_tail.append(fusion_note)
 
     # Clamp to realistic band
     cap = WR_BTC_E2 + 4.0 if reverse else WR_BTC_E1_REALISTIC_CAP
@@ -1608,7 +1630,7 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
         lines = [
 
-            "## Categories",
+            MD_CATEGORIES_HEADER,
 
             "",
 
@@ -1668,7 +1690,7 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
     lines = [
 
-        "## Categories",
+        MD_CATEGORIES_HEADER,
 
         "",
 
@@ -1716,11 +1738,11 @@ def format_categories_md(categories: dict, *, compact: bool = False) -> list[str
 
         align_note = (
 
-            "alineado con patrones WIN desktop"
+            GALLERY_WIN_ALIGNED
 
             if c.get("neural_gallery_aligned")
 
-            else "baja similitud con galería WIN"
+            else GALLERY_WIN_LOW
 
         )
 
@@ -1797,7 +1819,7 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
     ):
         return []
     lines = [
-        "## Categories",
+        MD_CATEGORIES_HEADER,
         "",
         "| Campo | Valor |",
         "|-------|-------|",
@@ -1828,9 +1850,9 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
         if has_neural:
             nw = categories["neural_prob_win"] * 100
             align_note = (
-                "alineado con patrones WIN desktop"
+                GALLERY_WIN_ALIGNED
                 if categories.get("neural_gallery_aligned")
-                else "baja similitud con galería WIN"
+                else GALLERY_WIN_LOW
             )
             lines.append(
                 f"| Neural galería | **{nw:.0f}% WIN** — grade **{categories.get('neural_grade', '?')}** "
@@ -1887,9 +1909,9 @@ def format_augmented_categories_md(categories: dict, *, hide_ml: bool = False) -
     if has_neural:
         nw = categories["neural_prob_win"] * 100
         align_note = (
-            "alineado con patrones WIN desktop"
+            GALLERY_WIN_ALIGNED
             if categories.get("neural_gallery_aligned")
-            else "baja similitud con galería WIN"
+            else GALLERY_WIN_LOW
         )
         lines.append(
             f"| Neural galería | **{nw:.0f}% WIN** — grade **{categories.get('neural_grade', '?')}** "

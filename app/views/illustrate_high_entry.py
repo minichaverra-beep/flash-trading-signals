@@ -119,7 +119,7 @@ def _place_level_labels(
         ax.text(
             x, y, text,
             color=color, fontsize=fontsize, va="center", ha="left",
-            bbox=dict(boxstyle="round,pad=0.15", facecolor="#1e1e1e", edgecolor=color, alpha=0.85),
+            bbox={"boxstyle": "round,pad=0.15", "facecolor": "#1e1e1e", "edgecolor": color, "alpha": 0.85},
         )
 
 
@@ -292,11 +292,6 @@ def create_annotated_entry_chart(
                 label_items.append(
                     (float(user_entry), f"Entry usuario {user_entry:{fmt}}", "#dcdcaa"),
                 )
-            elif entry is None:
-                ax.axhline(user_entry, color="#dcdcaa", linewidth=1.2, linestyle="-.", alpha=0.9)
-                label_items.append(
-                    (float(user_entry), f"Entry usuario {user_entry:{fmt}}", "#dcdcaa"),
-                )
         rr_lbl = _rr_tag(opt, entry if user_entry is None else user_entry, sl, tp)
         who = " usuario" if user_entry is not None else ""
         if sl is not None:
@@ -330,7 +325,7 @@ def create_annotated_entry_chart(
             color="#ffd700",
             fontsize=9,
             ha="center",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="#2d2d30", edgecolor="#ffd700", alpha=0.9),
+            bbox={"boxstyle": "round,pad=0.3", "facecolor": "#2d2d30", "edgecolor": "#ffd700", "alpha": 0.9},
         )
 
         c0, c1 = show[-2], show[-1]
@@ -364,7 +359,7 @@ def create_annotated_entry_chart(
                     f"KZ {ses.get('window', 'NY')}",
                     transform=ax.transAxes,
                     color="#4ec9b0", fontsize=8, va="top",
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor="#2d2d30", edgecolor="#4ec9b0", alpha=0.85),
+                    bbox={"boxstyle": "round,pad=0.2", "facecolor": "#2d2d30", "edgecolor": "#4ec9b0", "alpha": 0.85},
                 )
         except Exception:
             pass

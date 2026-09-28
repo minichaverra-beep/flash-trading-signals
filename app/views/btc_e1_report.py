@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.btc_signal_categories import (
     E1_RULES_TOTAL,
+    _confirm_for_direction,
     build_categories,
     enrich_categories_bando,
     format_augmented_categories_md,
@@ -28,6 +29,7 @@ from app.models.btc_signal_categories import (
 TIER_LIGHT = "light"
 TIER_FULL = "full"
 TIER_HIGH = "high"
+MD_CRT_HEADER = "### CRT"
 
 
 def score_extended_rules(
@@ -124,7 +126,7 @@ def derive_e1_verdict(
     categories: dict,
     crt: dict | None = None,
     div: dict | None = None,
-    e2: dict | None = None,
+    _e2: dict | None = None,
 ) -> str:
     """ENTRAR | ESPERAR | NO_OPERAR según reglas CRT E1.
 
@@ -165,11 +167,7 @@ def derive_e1_verdict(
         if forced not in ("bullish", "bearish") or direction == "NONE":
             return "ESPERAR"
 
-    confirm = (
-        data["confirm_long"] if direction == "LONG"
-        else data["confirm_short"] if direction == "SHORT"
-        else False
-    )
+    confirm = _confirm_for_direction(data, direction)
     has_levels = bool(s.get("entry") and s.get("sl") and s.get("tp"))
     # Accionable: reglas OK + 2M5 + niveles (zona ya no es gate)
     if confirm and has_levels and rules_pct >= 67 and (
@@ -205,7 +203,6 @@ def format_verdict_block(
     ext_pct: int | None = None,
     e2: dict | None = None,
 ) -> list[str]:
-    sig = label_signal(verdict)
     grade = label_grade(categories["setup_grade"])
     rules = format_rules_cell(
         categories["rules_ok"], categories["rules_total"], categories["rules_pct"], compact=True,
@@ -226,7 +223,7 @@ def format_verdict_block(
 def format_crt_block(crt: dict | None, data: dict, tier: str) -> list[str]:
     if not crt:
         pdh, pdl, price = data.get("pdh"), data.get("pdl"), data["price"]
-        lines = ["### CRT", ""]
+        lines = [MD_CRT_HEADER, ""]
         if pdh and pdl:
             if pdl < price < pdh:
                 lines.append(f"- PD: dentro rango ({pdl:.0f}–{pdh:.0f}) → **NEUTRAL**, no forzar")
@@ -250,7 +247,7 @@ def format_crt_block(crt: dict | None, data: dict, tier: str) -> list[str]:
         fake_txt = "; ".join(fake) if fake else "ninguno"
         mid = f"{crt['midpoint']:.0f}" if crt.get("midpoint") else "n/d"
         return [
-            "### CRT",
+            MD_CRT_HEADER,
             "",
             f"- PD: {pd_txt} | H1: {h1_txt}",
             f"- 0.5: {crt.get('premium_discount', 'n/a')} (mid {mid}) | Fakeout: {fake_txt}",
@@ -259,7 +256,7 @@ def format_crt_block(crt: dict | None, data: dict, tier: str) -> list[str]:
         ]
 
     lines = [
-        "### CRT",
+        MD_CRT_HEADER,
         "",
         "| Item | Valor | Acción E1 |",
         "|------|-------|-----------|",

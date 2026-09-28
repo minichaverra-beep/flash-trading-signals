@@ -2,7 +2,17 @@
 from __future__ import annotations
 
 import copy
+import math
 from pathlib import Path
+
+from app.models.btc_signal_categories import _confirm_for_direction, _first_percent
+
+HINT_DMI = "DMI (momentum M5)"
+HINT_CRT_PD = "CRT PD / Premium-Discount"
+
+
+def _premium_discount_label(price: float, mid: float) -> str:
+    return "DISCOUNT" if price <= mid else "PREMIUM"
 
 
 def _mode_bias_label(mode: str) -> str:
@@ -179,11 +189,7 @@ def adjust_e2_for_setup_mode(e2: dict, setup_mode: str, data: dict | None = None
     score = out.get("score", 0)
     data = data or {}
     direction = data.get("setup", {}).get("direction", "NONE")
-    confirm = (
-        data.get("confirm_long", False) if direction == "LONG"
-        else data.get("confirm_short", False) if direction == "SHORT"
-        else False
-    )
+    confirm = _confirm_for_direction(data, direction)
 
     if setup_mode == "break":
         out["note"] = (
@@ -431,8 +437,6 @@ def _location_penalty(data: dict, crt: dict, setup_mode: str) -> tuple[float, st
 
 def _confluencia_pct(categories: dict) -> float | None:
     """Parse acuerdo entre capas % from confluencia_detalle or explicit field."""
-    import re
-
     if categories.get("confluencia_pct") is not None:
         try:
             return float(categories["confluencia_pct"])
@@ -440,10 +444,7 @@ def _confluencia_pct(categories: dict) -> float | None:
             pass
     detail = str(categories.get("confluencia_detalle") or "")
     # "38% · Rules …" or "MEDIA — 38% · …"
-    m = re.search(r"(\d+(?:\.\d+)?)\s*%", detail)
-    if m:
-        return float(m.group(1))
-    return None
+    return _first_percent(detail)
 
 
 def _blend_acuerdo_into_success(
@@ -577,7 +578,7 @@ def compute_advanced_scorecard(
         rows.append(("Penalización dirección", f"×{dir_mult:.2f}", "—", dir_note))
 
     loc_mult, loc_note = _location_penalty(data, crt, setup_mode)
-    if loc_mult != 1.0:
+    if not math.isclose(loc_mult, 1.0):
         combined *= loc_mult
         label = "Bonificación ubicación" if loc_mult > 1.0 else "Penalización ubicación"
         rows.append((label, f"×{loc_mult:.2f}", "—", loc_note))
@@ -914,7 +915,7 @@ def format_trading_plan_advanced(data: dict, ctx: dict, combined: float) -> list
     return lines
 
 
-def format_psychology_guards(data: dict, categories: dict, combined: float) -> list[str]:
+def format_psychology_guards(_data: dict, categories: dict, _combined: float) -> list[str]:
     """H) Psicología y guardas de riesgo (sesión NY no es gate)."""
     flags = []
     flags.append("❓ ¿2 SL hoy? — confirmar trader (límite de riesgo diario)")
@@ -1087,9 +1088,7 @@ def analyze_crt(price: float, pdh: float | None, pdl: float | None,
         else:
             out["pd_reading"] = "BEARISH"
             out["crt_action_e1"] = "Shorts E1 rechazo resistencia (premium)"
-        out["premium_discount"] = (
-            "DISCOUNT" if price <= mid else "PREMIUM" if price >= mid else "EQUILIBRIO 0.5"
-        )
+        out["premium_discount"] = _premium_discount_label(price, mid)
 
     recent = m5[-18:]
     if pdh and any(c["high"] > pdh for c in recent) and price < pdh:
@@ -1683,11 +1682,7 @@ def _compute_optimal_entry_core(
         dec = max(int(dec), 2) if asset in ("BTC", "BTCUSDT", "US30") else int(dec)
     level = zone.get("level")
     near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
-    confirm = (
-        data.get("confirm_long", False) if direction == "LONG"
-        else data.get("confirm_short", False) if direction == "SHORT"
-        else False
-    )
+    confirm = _confirm_for_direction(data, direction)
     ztype = zone.get("type", "zona")
     fmt = f".{dec}f"
 
@@ -2002,11 +1997,7 @@ def format_2m5_valid_invalid(data: dict, direction: str) -> list[str]:
 
 def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -> list[str]:
     """Markdown: checklist 2M5 con ✅/❌ live (sesión = info, no ítem bloqueante)."""
-    confirm = (
-        data.get("confirm_long", False) if direction == "LONG"
-        else data.get("confirm_short", False) if direction == "SHORT"
-        else False
-    )
+    confirm = _confirm_for_direction(data, direction)
     rsi = data.get("rsi_m5")
     rsi_ok = True
     if rsi is not None and direction == "LONG" and rsi > 70:
@@ -2064,7 +2055,7 @@ def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -
 
 
 def compute_second_indication(
-    data: dict, bias_h1: str, crt: dict, dmi: dict, struct: dict,
+    _data: dict, bias_h1: str, crt: dict, dmi: dict, struct: dict,
 ) -> dict:
     """Segunda indicación cuando H1 NEUTRAL — DMI, CRT PD, estructura M5."""
     if bias_h1 != "NEUTRAL":
@@ -2073,20 +2064,20 @@ def compute_second_indication(
     hints: list[tuple[str, str, str]] = []
     dmi_bias = dmi.get("bias", "NEUTRAL")
     if dmi_bias == "BULL":
-        hints.append(("DMI (momentum M5)", dmi.get("note", ""), "LONG"))
+        hints.append((HINT_DMI, dmi.get("note", ""), "LONG"))
     elif dmi_bias == "BEAR":
-        hints.append(("DMI (momentum M5)", dmi.get("note", ""), "SHORT"))
+        hints.append((HINT_DMI, dmi.get("note", ""), "SHORT"))
     else:
-        hints.append(("DMI (momentum M5)", dmi.get("note", "Momentum mixto"), "NEUTRAL"))
+        hints.append((HINT_DMI, dmi.get("note", "Momentum mixto"), "NEUTRAL"))
 
     pd = crt.get("pd_reading", "n/a")
     prem = crt.get("premium_discount", "n/a")
     if pd == "BULLISH" or prem == "DISCOUNT":
-        hints.append(("CRT PD / Premium-Discount", f"{pd} · {prem}", "LONG"))
+        hints.append((HINT_CRT_PD, f"{pd} · {prem}", "LONG"))
     elif pd == "BEARISH" or prem == "PREMIUM":
-        hints.append(("CRT PD / Premium-Discount", f"{pd} · {prem}", "SHORT"))
+        hints.append((HINT_CRT_PD, f"{pd} · {prem}", "SHORT"))
     else:
-        hints.append(("CRT PD / Premium-Discount", f"{pd} · {prem}", "NEUTRAL"))
+        hints.append((HINT_CRT_PD, f"{pd} · {prem}", "NEUTRAL"))
 
     hl, lh = struct.get("hl", "n/a"), struct.get("lh", "n/a")
     struct_read = f"{hl} · {lh}"
@@ -2206,7 +2197,7 @@ def build_high_context(
 
 
 def write_high_signal(
-    path: Path, data: dict, verdict_to_signal_fn, use_ml: bool = False, advanced: bool = False,
+    path: Path, data: dict, _verdict_to_signal_fn, use_ml: bool = False, advanced: bool = False,
 ) -> None:
     from app.views.btc_e1_report import TIER_HIGH, build_report_context, format_e1_report
     from app.models.btc_signal_categories import (
@@ -2301,9 +2292,7 @@ def write_high_signal(
     cats["confluencia_setup"] = conf_level
     cats["confluencia_detalle"] = conf_detail
     # Explicit % for UI (Acuerdo entre capas) and fusion blend
-    import re as _re
-    _m = _re.search(r"(\d+(?:\.\d+)?)\s*%", conf_detail or "")
-    cats["confluencia_pct"] = float(_m.group(1)) if _m else None
+    cats["confluencia_pct"] = _first_percent(conf_detail or "")
     # Recompute tasa de acierto with acuerdo + ubicación (más realista que ~82% fijo)
     from app.models.btc_signal_categories import winrate_estimate
     wr_val, wr_src = winrate_estimate(
@@ -2359,7 +2348,7 @@ def write_high_signal(
         "",
         f"> {data['generated']} UTC | NY {data['session'].get('ny_local', 'n/a')} | {data['session']['window']}",
         f"> Precio **{price_hdr}** | HIGH mode | PF E1=4.77 | E2 max 10%",
-        f"> Plan refs: TRADING_VISUAL SS1.1-1.2 SS7 | TRADING_INDICATORS_RULES SS3-6",
+        "> Plan refs: TRADING_VISUAL SS1.1-1.2 SS7 | TRADING_INDICATORS_RULES SS3-6",
     ]
     if mode_header:
         lines.append(mode_header)
