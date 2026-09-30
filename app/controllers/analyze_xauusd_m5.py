@@ -32,6 +32,7 @@ from app.models.market_analysis_core import (
     swing_levels,
     two_candle_confirm,
 )
+from app.models.market_data_freshness import assess_freshness, freshness_md_lines, log_freshness
 
 from app.config import LIVE_DIR
 
@@ -92,14 +93,12 @@ def _augment_categories(categories: dict, data: dict, chart_path: Path | None,
 
 def _resolve_chart_for_neural(
     m5: list[dict], chart_path: Path, chart_ok: bool, no_chart: bool,
-    label: str, now: datetime, bias: str,
+    label: str, last_label: str, bias: str,
 ) -> tuple[Path | None, bool]:
     if chart_ok and chart_path.is_file():
         return chart_path, chart_ok
-    if chart_path.is_file():
-        return chart_path, chart_ok
     try:
-        save_chart(m5, chart_path, f"{label} M5 · {now.strftime('%Y-%m-%d %H:%M')} UTC · Bias {bias}")
+        save_chart(m5, chart_path, f"{label} M5 · vela {last_label} UTC · Bias {bias}")
         return chart_path, True if not no_chart else chart_ok
     except Exception as e:
         print(f"WARN neural chart: {e}")
@@ -164,6 +163,8 @@ def write_signal_light(path: Path, data: dict, m5: list[dict] | None = None, h1:
         format_bando_rec_line(ctx["categories"]),
         "",
     ]
+    for fresh_line in freshness_md_lines(data.get("data_freshness")):
+        lines += [fresh_line, ""]
     lines += format_e1_report(data, TIER_LIGHT, ctx=ctx, crt=crt, div=div)
     lines += [
         "",
@@ -240,6 +241,11 @@ def main() -> int:
         print(f"ERROR fetching yfinance: {e}")
         return 1
 
+    freshness = assess_freshness(m5[-1]["open_time"], now)
+    last_label = freshness["last_candle_utc"]
+    stale_suffix = " · DATOS DESACTUALIZADOS" if freshness["stale"] else ""
+    log_freshness(freshness)
+
     price = m5[-1]["close"]
     closes_m5 = [c["close"] for c in m5]
     closes_h1 = [c["close"] for c in h1]
@@ -263,7 +269,7 @@ def main() -> int:
     want_chart = not args.no_chart and args.mode in ("full", "both", "high", "all")
     if want_chart:
         try:
-            save_chart(m5, chart_path, f"{SYMBOL_LABEL} M5 · {now.strftime('%Y-%m-%d %H:%M')} UTC · Bias {bias}")
+            save_chart(m5, chart_path, f"{SYMBOL_LABEL} M5 · vela {last_label} UTC · Bias {bias}{stale_suffix}")
             chart_ok = True
         except Exception as e:
             print(f"WARN chart: {e}")
@@ -304,6 +310,8 @@ def main() -> int:
             "modelo ML entrenado sobre features E1 sintéticas en GC=F."
         ),
         "entry_override": entry_override,
+        "data_freshness": freshness,
+        "data_stale": freshness["stale"],
         "history_mode": bool(args.history_review),
         "m5": m5,
         "h1": h1,
@@ -354,7 +362,7 @@ def main() -> int:
     chart_for_neural: Path | None = None
     if use_neural:
         chart_for_neural, chart_ok = _resolve_chart_for_neural(
-            m5, chart_path, chart_ok, args.no_chart, SYMBOL_LABEL, now, bias,
+            m5, chart_path, chart_ok, args.no_chart, SYMBOL_LABEL, last_label, bias,
         )
         if chart_for_neural is None:
             use_neural = False

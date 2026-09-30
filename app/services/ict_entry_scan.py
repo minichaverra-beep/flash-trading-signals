@@ -331,12 +331,19 @@ def _recalc_sl_tp_from_entry(
     resistencia→SHORT). Otherwise SL is % beyond entry — avoids LONG under
     resistencia with SL=level*0.997 deep below price.
     """
-    from app.models.market_pips import DEFAULT_RR, asset_from_data, clamp_sl_tp, raw_sl_from_zone
+    from app.models.market_pips import (
+        DEFAULT_RR,
+        asset_from_data,
+        atr_sl_floor,
+        clamp_sl_tp,
+        raw_sl_from_zone,
+    )
 
     _ = dec
     sl = raw_sl_from_zone(entry, direction, zone)
     sl, tp, risk, _ = clamp_sl_tp(
         entry, sl, None, direction, asset_from_data(data), rr=DEFAULT_RR,
+        min_risk=atr_sl_floor(data.get("m5")),
     )
     return sl, tp, risk
 

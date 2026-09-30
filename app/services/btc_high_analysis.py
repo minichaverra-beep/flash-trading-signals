@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 from app.models.btc_signal_categories import _confirm_for_direction, _first_percent
+from app.models.market_data_freshness import freshness_md_lines
 
 HINT_DMI = "DMI (momentum M5)"
 HINT_CRT_PD = "CRT PD / Premium-Discount"
@@ -1719,6 +1720,7 @@ def _compute_optimal_entry_core(
     from app.models.market_pips import (
         DEFAULT_RR,
         asset_from_data,
+        atr_sl_floor,
         clamp_sl_tp,
         raw_entry_from_zone,
         raw_sl_from_zone,
@@ -1735,8 +1737,9 @@ def _compute_optimal_entry_core(
     sl = raw_sl_from_zone(entry, direction, zone)
     color_word = "rojas" if direction == "SHORT" else "verdes"
 
+    sl_floor = atr_sl_floor(data.get("m5"))
     sl, tp, risk, sl_clamped = clamp_sl_tp(
-        entry, sl, None, direction, asset, rr=DEFAULT_RR,
+        entry, sl, None, direction, asset, rr=DEFAULT_RR, min_risk=sl_floor,
     )
     if direction == "SHORT":
         invalidacion = f"Cierre M5 > {sl:{fmt}} o breakout > {level:{fmt}} sin rechazo"
@@ -1792,6 +1795,7 @@ def _compute_optimal_entry_core(
         "rr": DEFAULT_RR,
         "risk_pts": risk,
         "sl_clamped_60pips": sl_clamped,
+        "sl_atr_floor": sl_floor,
         "zone_lo": zone_lo,
         "zone_hi": zone_hi,
         "invalidacion": invalidacion,
@@ -2350,6 +2354,7 @@ def write_high_signal(
         f"> Precio **{price_hdr}** | HIGH mode | PF E1=4.77 | E2 max 10%",
         "> Plan refs: TRADING_VISUAL SS1.1-1.2 SS7 | TRADING_INDICATORS_RULES SS3-6",
     ]
+    lines.extend(freshness_md_lines(data.get("data_freshness"), source=str(data.get("data_source", "n/d"))))
     if mode_header:
         lines.append(mode_header)
     if advanced:

@@ -85,6 +85,9 @@ def collect_red_flags(
     s = data["setup"]
     direction = s["direction"]
 
+    if data.get("data_stale"):
+        flags.append((data.get("data_freshness") or {}).get("message") or "Datos desactualizados — no operar")
+
     if crt:
         if crt.get("fakeout_pdh"):
             flags.append("Fakeout PDH — NO long E1; CRT invalid bearish")
@@ -131,7 +134,10 @@ def derive_e1_verdict(
     """ENTRAR | ESPERAR | NO_OPERAR según reglas CRT E1.
 
     La sesión NY ya no fuerza NO_OPERAR aquí (info en header/Categories).
+    Datos desactualizados (data_stale) sí fuerzan NO_OPERAR: niveles no reflejan precio real.
     """
+    if data.get("data_stale"):
+        return "NO_OPERAR"
     rules_pct = categories["rules_pct"]
     if rules_pct < 50:
         return "NO_OPERAR"

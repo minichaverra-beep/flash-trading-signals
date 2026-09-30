@@ -1,21 +1,21 @@
 # BTC M5 CONTEXT — estructura / vigencia
 
-**Mercado **BEARISH** — movimiento **VIGENTE****
+**Mercado **BULLISH** — movimiento **AGOTANDO** (cuidado con continuación ciega)**
 
-- Generado: `2026-09-18 21:38` UTC
-- Precio: `81200.0`
-- Bias estructura M5: **BEARISH**
-- Estado del impulso: **VIGENTE**
-- Swings lows: `LL 81058.00->80941.65`
-- Swings highs: `LH 81350.01->81291.95`
-- EMA9/21: `81167.9` / `81139.7`
-- RSI M5: `60.5` · ATR: `96.3` · Extensión: `1.56×ATR`
-- Ratio cuerpos: `0.91` · Rechazo mecha: `False` · Swing fallido: `False` · Confirm 3 velas: `False`
+- Generado: `2026-09-30 14:05` UTC
+- Precio: `84527.9`
+- Bias estructura M5: **BULLISH**
+- Estado del impulso: **AGOTANDO**
+- Swings lows: `HL 83768.00->84019.39`
+- Swings highs: `HH 83981.11->85649.95`
+- EMA9/21: `84681.6` / `84685.8`
+- RSI M5: `34.5` · ATR: `319.6` · Extensión: `2.38×ATR`
+- Ratio cuerpos: `0.24` · Rechazo mecha: `False` · Swing fallido: `False` · Confirm 3 velas: `False`
 
 ## Lectura
-- Impulso sano 1.56×ATR (≤1.75)
-- RSI M5 60.5 en banda media de tendencia
-- Cuerpos mantienen energía (0.91× base)
+- Impulso intermedio 2.38×ATR
+- RSI M5 34.5
+- Cuerpos recientes contraídos (0.24× base)
 
 ## Cómo usar
 - Esto **no es señal de entrada** (sin Entry/SL/TP).

@@ -18,6 +18,10 @@ from typing import Any
 
 MAX_SL_PIPS = 60
 DEFAULT_RR = 2.0
+# Piso de SL = k × ATR(14) M5: el tope de 60 pips (60 USD en BTC) queda dentro
+# del ruido de una sola vela M5 cuando el ATR supera ese valor.
+ATR_SL_FLOOR_MULT = 0.8
+ATR_PERIOD = 14
 
 # Price units per 1 pip
 PIP_SIZE: dict[str, float] = {
@@ -62,6 +66,25 @@ def asset_from_data(data: dict[str, Any] | None) -> str:
     return normalize_asset(sym)
 
 
+def _apply_sl_floor(
+    entry: float,
+    sl: float,
+    tp: float | None,
+    direction: str,
+    min_risk: float | None,
+) -> tuple[float, float | None, float, bool]:
+    """Amplía el SL hasta `min_risk` si queda más corto (TP se reconstruye después).
+
+    Returns (sl, tp, risk, raised).
+    """
+    risk = abs(float(entry) - float(sl))
+    if min_risk is None or risk >= min_risk - 1e-12:
+        return sl, tp, risk, False
+    risk = float(min_risk)
+    sl = float(entry) - risk if direction == "LONG" else float(entry) + risk
+    return sl, None, risk, True
+
+
 def clamp_sl_tp(
     entry: float,
     sl: float,
@@ -71,14 +94,19 @@ def clamp_sl_tp(
     *,
     rr: float = DEFAULT_RR,
     max_pips: int = MAX_SL_PIPS,
+    min_risk: float | None = None,
 ) -> tuple[float, float, float, bool]:
     """Clamp |entry−SL| to max_pips and rebuild TP at `rr` (default 1:2).
+
+    `min_risk` (piso por volatilidad, p.ej. 0.8×ATR M5) prevalece sobre el tope
+    de pips cuando es mayor: un SL más corto que el ruido M5 no es operable.
 
     Returns (sl, tp, risk, clamped).
     """
     max_risk = max_sl_distance(asset, max_pips=max_pips)
-    risk = abs(float(entry) - float(sl))
-    clamped = False
+    if min_risk is not None:
+        max_risk = max(max_risk, float(min_risk))
+    sl, tp, risk, clamped = _apply_sl_floor(entry, sl, tp, direction, min_risk)
     if risk > max_risk + 1e-12:
         risk = max_risk
         clamped = True
@@ -212,6 +240,27 @@ def raw_entry_from_zone(
         entry = price
     entry = pull_entry_toward_price(entry, price, direction, blend=blend)
     return float(entry), float(zone_lo), float(zone_hi)
+
+
+def m5_atr(m5: list[dict] | None, period: int = ATR_PERIOD) -> float | None:
+    """ATR simple (media del True Range) de las últimas `period` velas; None si faltan datos."""
+    if not m5 or len(m5) < period + 1:
+        return None
+    trs: list[float] = []
+    for prev, cur in zip(m5[-period - 1:-1], m5[-period:]):
+        try:
+            hi, lo, pc = float(cur["high"]), float(cur["low"]), float(prev["close"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        trs.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
+    atr = sum(trs) / len(trs)
+    return atr if atr > 0 else None
+
+
+def atr_sl_floor(m5: list[dict] | None, mult: float = ATR_SL_FLOOR_MULT) -> float | None:
+    """Distancia mínima de SL por volatilidad (mult × ATR14 M5)."""
+    atr = m5_atr(m5)
+    return None if atr is None else float(mult) * atr
 
 
 def actual_rr(entry: float | None, sl: float | None, tp: float | None) -> float | None:
