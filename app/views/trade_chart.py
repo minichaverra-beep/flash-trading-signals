@@ -481,6 +481,7 @@ def render_trade_chart(
     dpi: int,
     callout: str,
     zone_edges: tuple[float | None, float | None],
+    note: str | None = None,
 ) -> Path:
     import matplotlib
 
@@ -545,10 +546,13 @@ def render_trade_chart(
 
         _draw_2m5(ax, show, ymax - ymin)
         _draw_axis_tags(ax, tags)
-        _draw_state_box(ax, state, _state_lines(
+        lines = _state_lines(
             state, direction, callout, pos,
             active=active, is_limit=is_limit, session=data.get("session") or {},
-        ))
+        )
+        if note:
+            lines.append(note)
+        _draw_state_box(ax, state, lines)
         title, title_color = _chart_title(asset, data)
         fig.suptitle(title, color=title_color, fontsize=13, fontweight="bold", x=0.455, y=0.985)
         _style_axes(ax, show, total)

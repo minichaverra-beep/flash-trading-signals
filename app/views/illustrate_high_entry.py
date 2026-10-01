@@ -159,13 +159,23 @@ def create_annotated_entry_chart(
         finally:
             plt.close(fig)
 
-    from app.views.trade_chart import render_trade_chart
+    from app.views.chart_rerender import dump_render_inputs, render_inputs_path
+    from app.views.trade_chart import HISTORY_CANDLES, render_trade_chart, resolve_signal_state
 
     opt = optimal_entry or {}
-    return render_trade_chart(
-        data, opt, out, asset=asset, dpi=dpi,
-        callout=_callout_text(opt), zone_edges=_zone_edges(opt),
+    callout, zone_edges = _callout_text(opt), _zone_edges(opt)
+    written = render_trade_chart(
+        data, opt, out, asset=asset, dpi=dpi, callout=callout, zone_edges=zone_edges,
     )
+    try:
+        dump_render_inputs(
+            render_inputs_path(written), data, opt, asset=asset, dpi=dpi, callout=callout,
+            zone_edges=zone_edges, state=resolve_signal_state(data, opt),
+            history_candles=HISTORY_CANDLES,
+        )
+    except Exception as e:
+        print(f"WARN render inputs: {e}")
+    return written
 
 
 def format_illustration_md(
