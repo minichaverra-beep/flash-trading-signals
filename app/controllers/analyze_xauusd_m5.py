@@ -126,7 +126,9 @@ def write_snapshot(path: Path, data: dict, m5: list[dict] | None = None, h1: lis
         "",
         "### Disclaimer datos oro",
         "",
-        f"- Proxy mercado: **{data.get('data_source', 'GC=F')}** (GC=F desplazado al spot live; puede diferir unos centavos del broker).",
+        f"- Fuente velas: **{data.get('data_source', 'GC=F')}**"
+        + ("" if (data.get("feed") or {}).get("source") == "mt5"
+           else " (GC=F desplazado al spot live; puede diferir del broker)."),
         "- Ops OCR XAUUSD en v_ops_apr_sep son **pocas**; ML es mayormente sintético E1.",
         "- No auto-ejecutar. Validar con broker.",
     ]
@@ -236,9 +238,14 @@ def main() -> int:
     tickers = (args.ticker,) if args.ticker else DEFAULT_TICKERS
 
     try:
-        m5, h1, fetch_meta = fetch_xauusd_klines(tickers=tickers)
+        if args.ticker:
+            m5, h1, fetch_meta = fetch_xauusd_klines(tickers=tickers)
+        else:
+            from app.models.broker_feed import load_klines
+
+            m5, h1, fetch_meta = load_klines("XAUUSD", lambda: fetch_xauusd_klines(tickers=tickers))
     except Exception as e:
-        print(f"ERROR fetching yfinance: {e}")
+        print(f"ERROR fetching velas: {e}")
         return 1
 
     freshness = assess_freshness(m5[-1]["open_time"], now)
@@ -282,6 +289,10 @@ def main() -> int:
             f" · ajustado a spot {fetch_meta.get('spot_source')} "
             f"(basis {fetch_meta['spot_basis']:+.2f})"
         )
+    if fetch_meta.get("feed"):
+        from app.models.broker_feed import describe_source
+
+        data_source = describe_source(fetch_meta, data_source)
 
     data = {
         "generated": now.strftime("%Y-%m-%d %H:%M"),
@@ -309,6 +320,7 @@ def main() -> int:
         "price_decimals": PRICE_DECIMALS,
         "data_source": data_source,
         "data_notes": fetch_meta.get("notes", []),
+        "feed": fetch_meta.get("feed"),
         "sl_points_std": 8.0,
         "ml_thin_ops_note": (
             "OCR v_ops_apr_sep: ≤4 filas XAUUSD (2 con side+entry); "

@@ -548,9 +548,18 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
 
+    def _binance() -> tuple[list[dict], list[dict], dict]:
+        return fetch_klines(args.symbol, "5m", 200), fetch_klines(args.symbol, "1h", 200), {"notes": []}
+
     try:
-        m5 = fetch_klines(args.symbol, "5m", 200)
-        h1 = fetch_klines(args.symbol, "1h", 200)
+        if args.symbol.upper() == "BTCUSDT":
+            from app.models.broker_feed import describe_source, load_klines
+
+            m5, h1, fetch_meta = load_klines("BTC", _binance)
+            data_source = describe_source(fetch_meta, f"Binance {args.symbol}")
+        else:
+            m5, h1, fetch_meta = _binance()
+            data_source = f"Binance {args.symbol}"
     except (URLError, HTTPError, TimeoutError, json.JSONDecodeError) as e:
         print(f"ERROR fetching Binance: {e}")
         return 1
@@ -606,6 +615,9 @@ def main() -> int:
         "entry_override": entry_override,
         "asset_label": "BTC",
         "price_decimals": 2 if args.history_review else 1,
+        "data_source": data_source,
+        "data_notes": fetch_meta.get("notes", []),
+        "feed": fetch_meta.get("feed"),
         "m5": m5,
         "h1": h1,
     }

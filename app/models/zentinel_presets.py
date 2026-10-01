@@ -356,9 +356,11 @@ def volume_confluence_points(vol: dict | None) -> tuple[float, float, str]:
 def zentinel_chart_note(asset: str | None, session: dict | None = None) -> str:
     """Nota corta para título/subtítulo de chart (sin saturar)."""
     m = normalize_market(asset)
+    win = (session or {}).get("window") or "n/d"
+    if (asset or "").upper().strip() in ("XAUUSD", "XAU", "GOLD", "GC=F", "GC"):
+        return f"XAUUSD sin preset Zentinel propio · KZ {win} (calendario NY) · vol filtro (no trigger)"
     fv = get_fvg_volume(m)
     wt = get_watchtower(m)
-    win = (session or {}).get("window") or "n/d"
     return (
         f"{fv.get('preset_name')} · {wt.get('preset_name')} · KZ {win} · "
         f"vol filtro (no trigger)"

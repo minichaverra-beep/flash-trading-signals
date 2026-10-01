@@ -59,3 +59,51 @@ def test_cli_without_sidecar_requires_asset(tmp_path, capsys):
     rc = main(["--chart", str(out), "--entry", "1", "--sl", "0.5", "--tp", "2"])
     assert rc == 1
     assert "--asset" in capsys.readouterr().out
+
+
+def test_align_to_broker_reemplaza_velas_y_mueve_niveles(tmp_path, monkeypatch):
+    from app.models import broker_feed
+    from app.views.chart_rerender import align_to_broker
+
+    out = tmp_path / "us30_m5_chart_annotated.png"
+    create_annotated_entry_chart(_data(), OPT, out, asset="US30", dpi=60)
+    inputs = load_render_inputs(render_inputs_path(out))
+    old_last = inputs["data"]["m5"][-1]["close"]
+    seen = {}
+
+    def fake_rates(cfg, timeframe, count, until=None):
+        seen.update(symbol=cfg["symbol"], timeframe=timeframe, count=count, until=until)
+        t0 = int(datetime(2026, 10, 1, 13, 0, tzinfo=timezone.utc).timestamp())
+        return {"rates": [{"time": t0 + 300 * i, "open": 50700.0 + i, "high": 50706.0 + i,
+                           "low": 50695.0 + i, "close": 50702.0 + i, "volume": 5} for i in range(count)]}
+
+    monkeypatch.setenv("FS_BROKER_FEED", "on")
+    monkeypatch.setenv("FS_MT5_SYMBOL_US30", "US30m")
+    monkeypatch.setattr(broker_feed, "fetch_rates", fake_rates)
+    until = datetime(2026, 10, 1, 15, 30, tzinfo=timezone.utc)
+    aligned = align_to_broker(inputs, until)
+
+    delta = aligned["data"]["m5"][-1]["close"] - old_last
+    assert seen == {"symbol": "US30m", "timeframe": "M5", "count": len(inputs["data"]["m5"]), "until": until}
+    assert aligned["data"]["price"] == aligned["data"]["m5"][-1]["close"]
+    assert aligned["data"]["feed"]["label"] == "velas MT5 US30m"
+    assert aligned["data"]["zone"]["level"] == 50643.4 + delta
+    assert aligned["opt"]["level"] is None or aligned["opt"]["level"] == OPT.get("level", 0) + delta
+    assert align_to_broker(aligned, until) is aligned  # ya son velas del broker
+
+
+def test_align_to_broker_sin_puente_no_toca(tmp_path):
+    from app.views.chart_rerender import align_to_broker
+
+    out = tmp_path / "us30_m5_chart_annotated.png"
+    create_annotated_entry_chart(_data(), OPT, out, asset="US30", dpi=60)
+    inputs = load_render_inputs(render_inputs_path(out))
+    assert align_to_broker(inputs) is inputs
+
+
+def test_rerender_posicion_abierta(tmp_path):
+    out = tmp_path / "us30_m5_chart_annotated.png"
+    create_annotated_entry_chart(_data(), OPT, out, asset="US30", dpi=60)
+    rc = main(["--chart", str(out), "--entry", "50682.4", "--sl", "50511.9", "--tp", "50915.7",
+               "--order-state", "open", "--note", "Reajustado con MT5"])
+    assert rc == 0

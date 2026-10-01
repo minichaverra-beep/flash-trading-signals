@@ -124,6 +124,71 @@ class TestHelpers:
         assert all(90.0 <= y <= 160.0 for y in ys)
 
 
+class TestEntryRelationAndStatus:
+    # Caso real US30 01-oct: SHORT entrada 51001.3 · SL 51078.9 · TP 50846.3
+    POS = compute_position_levels("SHORT", 51001.3, 51078.9, 50846.3, "US30")
+
+    @pytest.mark.parametrize("price,relation", [
+        (51009.0, "at_entry"),     # 7.7 pts < ¼ del riesgo (19.4)
+        (51040.0, "crossed"),      # sobre la entrada, bajo el SL
+        (50931.6, "limit"),        # aún no sube a la entrada
+        (51080.0, "beyond_sl"),
+        (50840.0, "beyond_tp"),
+    ])
+    def test_short_relation(self, price, relation):
+        from app.views.trade_chart import entry_relation
+
+        assert entry_relation(self.POS, price, 1) == relation
+
+    def test_long_relation_mirror(self):
+        from app.views.trade_chart import entry_relation
+
+        pos = compute_position_levels("LONG", 100.0, 90.0, 120.0, "BTC")
+        assert entry_relation(pos, 110.0, 1) == "limit"
+        assert entry_relation(pos, 94.0, 1) == "crossed"
+        assert entry_relation(pos, 89.0, 1) == "beyond_sl"
+
+    def test_relation_text_es_veraz(self):
+        from app.views.trade_chart import relation_text
+
+        txt = relation_text("crossed", 51040.0, self.POS, ".1f")
+        assert "51040.0" in txt and "sobre la entrada 51001.3" in txt
+        assert relation_text("beyond_sl", 51080.0, self.POS, ".1f").startswith("INVALIDADO")
+        assert relation_text("at_entry", 51009.0, self.POS, ".1f") is None
+
+    def test_callout_nunca_entrar_si_no_operar(self):
+        from app.views.trade_chart import consistent_callout
+
+        out = consistent_callout("NO_OPERAR", "Setup listo → ENTRAR", ["Precio dentro PDH/PDL", "fuera de killzone (FUERA_NY (Asia))"])
+        assert "ENTRAR" not in out
+        assert out == "No entrar: Precio dentro PDH/PDL · fuera de killzone (FUERA_NY (Asia))"
+        assert consistent_callout("ESPERAR", "2M5 OK → ENTRAR", []) == "Esperar"
+        assert consistent_callout("ENTRAR", "Setup listo → ENTRAR", ["x"]) == "Setup listo → ENTRAR"
+        assert consistent_callout("NO_OPERAR", "Sin 2M5 · revisar bias/SL", ["x"]) == "Sin 2M5 · revisar bias/SL"
+
+    def test_verdict_reasons(self):
+        from app.views.trade_chart import verdict_reasons
+
+        data = {"data_stale": True, "session": {"in_ny_window": False, "window": "FUERA_NY (Asia)"}}
+        assert verdict_reasons(data, "NO_OPERAR") == ["datos desactualizados", "fuera de killzone (FUERA_NY (Asia))"]
+        assert verdict_reasons(data, "ENTRAR") == []
+        assert verdict_reasons({"state_reasons": ["guardado"]}, "ESPERAR") == ["guardado"]
+
+    def test_state_lines_posicion_abierta(self):
+        from app.views.trade_chart import _state_lines
+
+        lines = _state_lines("NO_OPERAR", "SHORT", "No entrar: x", self.POS, active=True,
+                             relation_txt=None, session={}, note="Reajustado con MT5", order_state="open")
+        assert lines[1] == "Posición SHORT ABIERTA en MT5 (entrada ejecutada)"
+        assert not any("pendiente" in ln for ln in lines)
+
+    def test_ticks_que_chocan_con_etiquetas_se_ocultan(self):
+        from app.views.trade_chart import visible_ticks
+
+        assert visible_ticks([50800.0, 50900.0, 51000.0], [50927.6, 50931.6], 10.0) == [True, True, True]
+        assert visible_ticks([50800.0, 50900.0, 51000.0], [50905.0, 51001.3], 10.0) == [True, False, False]
+
+
 class TestAtrFloor:
     def test_m5_atr(self):
         assert m5_atr(_m5(10)) is None

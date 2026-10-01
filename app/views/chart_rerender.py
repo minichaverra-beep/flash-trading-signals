@@ -18,8 +18,9 @@ OPT_KEYS = (
 )
 DATA_KEYS = (
     "price", "price_decimals", "session", "data_stale", "generated", "data_freshness",
-    "pdh", "pdl", "bias_h1",
+    "pdh", "pdl", "bias_h1", "feed",
 )
+ORDER_STATES = ("pending", "open", "closed", "canceled", "expired")
 
 
 def render_inputs_path(chart_path: Path | str) -> Path:
@@ -45,6 +46,8 @@ def dump_render_inputs(
     path: Path | str, data: dict, opt: dict, *, asset: str, dpi: int,
     callout: str, zone_edges: tuple, state: str, history_candles: int,
 ) -> Path:
+    from app.views.trade_chart import verdict_reasons
+
     setup = data.get("setup") or {}
     zone = data.get("zone") or {}
     payload = {
@@ -55,6 +58,7 @@ def dump_render_inputs(
         "data": {
             **{k: data.get(k) for k in DATA_KEYS},
             "chart_verdict": state,
+            "state_reasons": verdict_reasons(data, state),
             "setup": {"direction": setup.get("direction")},
             "zone": {"level": zone.get("level"), "type": zone.get("type")},
             "m5": [_candle_out(c) for c in (data.get("m5") or [])[-history_candles:]],
@@ -129,16 +133,65 @@ def rebuild_inputs(
     }
 
 
+def _shift_level(v, delta: float):
+    return None if v is None else float(v) + delta
+
+
+def align_to_broker(inputs: dict, until: datetime | None = None) -> dict:
+    """Si las velas no son del broker, las reemplaza por las M5 de MT5 hasta `until`.
+
+    Los niveles reajustados vienen de MT5: dibujarlos sobre velas de otro feed (YM=F, GC=F,
+    Binance) los desplaza respecto al precio. Zona S/R y PDH/PDL se mueven con el mismo
+    desfase. Sin puente MT5 se devuelve `inputs` sin tocar (el chart rotula la fuente).
+    """
+    data = inputs["data"]
+    old = data.get("m5") or []
+    if (data.get("feed") or {}).get("source") == "mt5" or len(old) < 2:
+        return inputs
+    from app.models.broker_feed import bridge_config, feed_info, fetch_rates, rates_to_candles
+
+    cfg = bridge_config(inputs.get("asset"))
+    if cfg is None:
+        return inputs
+    if until is None and data.get("generated"):
+        until = datetime.strptime(str(data["generated"])[:16], "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+    try:
+        m5 = rates_to_candles(fetch_rates(cfg, "M5", len(old), until).get("rates"))
+    except Exception as e:
+        print(f"WARN velas MT5 no disponibles: {e}", flush=True)
+        return inputs
+    if len(m5) < 2:
+        return inputs
+    delta = m5[-1]["close"] - float(old[-1]["close"])
+    new_data = {
+        **data,
+        "m5": m5,
+        "price": m5[-1]["close"],
+        "pdh": _shift_level(data.get("pdh"), delta),
+        "pdl": _shift_level(data.get("pdl"), delta),
+        "zone": {**(data.get("zone") or {}), "level": _shift_level((data.get("zone") or {}).get("level"), delta)},
+        "feed": feed_info("mt5", cfg["asset"], cfg["symbol"]),
+    }
+    opt = dict(inputs.get("opt") or {})
+    for k in ("level", "zone_lo", "zone_hi"):
+        opt[k] = _shift_level(opt.get(k), delta)
+    if opt.get("scalp_entries"):
+        opt["scalp_entries"] = [[float(e) + delta, src] for e, src in opt["scalp_entries"]]
+    edges = tuple(_shift_level(v, delta) for v in (inputs.get("zone_edges") or (None, None)))
+    return {**inputs, "data": new_data, "opt": opt, "zone_edges": edges, "broker_delta": delta}
+
+
 def rerender_chart(
     inputs: dict, out_path: Path | str, *, entry: float, sl: float, tp: float,
-    note: str | None = None,
+    note: str | None = None, order_state: str | None = None,
 ) -> Path:
     from app.views.illustrate_high_entry import CHART_DPI
     from app.views.trade_chart import render_trade_chart
 
     opt = {**inputs["opt"], "entry": float(entry), "user_entry": None, "sl": float(sl), "tp": float(tp)}
+    data = {**inputs["data"], "order_state": order_state}
     return render_trade_chart(
-        inputs["data"], opt, out_path,
+        data, opt, out_path,
         asset=inputs["asset"], dpi=inputs.get("dpi") or CHART_DPI,
         callout=inputs.get("callout") or "", zone_edges=inputs["zone_edges"], note=note,
     )
@@ -159,6 +212,7 @@ def _parse_args(argv: list[str] | None = None):
     ap.add_argument("--verdict", default=None)
     ap.add_argument("--decimals", type=int, default=1)
     ap.add_argument("--price", type=float, default=None, help="precio de la señal (si no hay *.render.json)")
+    ap.add_argument("--order-state", choices=ORDER_STATES, default=None, help="estado real de la orden en MT5")
     return ap.parse_args(argv)
 
 
@@ -168,19 +222,24 @@ def main(argv: list[str] | None = None) -> int:
     sidecar = render_inputs_path(chart)
     result: dict[str, Any] = {"ok": False, "chart": str(chart)}
     try:
+        until = datetime.fromisoformat(args.until.replace("Z", "+00:00")) if args.until else None
         if sidecar.is_file():
             inputs = load_render_inputs(sidecar)
             result["source"] = "render.json"
         else:
-            if not args.asset or not args.until:
+            if not args.asset or until is None:
                 raise RuntimeError("sin *.render.json: hacen falta --asset y --until")
-            until = datetime.fromisoformat(args.until.replace("Z", "+00:00"))
             inputs = rebuild_inputs(
                 args.asset, until, direction=args.direction, verdict=args.verdict,
                 price_decimals=args.decimals, price=args.price,
             )
             result["source"] = "rebuild"
-        written = rerender_chart(inputs, chart, entry=args.entry, sl=args.sl, tp=args.tp, note=args.note)
+        inputs = align_to_broker(inputs, until)
+        result["feed"] = (inputs["data"].get("feed") or {}).get("label")
+        written = rerender_chart(
+            inputs, chart, entry=args.entry, sl=args.sl, tp=args.tp, note=args.note,
+            order_state=args.order_state,
+        )
         result.update(ok=True, chart=str(Path(written).resolve()))
     except Exception as e:
         result["error"] = str(e)

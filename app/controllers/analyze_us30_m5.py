@@ -291,9 +291,14 @@ def main() -> int:
     tickers = (args.ticker,) if args.ticker else DEFAULT_TICKERS
 
     try:
-        m5, h1, fetch_meta = fetch_us30_klines(tickers=tickers)
+        if args.ticker:
+            m5, h1, fetch_meta = fetch_us30_klines(tickers=tickers)
+        else:
+            from app.models.broker_feed import load_klines
+
+            m5, h1, fetch_meta = load_klines("US30", lambda: fetch_us30_klines(tickers=tickers))
     except Exception as e:
-        print(f"ERROR fetching yfinance: {e}")
+        print(f"ERROR fetching velas: {e}")
         return 1
 
     price = m5[-1]["close"]
@@ -332,6 +337,10 @@ def main() -> int:
             f" · ajustado a cash {fetch_meta.get('spot_source')} "
             f"(basis {fetch_meta['spot_basis']:+.2f})"
         )
+    if fetch_meta.get("feed"):
+        from app.models.broker_feed import describe_source
+
+        data_source = describe_source(fetch_meta, data_source)
 
     data = {
         "generated": now.strftime("%Y-%m-%d %H:%M"),
@@ -360,6 +369,7 @@ def main() -> int:
         "price_decimals": 2 if args.history_review else PRICE_DECIMALS,
         "data_source": data_source,
         "data_notes": fetch_meta.get("notes", []),
+        "feed": fetch_meta.get("feed"),
         "sl_points_std": 9.0,
         "sl_points_micro": 90.0,
         "entry_override": entry_override,

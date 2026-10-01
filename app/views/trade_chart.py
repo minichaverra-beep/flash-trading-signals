@@ -222,21 +222,84 @@ def _zone_short(ztype: str | None) -> str:
     return "Zona"
 
 
+def entry_relation(pos: dict[str, Any] | None, price: float, dec: int) -> str | None:
+    """Dónde está el precio actual respecto al plan.
+
+    at_entry   precio en la entrada (a menos de ¼ del riesgo)
+    limit      aún no llega: la entrada espera un retroceso (orden límite)
+    crossed    ya pasó la entrada hacia el SL sin tocarlo (a mercado entra a mejor precio)
+    beyond_sl  precio ya más allá del SL: plan invalidado
+    beyond_tp  precio ya más allá del TP: el movimiento se dio sin entrada
+    """
+    if pos is None or not pos["valid"]:
+        return None
+    e, s_, t_ = pos["entry"], pos["sl"], pos["tp"]
+    sign = 1 if pos["direction"] == "LONG" else -1
+    if sign * (price - s_) <= 0:
+        return "beyond_sl"
+    if sign * (price - t_) >= 0:
+        return "beyond_tp"
+    if abs(e - price) <= max(0.25 * pos["risk"], 2 * 10 ** (-dec)):
+        return "at_entry"
+    return "limit" if sign * (price - e) > 0 else "crossed"
+
+
 def _is_limit_entry(pos: dict[str, Any] | None, price: float, dec: int) -> bool:
-    """Entrada alejada del precio actual (orden límite), no ejecutable a mercado."""
-    if pos is None:
-        return False
-    tick = 10 ** (-dec)
-    return abs(pos["entry"] - price) > max(0.25 * pos["risk"], 2 * tick)
+    """Entrada alejada del precio actual a la espera de retroceso (orden límite)."""
+    return entry_relation(pos, price, dec) == "limit"
 
 
-def _entry_word(user_entry: float | None, is_limit: bool) -> str:
+def _entry_word(user_entry: float | None, relation: str | None) -> str:
     """Rótulo de la entrada en la caja."""
     if user_entry is not None:
         return "Entrada usuario"
-    if is_limit:
-        return "Entrada límite"
-    return "Entrada"
+    return {"limit": "Entrada límite", "crossed": "Entrada (ya cruzada)"}.get(relation or "", "Entrada")
+
+
+def relation_text(relation: str | None, price: float, pos: dict[str, Any] | None, fmt: str) -> str | None:
+    """Frase de estado del plan frente al precio real; None si no aplica."""
+    if pos is None or relation is None:
+        return None
+    p, e = f"{price:{fmt}}", f"{pos['entry']:{fmt}}"
+    above = price > pos["entry"]
+    return {
+        "limit": f"entrada límite {e} · precio {p}, esperando retroceso",
+        "crossed": f"precio {p} ya {'sobre' if above else 'bajo'} la entrada {e} (a mercado entra a mejor precio)",
+        "beyond_sl": f"INVALIDADO · precio {p} más allá del SL {pos['sl']:{fmt}}",
+        "beyond_tp": f"plan vencido · precio {p} ya más allá del TP {pos['tp']:{fmt}}",
+    }.get(relation)
+
+
+def verdict_reasons(data: dict, state: str) -> list[str]:
+    """Motivos cortos de un veredicto distinto de ENTRAR (datos, red flags, killzone)."""
+    if state == "ENTRAR":
+        return []
+    if data.get("state_reasons") is not None:
+        return list(data["state_reasons"])
+    reasons: list[str] = []
+    if data.get("data_stale"):
+        reasons.append("datos desactualizados")
+    if data.get("setup") and data.get("price") is not None and data.get("bias_h1") is not None:
+        try:
+            from app.views.btc_e1_report import collect_red_flags
+
+            flags = collect_red_flags(data, data.get("crt"), data.get("divergence"))
+            if flags:
+                reasons.append(str(flags[0]).split(" — ")[0].split(" - ")[0][:48])
+        except Exception:
+            pass
+    session = data.get("session") or {}
+    if session and not session.get("in_ny_window"):
+        reasons.append(f"fuera de killzone ({session.get('window', 'n/d')})")
+    return reasons
+
+
+def consistent_callout(state: str, callout: str, reasons: list[str]) -> str:
+    """El callout nunca dice ENTRAR si el veredicto no es ENTRAR."""
+    if state == "ENTRAR" or "ENTRAR" not in (callout or "").upper():
+        return callout
+    head = "No entrar" if state == "NO_OPERAR" else "Esperar"
+    return f"{head}: {' · '.join(reasons[:2])}" if reasons else head
 
 
 def _draw_candles(ax, show: list[dict], price: float) -> None:
@@ -390,12 +453,37 @@ def _draw_2m5(ax, show: list[dict], span: float) -> None:
             ha="center", va="bottom", zorder=6)
 
 
+TAG_GAP_FRAC = 0.042  # alto de una etiqueta (8.5 pt + padding) / alto del eje
+
+
+def _tick_label(v: float, dec: int) -> str:
+    return f"{v:.{dec}f}"
+
+
+def visible_ticks(ticks: list[float], tag_ys: list[float], min_gap: float) -> list[bool]:
+    """Qué ticks del eje Y se rotulan: se ocultan los que chocarían con una etiqueta de precio."""
+    return [all(abs(t - y) >= min_gap for y in tag_ys) for t in ticks]
+
+
+def _hide_colliding_ticks(ax, tags: list[dict], min_gap: float) -> None:
+    ymin, ymax = ax.get_ylim()
+    ticks = [float(t) for t in ax.get_yticks() if ymin <= t <= ymax]
+    if not ticks:
+        return
+    dec = 0 if all(abs(t - round(t)) < 1e-9 for t in ticks) else 2
+    keep = visible_ticks(ticks, [t["y_draw"] for t in tags], min_gap)
+    ax.set_yticks(ticks)
+    ax.set_yticklabels([_tick_label(t, dec) if k else "" for t, k in zip(ticks, keep)])
+
+
 def _draw_axis_tags(ax, tags: list[dict]) -> None:
-    """Etiquetas de precio en el borde derecho, apiladas sin solaparse."""
+    """Etiquetas de precio en el borde derecho, apiladas sin solaparse (ni con los ticks del eje)."""
     from matplotlib.transforms import blended_transform_factory
 
     ymin, ymax = ax.get_ylim()
-    _stack_tags(tags, min_gap=(ymax - ymin) * 0.036, y_min=ymin, y_max=ymax)
+    min_gap = (ymax - ymin) * TAG_GAP_FRAC
+    _stack_tags(tags, min_gap=min_gap, y_min=ymin, y_max=ymax)
+    _hide_colliding_ticks(ax, tags, min_gap * 0.8)
     tr = blended_transform_factory(ax.transAxes, ax.transData)
     for tag in tags:
         main = tag["prio"] <= 1
@@ -410,15 +498,21 @@ def _draw_axis_tags(ax, tags: list[dict]) -> None:
 
 def _state_lines(
     state: str, direction: str | None, callout: str, pos: dict[str, Any] | None, *,
-    active: bool, is_limit: bool, session: dict, note: str | None = None,
+    active: bool, relation_txt: str | None, session: dict, note: str | None = None,
+    order_state: str | None = None,
 ) -> list[str]:
     dir_txt = f" {direction}" if direction in ("LONG", "SHORT") else ""
     lines = [f"{state}{dir_txt}  ·  {callout}"]
     if pos is not None and not pos["valid"]:
         lines.append("! Niveles incoherentes (SL/TP del lado equivocado)")
+    elif order_state == "open":
+        side = f" {pos['direction']}" if pos is not None else ""
+        lines.append(f"Posición{side} ABIERTA en MT5 (entrada ejecutada)")
     elif pos is not None and not active:
-        lines.append("Niveles planificados (pendiente, no es entrada activa)"
-                     + (" · entrada límite" if is_limit else ""))
+        lines.append("Niveles planificados (no es entrada activa)"
+                     + (f" · {relation_txt}" if relation_txt else ""))
+    elif relation_txt:
+        lines.append(relation_txt[:1].upper() + relation_txt[1:])
     if session.get("in_ny_window"):
         lines[-1] += f"  ·  KZ {session.get('window', 'NY')}"
     if note:
@@ -474,6 +568,14 @@ def _draw_zentinel_note(fig, asset: str, session: dict | None) -> None:
         pass
 
 
+def _draw_feed_note(fig, feed: dict | None) -> None:
+    """Fuente de las velas abajo a la derecha (MT5 / externo ajustado / externo sin MT5)."""
+    if not feed or not feed.get("label"):
+        return
+    color = MUTED if feed.get("broker") else WARN_C
+    fig.text(0.885, 0.012, feed["label"], color=color, fontsize=7.5, ha="right", va="bottom")
+
+
 def render_trade_chart(
     data: dict,
     opt: dict,
@@ -510,8 +612,12 @@ def render_trade_chart(
     ztype = opt.get("ztype") or (data.get("zone") or {}).get("type")
     zone_lo, zone_hi = zone_edges
 
-    is_limit = _is_limit_entry(pos, price, dec)
-    active = pos is not None and pos["valid"] and state == "ENTRAR" and not is_limit
+    relation = entry_relation(pos, price, dec)
+    order_state = data.get("order_state")
+    active = pos is not None and pos["valid"] and (
+        order_state == "open" or (state == "ENTRAR" and relation in ("at_entry", "crossed"))
+    )
+    callout = consistent_callout(state, callout, verdict_reasons(data, state))
 
     fig = None
     try:
@@ -532,7 +638,8 @@ def render_trade_chart(
         ax.axvline(x0, color=MUTED, linewidth=0.7, linestyle=":", alpha=0.5, zorder=2)
         if pos is not None:
             _draw_position_box(ax, tags, pos, x0=x0, x1=x1, active=active,
-                               entry_word=_entry_word(user_entry, is_limit), fmt=fmt, dec=dec)
+                               entry_word=_entry_word(user_entry, None if order_state == "open" else relation),
+                               fmt=fmt, dec=dec)
             _draw_opti_entry(ax, tags, user_entry, sys_entry, pos["entry"],
                              x0=x0, x1=x1, fmt=fmt, dec=dec)
         else:
@@ -550,12 +657,14 @@ def render_trade_chart(
         _draw_axis_tags(ax, tags)
         _draw_state_box(ax, state, _state_lines(
             state, direction, callout, pos,
-            active=active, is_limit=is_limit, session=data.get("session") or {}, note=note,
+            active=active, relation_txt=relation_text(relation, price, pos, fmt),
+            session=data.get("session") or {}, note=note, order_state=order_state,
         ))
         title, title_color = _chart_title(asset, data)
         fig.suptitle(title, color=title_color, fontsize=13, fontweight="bold", x=0.455, y=0.985)
         _style_axes(ax, show, total)
         _draw_zentinel_note(fig, asset, data.get("session"))
+        _draw_feed_note(fig, data.get("feed"))
 
         return savefig_png(fig, out_path, dpi=dpi, facecolor=BG)
     finally:
