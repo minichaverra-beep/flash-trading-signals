@@ -49,7 +49,8 @@ def test_rerender_uses_sidecar_and_keeps_it(tmp_path):
     before = side.read_text(encoding="utf-8")
     p = rerender_chart(load_render_inputs(side), out, entry=50682.4, sl=50511.9, tp=50915.7,
                        note="Reajustado con MT5")
-    assert p.is_file() and p.stat().st_size > 0
+    assert p.is_file()
+    assert p.stat().st_size > 0
     assert side.read_text(encoding="utf-8") == before
 
 

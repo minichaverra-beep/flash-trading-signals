@@ -410,7 +410,7 @@ def _draw_axis_tags(ax, tags: list[dict]) -> None:
 
 def _state_lines(
     state: str, direction: str | None, callout: str, pos: dict[str, Any] | None, *,
-    active: bool, is_limit: bool, session: dict,
+    active: bool, is_limit: bool, session: dict, note: str | None = None,
 ) -> list[str]:
     dir_txt = f" {direction}" if direction in ("LONG", "SHORT") else ""
     lines = [f"{state}{dir_txt}  ·  {callout}"]
@@ -421,6 +421,8 @@ def _state_lines(
                      + (" · entrada límite" if is_limit else ""))
     if session.get("in_ny_window"):
         lines[-1] += f"  ·  KZ {session.get('window', 'NY')}"
+    if note:
+        lines.append(note)
     return lines
 
 
@@ -546,13 +548,10 @@ def render_trade_chart(
 
         _draw_2m5(ax, show, ymax - ymin)
         _draw_axis_tags(ax, tags)
-        lines = _state_lines(
+        _draw_state_box(ax, state, _state_lines(
             state, direction, callout, pos,
-            active=active, is_limit=is_limit, session=data.get("session") or {},
-        )
-        if note:
-            lines.append(note)
-        _draw_state_box(ax, state, lines)
+            active=active, is_limit=is_limit, session=data.get("session") or {}, note=note,
+        ))
         title, title_color = _chart_title(asset, data)
         fig.suptitle(title, color=title_color, fontsize=13, fontweight="bold", x=0.455, y=0.985)
         _style_axes(ax, show, total)
