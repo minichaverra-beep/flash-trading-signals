@@ -593,6 +593,17 @@
       "archive": "live/archive/xauusd_20261001_143114_annotated.png",
       "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
       "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261001_143114_annotated.png"
+    },
+    {
+      "id": "xauusd-013",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-01 15:19",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261001_151918_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261001_151918_annotated.png"
     }
   ]
 }
