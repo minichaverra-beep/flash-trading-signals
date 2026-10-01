@@ -126,7 +126,7 @@ def write_snapshot(path: Path, data: dict, m5: list[dict] | None = None, h1: lis
         "",
         "### Disclaimer datos oro",
         "",
-        f"- Proxy mercado: **{data.get('data_source', 'GC=F')}** (no es cota Exness/spot exacta).",
+        f"- Proxy mercado: **{data.get('data_source', 'GC=F')}** (GC=F desplazado al spot live; puede diferir unos centavos del broker).",
         "- Ops OCR XAUUSD en v_ops_apr_sep son **pocas**; ML es mayormente sintético E1.",
         "- No auto-ejecutar. Validar con broker.",
     ]
@@ -277,6 +277,11 @@ def main() -> int:
     ticker_label = fetch_meta.get("ticker", tickers[0])
     m5_iv = fetch_meta.get("m5_interval", "5m")
     data_source = f"yfinance ({ticker_label}, M5={m5_iv})"
+    if fetch_meta.get("spot_basis") is not None:
+        data_source += (
+            f" · ajustado a spot {fetch_meta.get('spot_source')} "
+            f"(basis {fetch_meta['spot_basis']:+.2f})"
+        )
 
     data = {
         "generated": now.strftime("%Y-%m-%d %H:%M"),

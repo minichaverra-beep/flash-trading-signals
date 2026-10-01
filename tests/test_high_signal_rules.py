@@ -219,10 +219,11 @@ class TestComputeOptimalEntry:
         assert opt["sl"] > opt["entry"] > opt["tp"]
         assert "invalidacion" in opt and opt["invalidacion"] != "n/d"
 
-    def test_short_near_without_confirm_esperar(self):
+    def test_short_near_without_confirm_entrar(self):
+        """Sin 2M5 ya no fuerza ESPERAR."""
         data = make_data(dist_pct=0.05, confirm_short=False, direction="SHORT")
         opt = compute_optimal_entry(data, "SHORT", make_crt(), data["zone"])
-        assert "ESPERAR" in opt["ahora_action"]
+        assert "ENTRAR SHORT" in opt["ahora_action"]
         assert "ENTRAR SHORT" in opt["opti_action"]
 
     def test_long_near_support_mirrored(self):

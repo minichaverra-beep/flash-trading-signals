@@ -91,7 +91,7 @@ def _callout_text(opt: dict) -> str:
         return "Setup listo → ENTRAR"
     if confirm:
         return "2M5 OK · revisar bias/SL"
-    return "Sin 2M5 → ESPERAR confirmación"
+    return "Sin 2M5 · revisar bias/SL"
 
 
 def write_entry_overlay_charts(

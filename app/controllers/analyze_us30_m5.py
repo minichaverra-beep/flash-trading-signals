@@ -327,6 +327,11 @@ def main() -> int:
     ticker_label = fetch_meta.get("ticker", tickers[0])
     m5_iv = fetch_meta.get("m5_interval", "5m")
     data_source = f"yfinance ({ticker_label}, M5={m5_iv})"
+    if fetch_meta.get("spot_basis") is not None:
+        data_source += (
+            f" · ajustado a cash {fetch_meta.get('spot_source')} "
+            f"(basis {fetch_meta['spot_basis']:+.2f})"
+        )
 
     data = {
         "generated": now.strftime("%Y-%m-%d %H:%M"),

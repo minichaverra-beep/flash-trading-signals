@@ -52,17 +52,8 @@ def apply_forced_bias(data: dict, bias_mode: str) -> dict:
         sl = max(zone["level"], price) * 1.002 if zone.get("type") == "resistencia_debil" else price * 1.003
         risk = abs(sl - price)
         setup["sl"], setup["tp"], setup["rr"] = sl, price - 2 * risk, 2.0
-    near = zone.get("dist_pct") is not None and zone["dist_pct"] <= 0.15
-    confirm = out["confirm_long"] if direction == "LONG" else out["confirm_short"]
-    # Sesión NY y distancia a zona no son hard-block para SETUP_A+
-    hard = [r for r in setup["red_flags"] if "Sin 2" in r]
-    if not hard and confirm:
-        setup["verdict"] = "SETUP_A+"
-    elif not hard:
-        setup["verdict"] = "SETUP_B_ESPERAR"
-    elif direction != "NONE":
-        setup["verdict"] = "NO_TRADE"
-    _ = near  # contexto entry; no gate
+    # Sesión NY, distancia a zona y 2M5 no son hard-block para SETUP_A+
+    setup["verdict"] = "SETUP_A+"
     out["setup"] = setup
     out["forced_bias"] = bias_mode
     return out
@@ -1756,16 +1747,12 @@ def _compute_optimal_entry_core(
         )
         opti_2m5 = f"Nuevas 2 {color_word} en zona tras retest (no las actuales lejos)"
 
+    # Zona y 2M5 ya no fuerzan ESPERAR
+    ahora_action = f"ENTRAR {direction}"
     if near and confirm and in_zone_2:
-        ahora_action = f"ENTRAR {direction}"
         opti_action = f"ENTRAR {direction} (condiciones actuales OK)"
-    elif confirm:
-        # 2M5 OK → accionable; zona ≤0.15% ya no fuerza ESPERAR
-        ahora_action = f"ENTRAR {direction}"
-        opti_action = f"ENTRAR {direction}"
     else:
-        ahora_action = f"ESPERAR {direction}" if direction != "NONE" else "ESPERAR"
-        opti_action = f"ENTRAR {direction}" if direction != "NONE" else "ESPERAR"
+        opti_action = f"ENTRAR {direction}"
 
     dist_note = f"{zone.get('dist_pct', 0):.2f}%" if zone.get("dist_pct") is not None else "n/d"
     plan_b = (
@@ -2050,7 +2037,7 @@ def format_2m5_checklist(data: dict, direction: str, session: dict, crt: dict) -
     n = len(items)
     lines += [
         "",
-        f"**{'Las ' + str(n) + ' ✅ → 2M5 OK. Si falta una → ESPERAR.' if all_ok else 'Falta al menos 1 ítem → ESPERAR.'}**",
+        f"**{'Las ' + str(n) + ' ✅ → 2M5 OK.' if all_ok else 'Falta al menos 1 ítem (info, no bloquea entrada).'}**",
         "",
         "---",
         "",

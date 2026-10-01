@@ -445,7 +445,7 @@ def build_advanced_table_rows(
         if confirm:
             m5_state = f"VÁLIDO {direction} (2M5)"
         else:
-            m5_state = "Falta 2M5 — ESPERAR"
+            m5_state = "Sin 2M5 (info, no gate)"
         rows.append(("Estado 2M5", m5_state))
 
     rows.append((

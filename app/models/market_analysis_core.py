@@ -177,9 +177,9 @@ def suggest_setup(
     elif direction == "SHORT" and confirm_short:
         reasons.append("2 velas M5 rojas (confirmación)")
     elif direction != "NONE":
-        red_flags.append("Sin 2 velas M5 de confirmación")
+        reasons.append("Sin 2 velas M5 de confirmación (info, no gate)")
 
-    hard = [r for r in red_flags if "NEUTRAL" in r or "Sin 2" in r]
+    hard = [r for r in red_flags if "NEUTRAL" in r]
     if direction != "NONE" and not hard:
         verdict = "SETUP_A+"
     elif direction != "NONE" and len(hard) <= 1:

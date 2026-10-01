@@ -215,10 +215,10 @@ def suggest_setup(price: float, bias: str, zone: dict, rsi_m5: float | None,
     elif direction == "SHORT" and confirm_short:
         reasons.append("2 velas M5 rojas (confirmación)")
     elif direction != "NONE":
-        red_flags.append("Sin 2 velas M5 de confirmación")
+        reasons.append("Sin 2 velas M5 de confirmación (info, no gate)")
 
-    # A+ si bias + confirmación; zona ya no bloquea
-    hard = [r for r in red_flags if "NEUTRAL" in r or "Sin 2" in r]
+    # A+ si hay bias; zona y 2M5 ya no bloquean
+    hard = [r for r in red_flags if "NEUTRAL" in r]
     if direction != "NONE" and not hard:
         verdict = "SETUP_A+"
     elif direction != "NONE" and len(hard) <= 1:

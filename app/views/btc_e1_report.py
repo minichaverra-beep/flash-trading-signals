@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.models.btc_signal_categories import (
     E1_RULES_TOTAL,
-    _confirm_for_direction,
     build_categories,
     enrich_categories_bando,
     format_augmented_categories_md,
@@ -110,11 +109,6 @@ def collect_red_flags(
         if rf not in flags:
             flags.append(rf)
 
-    if direction != "NONE":
-        confirm = data["confirm_long"] if direction == "LONG" else data["confirm_short"]
-        if not confirm:
-            flags.append("Sin 2 velas M5 — ESPERAR (regla dura)")
-
     if div and direction != "NONE":
         if direction == "LONG" and div.get("type") == "BEARISH":
             flags.append(f"RSI TORYS en contra: {div.get('note', 'divergencia bajista')}")
@@ -154,11 +148,6 @@ def derive_e1_verdict(
     if hard_no:
         return "NO_OPERAR"
 
-    if direction != "NONE":
-        confirm = data["confirm_long"] if direction == "LONG" else data["confirm_short"]
-        if not confirm:
-            return "ESPERAR"
-
     if crt:
         if crt.get("fakeout_pdh") and direction == "LONG":
             return "NO_OPERAR"
@@ -173,14 +162,13 @@ def derive_e1_verdict(
         if forced not in ("bullish", "bearish") or direction == "NONE":
             return "ESPERAR"
 
-    confirm = _confirm_for_direction(data, direction)
     has_levels = bool(s.get("entry") and s.get("sl") and s.get("tp"))
-    # Accionable: reglas OK + 2M5 + niveles (zona ya no es gate)
-    if confirm and has_levels and rules_pct >= 67 and (
+    # Accionable: reglas OK + niveles (zona y 2M5 ya no son gate)
+    if has_levels and rules_pct >= 67 and (
         s.get("verdict") == "SETUP_A+" or rules_pct >= 83
     ):
         return "ENTRAR"
-    if rules_pct >= 75 and s.get("verdict") == "SETUP_A+" and confirm:
+    if rules_pct >= 75 and s.get("verdict") == "SETUP_A+":
         return "ENTRAR"
     if rules_pct >= 63:
         return "ESPERAR"

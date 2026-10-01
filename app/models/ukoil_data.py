@@ -3,14 +3,14 @@
 Primary ticker: BZ=F (ICE Brent Crude Oil futures). Broker CFDs labelled UKOIL
 track Brent; CL=F is WTI and is not used as default.
 
-Same fetch path as US30/XAU (``us30_data._fetch_generic_klines``).
+Same fetch path as US30/XAU (``us30_data.fetch_yahoo_klines``).
 """
 from __future__ import annotations
 
 from app.models.us30_data import (
     INTERVAL_RANGE,
     fetch_yahoo_chart,
-    fetch_us30_klines as _fetch_generic_klines,
+    fetch_yahoo_klines as _fetch_generic_klines,
 )
 
 # ICE Brent — Yahoo proxy for UK Oil / UKOIL CFD (not WTI CL=F)
