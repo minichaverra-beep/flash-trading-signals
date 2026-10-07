@@ -52,6 +52,31 @@ def _rsi_zone_label(zone: str) -> str:
     return f"LONG {long_txt} · SHORT {short_txt}"
 
 
+def _rule_stats_lines(rs: dict) -> list[str]:
+    lines = [
+        "",
+        "## Reglas — acierto real cuando cumple / no cumple",
+        "",
+        "| Regla | Cumple | Acierto si cumple | Acierto si no |",
+        "|-------|--------|-------------------|---------------|",
+    ]
+    for k in ("confirm_2m5", "crt_coherent"):
+        s = rs[k]
+        lines.append(
+            f"| {FEATURE_LABELS[k]} | {_pct(s['pass_rate'])} | {_pct(s['pass_wr'])} (n={s['pass_n']}) "
+            f"| {_pct(s['fail_wr'])} (n={s['fail_n']}) |"
+        )
+    lines += ["", "| Zona premium/discount | N | Acierto |", "|---|---|---|"]
+    for v, name in (("1", "a favor"), ("0", "equilibrio"), ("-1", "en contra")):
+        s = rs["pd_favor"].get(v) or {}
+        if s.get("n"):
+            lines.append(f"| {name} | {s['n']} | {_pct(s['wr'])} |")
+    lines += ["", "| RSI M5 (LONG · SHORT) | N | Acierto |", "|---|---|---|"]
+    for zone, s in rs["rsi_ext_bins"].items():
+        lines.append(f"| {_rsi_zone_label(zone)} | {s['n']} | {_pct(s['wr'])} |")
+    return lines
+
+
 def write_report(calib: dict, path) -> None:
     oos = calib["oos"]
     lines = [
@@ -102,28 +127,7 @@ def write_report(calib: dict, path) -> None:
         for b in oos.get(key) or []:
             lines.append(f"| {b['bucket']} | {b['n']} | {_pct(b['pred'])} | {_pct(b['real'])} |")
 
-    rs = calib["rule_stats"]
-    lines += [
-        "",
-        "## Reglas — acierto real cuando cumple / no cumple",
-        "",
-        "| Regla | Cumple | Acierto si cumple | Acierto si no |",
-        "|-------|--------|-------------------|---------------|",
-    ]
-    for k in ("confirm_2m5", "crt_coherent"):
-        s = rs[k]
-        lines.append(
-            f"| {FEATURE_LABELS[k]} | {_pct(s['pass_rate'])} | {_pct(s['pass_wr'])} (n={s['pass_n']}) "
-            f"| {_pct(s['fail_wr'])} (n={s['fail_n']}) |"
-        )
-    lines += ["", "| Zona premium/discount | N | Acierto |", "|---|---|---|"]
-    for v, name in (("1", "a favor"), ("0", "equilibrio"), ("-1", "en contra")):
-        s = rs["pd_favor"].get(v) or {}
-        if s.get("n"):
-            lines.append(f"| {name} | {s['n']} | {_pct(s['wr'])} |")
-    lines += ["", "| RSI M5 (LONG · SHORT) | N | Acierto |", "|---|---|---|"]
-    for zone, s in rs["rsi_ext_bins"].items():
-        lines.append(f"| {_rsi_zone_label(zone)} | {s['n']} | {_pct(s['wr'])} |")
+    lines += _rule_stats_lines(calib["rule_stats"])
     lines += [
         "",
         "## Capas ML / Neural",

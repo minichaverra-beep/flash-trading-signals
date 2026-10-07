@@ -456,6 +456,31 @@ def _blend_acuerdo_into_success(
     return blended, note
 
 
+def _calibrated_scorecard_rows(rows: list[tuple], est: dict, *, legacy: float) -> list[tuple]:
+    """Capas heurísticas como referencia (no ponderan) + filas de la probabilidad calibrada."""
+    out = [(c, s, "info" if p not in ("—", "") else p, n) for c, s, p, n in rows]
+    layers = ", ".join(est["layers_used"]) or "ninguna (ML/Neural sin validación OOS)"
+    kind = "calibrado walk-forward" if est["has_edge"] else "tasa base (sin ventaja OOS)"
+    conf = " · baja confianza" if est["low_confidence"] else ""
+    out.extend([
+        ("Fusión heurística (anterior)", f"{legacy:.0f}%", "info", "pesos fijos sin backtest"),
+        ("Capas ML/Neural en el %", layers, "—", "solo si mejoran fuera de muestra"),
+        (
+            "EV por operación",
+            f"{est['ev_r']:+.2f}R",
+            "—",
+            f"R:R 1:{est['rr']:g} · costo {est['cost_r']:.2f}R · Kelly¼ {est['kelly'] * 100:.1f}% riesgo",
+        ),
+        (
+            "**Probabilidad de éxito**",
+            f"**{est['p'] * 100:.0f}%**",
+            f"80%: {est['lo'] * 100:.0f}–{est['hi'] * 100:.0f}%",
+            f"{kind} · n={est['n']} (n_eff {est['n_eff']}){conf}",
+        ),
+    ])
+    return out
+
+
 def compute_advanced_scorecard(
     data: dict,
     ctx: dict,
@@ -596,28 +621,9 @@ def compute_advanced_scorecard(
 
     est = calibrated_estimate(data, crt, categories=categories) if setup_mode != "reverse" else None
     if est:
-        legacy = combined
-        store_estimate(categories, est, legacy_pct=legacy)
+        store_estimate(categories, est, legacy_pct=combined)
+        rows = _calibrated_scorecard_rows(rows, est, legacy=combined)
         combined = est["p"] * 100
-        # Capas heurísticas: se muestran como referencia, no ponderan el %
-        rows = [(c, s, "info" if p not in ("—", "") else p, n) for c, s, p, n in rows]
-        layers = ", ".join(est["layers_used"]) or "ninguna (ML/Neural sin validación OOS)"
-        rows.append(("Fusión heurística (anterior)", f"{legacy:.0f}%", "info", "pesos fijos sin backtest"))
-        rows.append(("Capas ML/Neural en el %", layers, "—", "solo si mejoran fuera de muestra"))
-        rows.append((
-            "EV por operación",
-            f"{est['ev_r']:+.2f}R",
-            "—",
-            f"R:R 1:{est['rr']:g} · costo {est['cost_r']:.2f}R · Kelly¼ {est['kelly'] * 100:.1f}% riesgo",
-        ))
-        kind = "calibrado walk-forward" if est["has_edge"] else "tasa base (sin ventaja OOS)"
-        conf = " · baja confianza" if est["low_confidence"] else ""
-        rows.append((
-            "**Probabilidad de éxito**",
-            f"**{combined:.0f}%**",
-            f"80%: {est['lo'] * 100:.0f}–{est['hi'] * 100:.0f}%",
-            f"{kind} · n={est['n']} (n_eff {est['n_eff']}){conf}",
-        ))
     else:
         rows.append(("**Probabilidad de éxito**", f"**{combined:.0f}%**", "100%", "pesos + acuerdo entre capas"))
 

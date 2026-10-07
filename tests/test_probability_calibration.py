@@ -96,8 +96,9 @@ class TestFit:
         assert pc._effective_n([0, 10, 20, 48, 60, 100], 48) == 3
 
     def test_rejects_tiny_sample(self):
+        rows = _rows(50)
         with pytest.raises(RuntimeError):
-            pc.fit_calibration(_rows(50), n_boot=5)
+            pc.fit_calibration(rows, n_boot=5)
 
 
 class TestEstimate:
@@ -109,7 +110,9 @@ class TestEstimate:
     def test_winrate_estimate_uses_calibration(self, calib_env):
         cats: dict = {}
         wr, src = winrate_estimate(83, data=_data(), crt=_crt(), categories=cats)
-        assert "calibrado walk-forward" in src and "80%:" in src and "EV" in src
+        assert "calibrado walk-forward" in src
+        assert "80%:" in src
+        assert "EV" in src
         lo, hi = cats["prob_ci"]
         assert lo <= cats["prob_pct"] <= hi
         assert wr == f"~{cats['prob_pct']:.0f}%"
@@ -191,7 +194,8 @@ class TestRulesReview:
         crt = _crt(fakeout_pdl=True)
         est = pc.calibrated_estimate(_data(), crt)
         row = next(r for r in pc.build_rules_review_rows(_data(), crt, est, []) if r["label"] == "Rango CRT coherente")
-        assert row["type"] == "veto" and row["grade"] == "✗✗"
+        assert row["type"] == "veto"
+        assert row["grade"] == "✗✗"
 
     def test_heuristic_grades_without_calibration(self):
         rows = pc.build_rules_review_rows(_data(rsi=19), _crt(), None, [])

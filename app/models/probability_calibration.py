@@ -165,6 +165,42 @@ def predict_proba(calib: dict, feats: dict[str, float]) -> float:
     return _sigmoid(_linear(calib["coef"], calib["intercept"], feats))
 
 
+def _model_point(calib: dict, feats: dict[str, float], shift: float) -> tuple[float, list[float], dict[str, float]]:
+    """p del modelo, simulaciones bootstrap ordenadas y contribución por feature (pts vs su media)."""
+    p = _sigmoid(_linear(calib["coef"], calib["intercept"], feats) + shift)
+    sims = sorted(
+        _sigmoid(_linear(b["coef"], b["intercept"], feats) + shift) for b in calib.get("bootstrap") or []
+    )
+    means = calib.get("feature_means") or {}
+    contrib = {}
+    for k in FEATURES:
+        alt = {**feats, k: float(means.get(k, 0.0))}
+        contrib[k] = (p - _sigmoid(_linear(calib["coef"], calib["intercept"], alt) + shift)) * 100
+    return p, sims, contrib
+
+
+def _band80(sims: list[float], p: float) -> tuple[float, float]:
+    if not sims:
+        return p, p
+    return sims[int(0.10 * (len(sims) - 1))], sims[int(0.90 * (len(sims) - 1))]
+
+
+def _trade_economics(
+    data: dict, calib: dict, asset: str, p: float
+) -> tuple[float, float | None, float, float, float]:
+    """R:R, riesgo % del precio, coste en R, EV en R y Kelly fraccional acotado."""
+    setup = data.get("setup") or {}
+    rr = float(setup.get("rr") or calib.get("rr", 2.0))
+    price = float(data.get("price") or 0.0)
+    sl = setup.get("sl")
+    risk_pct = abs(price - float(sl)) / price * 100 if sl and price else None
+    cost_pct = float(calib.get("cost_pct", DEFAULT_COST_PCT.get(asset_key(asset), 0.01)))
+    cost_r = cost_pct / risk_pct if risk_pct else 0.0
+    ev_r = p * rr - (1 - p) - cost_r
+    kelly = max(0.0, min(KELLY_CAP, KELLY_FRACTION * ev_r / rr)) if rr > 0 else 0.0
+    return rr, risk_pct, cost_r, ev_r, kelly
+
+
 def calibrated_estimate(
     data: dict,
     crt: dict | None,
@@ -184,39 +220,14 @@ def calibrated_estimate(
     base = float(calib["base_rate"])
     has_edge = bool(calib.get("has_edge"))
     shift, layers_used = _layer_logit_shift(calib, categories, base)
-
-    boot = calib.get("bootstrap") or []
     if has_edge:
-        p = _sigmoid(_linear(calib["coef"], calib["intercept"], feats) + shift)
-        sims = sorted(
-            _sigmoid(_linear(b["coef"], b["intercept"], feats) + shift) for b in boot
-        )
-        means = calib.get("feature_means") or {}
-        contrib = {}
-        for k in FEATURES:
-            alt = dict(feats)
-            alt[k] = float(means.get(k, 0.0))
-            contrib[k] = (p - _sigmoid(_linear(calib["coef"], calib["intercept"], alt) + shift)) * 100
+        p, sims, contrib = _model_point(calib, feats, shift)
     else:
         p = base
-        sims = sorted(float(b["base_rate"]) for b in boot if "base_rate" in b)
+        sims = sorted(float(b["base_rate"]) for b in calib.get("bootstrap") or [] if "base_rate" in b)
         contrib = dict.fromkeys(FEATURES, 0.0)
-
-    if sims:
-        lo = sims[int(0.10 * (len(sims) - 1))]
-        hi = sims[int(0.90 * (len(sims) - 1))]
-    else:
-        lo = hi = p
-
-    setup = data.get("setup") or {}
-    rr = float(setup.get("rr") or calib.get("rr", 2.0))
-    price = float(data.get("price") or 0.0)
-    sl = setup.get("sl")
-    risk_pct = abs(price - float(sl)) / price * 100 if sl and price else None
-    cost_pct = float(calib.get("cost_pct", DEFAULT_COST_PCT.get(asset_key(asset), 0.01)))
-    cost_r = cost_pct / risk_pct if risk_pct else 0.0
-    ev_r = p * rr - (1 - p) - cost_r
-    kelly = max(0.0, min(KELLY_CAP, KELLY_FRACTION * ev_r / rr)) if rr > 0 else 0.0
+    lo, hi = _band80(sims, p)
+    rr, risk_pct, cost_r, ev_r, kelly = _trade_economics(data, calib, asset, p)
 
     n_eff = int(calib.get("n_eff", 0))
     return {
@@ -313,19 +324,27 @@ def grade_from_impact(pp: float) -> str:
     return "✗✗"
 
 
+RSI_HEURISTIC_GRADES = ((-1.0, "✓✓"), (1.0, "✓"), (2.0, "~"), (3.0, "✗"))
+
+
+def _grade_rsi_heuristic(x: float) -> str:
+    if x <= RSI_HEURISTIC_GRADES[0][0]:
+        return RSI_HEURISTIC_GRADES[0][1]
+    for upper, mark in RSI_HEURISTIC_GRADES[1:]:
+        if x < upper:
+            return mark
+    return "✗✗"
+
+
 def _grade_heuristic(name: str, feats: dict[str, float]) -> str:
     x = feats[name]
     if name == "rsi_ext":
-        if x <= -1:
-            return "✓✓"
-        if x < 1:
-            return "✓"
-        if x < 2:
-            return "~"
-        return "✗" if x < 3 else "✗✗"
-    if name == "pd_favor":
-        return "✓" if x > 0 else "✗" if x < 0 else "~"
-    return "✓" if x > 0 else "✗"
+        return _grade_rsi_heuristic(x)
+    if x > 0:
+        return "✓"
+    if name == "pd_favor" and x >= 0:
+        return "~"
+    return "✗"
 
 
 def _rsi_value_text(rsi: float | None, direction: str, ext: float) -> str:
@@ -355,90 +374,80 @@ def build_rules_review_rows(
     rules_items: list[tuple[str, bool, str]] | None = None,
 ) -> list[dict[str, str]]:
     """Tabla única: Regla | Estado | Valor actual | Impacto | Acierto histórico | Tipo."""
-    from app.models.btc_signal_categories import _crt_coherent
-
     feats = (est or {}).get("features") or extract_features(data, crt)
     if feats is None:
         return []
     direction = data["setup"]["direction"]
-    calib = (est or {}).get("calib") or {}
-    stats = calib.get("rule_stats") or {}
-    calibrated = bool(est and est.get("has_edge"))
-    rows: list[dict[str, str]] = []
+    stats = ((est or {}).get("calib") or {}).get("rule_stats") or {}
+    contrib = est["contrib"] if est and est.get("has_edge") else None
+    crt = crt or {}
 
-    def impact_cell(name: str) -> tuple[str, str]:
-        if calibrated:
-            pp = est["contrib"][name]
-            return grade_from_impact(pp), f"{pp:+.1f} pts"
-        return _grade_heuristic(name, feats), "sin calibrar"
+    def row(name: str, value: str, wr: str) -> dict[str, str]:
+        grade, impact = _impact_cell(name, feats, contrib)
+        return {"label": FEATURE_LABELS[name], "grade": grade, "value": value,
+                "impact": impact, "wr": wr, "type": "ponderada"}
 
-    # 1. RSI graduado
-    grade, impact = impact_cell("rsi_ext")
-    zone = rsi_ext_bin(feats["rsi_ext"])
-    zst = (stats.get("rsi_ext_bins") or {}).get(zone)
-    wr = f"esta zona {_pct(zst['wr'])} (n={zst['n']})" if zst else "n/d"
-    rows.append({
-        "label": FEATURE_LABELS["rsi_ext"], "grade": grade,
-        "value": _rsi_value_text(data.get("rsi_m5"), direction, feats["rsi_ext"]),
-        "impact": impact, "wr": wr, "type": "ponderada",
-    })
-
-    # 2. Premium / discount
-    grade, impact = impact_cell("pd_favor")
-    pd = str((crt or {}).get("premium_discount") or "n/d")
+    zst = (stats.get("rsi_ext_bins") or {}).get(rsi_ext_bin(feats["rsi_ext"]))
     side = {1.0: "a favor", -1.0: "en contra"}.get(feats["pd_favor"], "neutral")
-    pst = stats.get("pd_favor") or {}
-    wr = (
-        f"a favor {_pct(pst['1']['wr'])} / en contra {_pct(pst['-1']['wr'])}"
-        if "1" in pst and "-1" in pst else "n/d"
-    )
-    rows.append({
-        "label": FEATURE_LABELS["pd_favor"], "grade": grade,
-        "value": f"{pd} ({side})", "impact": impact, "wr": wr, "type": "ponderada",
-    })
-
-    # 3. 2 velas M5
-    grade, impact = impact_cell("confirm_2m5")
-    cst = stats.get("confirm_2m5") or {}
-    wr = (
-        f"sí {_pct(cst['pass_wr'])} / no {_pct(cst['fail_wr'])}"
-        if cst.get("pass_wr") is not None else "n/d"
-    )
-    rows.append({
-        "label": FEATURE_LABELS["confirm_2m5"], "grade": grade,
-        "value": "sí" if feats["confirm_2m5"] else "no",
-        "impact": impact, "wr": wr, "type": "ponderada",
-    })
-
-    # 4. CRT: veto duro si fakeout en contra
-    grade, impact = impact_cell("crt_coherent")
-    _, crt_note = _crt_coherent(data, crt)
-    fakeout = bool(
-        (direction == "LONG" and (crt or {}).get("fakeout_pdh"))
-        or (direction == "SHORT" and (crt or {}).get("fakeout_pdl"))
-    )
-    rst = stats.get("crt_coherent") or {}
-    wr = (
-        f"sí {_pct(rst['pass_wr'])} / no {_pct(rst['fail_wr'])}"
-        if rst.get("pass_wr") is not None else "n/d"
-    )
-    rows.append({
-        "label": FEATURE_LABELS["crt_coherent"], "grade": "✗✗" if fakeout else grade,
-        "value": crt_note, "impact": impact, "wr": wr,
-        "type": "veto" if fakeout else "ponderada",
-    })
-
-    # Precondiciones: constantes por construcción del setup → info
-    constant = {"Solo E1", "Tendencia H1 alineada", "R:R mínimo 1:2"}
-    for label, passed, note in rules_items or []:
-        if label in constant:
-            rows.append({
-                "label": label, "grade": "·" if passed else "✗✗",
-                "value": note or ("sí" if passed else "no"),
-                "impact": "—", "wr": "constante en histórico",
-                "type": "info" if passed else "veto",
-            })
+    rows = [
+        row("rsi_ext", _rsi_value_text(data.get("rsi_m5"), direction, feats["rsi_ext"]),
+            f"esta zona {_pct(zst['wr'])} (n={zst['n']})" if zst else "n/d"),
+        row("pd_favor", f"{crt.get('premium_discount') or 'n/d'} ({side})", _pd_winrate(stats.get("pd_favor"))),
+        row("confirm_2m5", "sí" if feats["confirm_2m5"] else "no", _pass_fail_winrate(stats.get("confirm_2m5"))),
+        _crt_row(row, data, crt, direction, stats.get("crt_coherent")),
+    ]
+    rows.extend(_precondition_rows(rules_items))
     return rows
+
+
+def _impact_cell(name: str, feats: dict[str, float], contrib: dict[str, float] | None) -> tuple[str, str]:
+    if contrib is not None:
+        pp = contrib[name]
+        return grade_from_impact(pp), f"{pp:+.1f} pts"
+    return _grade_heuristic(name, feats), "sin calibrar"
+
+
+def _pd_winrate(pst: dict | None) -> str:
+    pst = pst or {}
+    if "1" not in pst or "-1" not in pst:
+        return "n/d"
+    return f"a favor {_pct(pst['1']['wr'])} / en contra {_pct(pst['-1']['wr'])}"
+
+
+def _pass_fail_winrate(st: dict | None) -> str:
+    st = st or {}
+    if st.get("pass_wr") is None:
+        return "n/d"
+    return f"sí {_pct(st['pass_wr'])} / no {_pct(st['fail_wr'])}"
+
+
+def _crt_row(row, data: dict, crt: dict, direction: str, rst: dict | None) -> dict[str, str]:
+    """CRT ponderado; veto duro si hay fakeout en contra de la dirección."""
+    from app.models.btc_signal_categories import _crt_coherent
+
+    _, crt_note = _crt_coherent(data, crt)
+    out = row("crt_coherent", crt_note, _pass_fail_winrate(rst))
+    fakeout_key = "fakeout_pdh" if direction == "LONG" else "fakeout_pdl"
+    if direction in ("LONG", "SHORT") and crt.get(fakeout_key):
+        out.update(grade="✗✗", type="veto")
+    return out
+
+
+PRECONDITION_RULES = frozenset({"Solo E1", "Tendencia H1 alineada", "R:R mínimo 1:2"})
+
+
+def _precondition_rows(rules_items: list[tuple[str, bool, str]] | None) -> list[dict[str, str]]:
+    """Precondiciones constantes por construcción del setup → info (o veto si fallan)."""
+    return [
+        {
+            "label": label, "grade": "·" if passed else "✗✗",
+            "value": note or ("sí" if passed else "no"),
+            "impact": "—", "wr": "constante en histórico",
+            "type": "info" if passed else "veto",
+        }
+        for label, passed, note in rules_items or []
+        if label in PRECONDITION_RULES
+    ]
 
 
 def format_rules_review_md(rows: list[dict[str, str]], est: dict | None) -> list[str]:
@@ -613,6 +622,54 @@ def _calibration_table(y: list[int], p: list[float], edges: list[float]) -> list
     return out
 
 
+def _walk_forward(data: list[dict], X, y, *, horizon: int, folds: int, c: float) -> dict[str, list]:
+    """Predicciones fuera de muestra por bloques cronológicos con purga de `horizon` velas M5."""
+    import numpy as np
+
+    times = [r["time"] for r in data]
+    purge = timedelta(minutes=5 * horizon)
+    oos: dict[str, list] = {"y": [], "model": [], "const": [], "legacy_y": [], "legacy": []}
+    bounds = np.linspace(0, len(data), folds + 1, dtype=int)
+    for k in range(1, folds):
+        a, b = bounds[k], bounds[k + 1]
+        cutoff = times[a] - purge
+        train = [i for i in range(a) if times[i] < cutoff]
+        if len(train) < 50 or len(set(y[train])) < 2:
+            continue
+        clf = _fit_logistic(X[train], y[train], c)
+        oos["y"] += y[a:b].tolist()
+        oos["model"] += clf.predict_proba(X[a:b])[:, 1].tolist()
+        oos["const"] += [float(y[train].mean())] * (b - a)
+        legacy = [i for i in range(a, b) if data[i]["legacy_pct"] is not None]
+        oos["legacy_y"] += [int(y[i]) for i in legacy]
+        oos["legacy"] += [data[i]["legacy_pct"] / 100 for i in legacy]
+    return oos
+
+
+def _day_bootstrap(X, y, times: list, full: tuple[dict, float], *, c: float, n_boot: int, seed: int) -> list[dict]:
+    """Remuestreo por días completos (respeta la autocorrelación intradía)."""
+    import random
+
+    coef, intercept = full
+    # Remuestreo estadístico reproducible (semilla fija), no criptográfico.
+    rng = random.Random(seed)  # NOSONAR
+    days: dict[Any, list[int]] = {}
+    for i, t in enumerate(times):
+        days.setdefault(t.date(), []).append(i)
+    day_keys = list(days)
+    boot = []
+    for _ in range(n_boot):
+        idx = [i for d in (rng.choice(day_keys) for _ in day_keys) for i in days[d]]  # NOSONAR
+        yb = y[idx]
+        entry: dict[str, Any] = {"base_rate": round(float(yb.mean()), 5), "coef": coef, "intercept": intercept}
+        if len(set(yb)) == 2:
+            cb = _fit_logistic(X[idx], yb, c)
+            entry["coef"] = {k: round(float(w), 5) for k, w in zip(FEATURES, cb.coef_[0])}
+            entry["intercept"] = round(float(cb.intercept_[0]), 5)
+        boot.append(entry)
+    return boot
+
+
 def fit_calibration(
     rows: list[dict],
     *,
@@ -625,8 +682,6 @@ def fit_calibration(
     seed: int = 7,
 ) -> dict[str, Any]:
     """Walk-forward con purga + bootstrap por días. Devuelve el artefacto JSON."""
-    import random
-
     import numpy as np
 
     data = sorted((r for r in rows if r["label"] is not None), key=lambda r: r["time"])
@@ -635,57 +690,19 @@ def fit_calibration(
     X = np.array([[r[k] for k in FEATURES] for r in data], dtype=float)
     y = np.array([int(r["label"]) for r in data])
     times = [r["time"] for r in data]
-    purge = timedelta(minutes=5 * horizon)
 
-    oos_y: list[int] = []
-    oos_model: list[float] = []
-    oos_const: list[float] = []
-    oos_legacy_y: list[int] = []
-    oos_legacy: list[float] = []
-    bounds = np.linspace(0, len(data), folds + 1, dtype=int)
-    for k in range(1, folds):
-        a, b = bounds[k], bounds[k + 1]
-        cutoff = times[a] - purge
-        train = [i for i in range(a) if times[i] < cutoff]
-        if len(train) < 50 or len(set(y[train])) < 2:
-            continue
-        clf = _fit_logistic(X[train], y[train], c)
-        base_k = float(y[train].mean())
-        pk = clf.predict_proba(X[a:b])[:, 1]
-        oos_y += y[a:b].tolist()
-        oos_model += pk.tolist()
-        oos_const += [base_k] * (b - a)
-        for i in range(a, b):
-            if data[i]["legacy_pct"] is not None:
-                oos_legacy_y.append(int(y[i]))
-                oos_legacy.append(data[i]["legacy_pct"] / 100)
-
-    m_model = _metrics(oos_y, oos_model)
-    m_const = _metrics(oos_y, oos_const)
+    oos = _walk_forward(data, X, y, horizon=horizon, folds=folds, c=c)
+    m_model = _metrics(oos["y"], oos["model"])
+    m_const = _metrics(oos["y"], oos["const"])
     skill = 1 - m_model["brier"] / m_const["brier"] if m_const["brier"] else 0.0
     has_edge = skill > 0
 
     clf = _fit_logistic(X, y, c)
     coef = {k: round(float(w), 5) for k, w in zip(FEATURES, clf.coef_[0])}
     intercept = round(float(clf.intercept_[0]), 5)
-
-    rng = random.Random(seed)
-    days: dict[Any, list[int]] = {}
-    for i, t in enumerate(times):
-        days.setdefault(t.date(), []).append(i)
-    day_keys = list(days)
-    boot = []
-    for _ in range(n_boot):
-        idx = [i for d in (rng.choice(day_keys) for _ in day_keys) for i in days[d]]
-        yb = y[idx]
-        entry: dict[str, Any] = {"base_rate": round(float(yb.mean()), 5)}
-        if len(set(yb)) == 2:
-            cb = _fit_logistic(X[idx], yb, c)
-            entry["coef"] = {k: round(float(w), 5) for k, w in zip(FEATURES, cb.coef_[0])}
-            entry["intercept"] = round(float(cb.intercept_[0]), 5)
-        else:
-            entry["coef"], entry["intercept"] = coef, intercept
-        boot.append(entry)
+    boot = _day_bootstrap(X, y, times, (coef, intercept), c=c, n_boot=n_boot, seed=seed)
+    oos_y, oos_model = oos["y"], oos["model"]
+    oos_legacy_y, oos_legacy = oos["legacy_y"], oos["legacy"]
 
     edges = [0.0, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 1.01]
     risk = sorted(r["risk_pct"] for r in data if r["risk_pct"])
