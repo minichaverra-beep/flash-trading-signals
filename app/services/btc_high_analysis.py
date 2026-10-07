@@ -587,13 +587,41 @@ def compute_advanced_scorecard(
         ))
         combined = blended
 
-    categories["fusion_score"] = round(combined, 1)
     categories["fusion_weights"] = {
         k: round(wt / total_w, 3)
         for k, (_, wt) in zip(used_keys, scores)
     } if total_w else {}
 
-    rows.append(("**Probabilidad de éxito**", f"**{combined:.0f}%**", "100%", "pesos + acuerdo entre capas"))
+    from app.models.probability_calibration import calibrated_estimate, store_estimate
+
+    est = calibrated_estimate(data, crt, categories=categories) if setup_mode != "reverse" else None
+    if est:
+        legacy = combined
+        store_estimate(categories, est, legacy_pct=legacy)
+        combined = est["p"] * 100
+        # Capas heurísticas: se muestran como referencia, no ponderan el %
+        rows = [(c, s, "info" if p not in ("—", "") else p, n) for c, s, p, n in rows]
+        layers = ", ".join(est["layers_used"]) or "ninguna (ML/Neural sin validación OOS)"
+        rows.append(("Fusión heurística (anterior)", f"{legacy:.0f}%", "info", "pesos fijos sin backtest"))
+        rows.append(("Capas ML/Neural en el %", layers, "—", "solo si mejoran fuera de muestra"))
+        rows.append((
+            "EV por operación",
+            f"{est['ev_r']:+.2f}R",
+            "—",
+            f"R:R 1:{est['rr']:g} · costo {est['cost_r']:.2f}R · Kelly¼ {est['kelly'] * 100:.1f}% riesgo",
+        ))
+        kind = "calibrado walk-forward" if est["has_edge"] else "tasa base (sin ventaja OOS)"
+        conf = " · baja confianza" if est["low_confidence"] else ""
+        rows.append((
+            "**Probabilidad de éxito**",
+            f"**{combined:.0f}%**",
+            f"80%: {est['lo'] * 100:.0f}–{est['hi'] * 100:.0f}%",
+            f"{kind} · n={est['n']} (n_eff {est['n_eff']}){conf}",
+        ))
+    else:
+        rows.append(("**Probabilidad de éxito**", f"**{combined:.0f}%**", "100%", "pesos + acuerdo entre capas"))
+
+    categories["fusion_score"] = round(combined, 1)
     return combined, rows
 
 
@@ -641,13 +669,24 @@ def format_executive_synthesis(
         lines.append(f"- **Bando:** CLI y H1 alineados (**{bando_cli}**)")
 
     # Integrated verdict
-    if combined >= 75 and verdict == "ENTRAR":
+    if categories.get("prob_calibrated"):
+        lo, hi = categories.get("prob_ci", (combined, combined))
+        vtxt = (
+            f"**Veredicto integrado:** {verdict} — probabilidad calibrada {combined:.0f}% "
+            f"(80%: {lo:.0f}–{hi:.0f}%) · EV {categories.get('ev_r', 0):+.2f}R"
+        )
+    elif combined >= 75 and verdict == "ENTRAR":
         vtxt = f"**Veredicto integrado:** ENTRAR candidato A+ (score combinado {combined:.0f}%)"
     elif combined >= 63:
         vtxt = f"**Veredicto integrado:** ESPERAR — score {combined:.0f}% requiere confirmación TV"
     else:
         vtxt = f"**Veredicto integrado:** {verdict} — score combinado {combined:.0f}%"
     lines.append(f"- {vtxt}")
+    if categories.get("prob_calibrated") and categories.get("prob_legacy_pct") is not None:
+        lines.append(
+            f"- **Fusión heurística anterior:** {categories['prob_legacy_pct']:.0f}% "
+            "(referencia; sin calibrar)"
+        )
 
     if setup_mode == "reverse":
         wr = e2.get("winrate", "~61%")
@@ -2296,6 +2335,13 @@ def write_high_signal(
     )
     cats["winrate"] = wr_val
     cats["winrate_source"] = wr_src
+    if not history_mode and ctx.get("prob_estimate"):
+        from app.models.probability_calibration import log_prediction
+
+        try:
+            log_prediction(data, ctx["prob_estimate"])
+        except OSError:
+            pass
     if advanced:
         cats["advanced"] = True
         cats["advanced_rows"] = build_advanced_table_rows(

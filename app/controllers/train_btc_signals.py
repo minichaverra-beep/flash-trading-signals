@@ -26,8 +26,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from sklearn.model_selection import train_test_split
-
 from app.config import PROJECT_ROOT, LIVE_DIR, DATA_DIR, MODELS_DIR, TRAINING_NEURAL_DIR
 
 BASE = PROJECT_ROOT
@@ -340,10 +338,21 @@ def winrate_by_bucket(y_true: np.ndarray, y_prob: np.ndarray, buckets: list[tupl
     return out
 
 
-def train_model(X: np.ndarray, y: np.ndarray, algorithm: str = "gb"):
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, random_state=42, stratify=y if len(np.unique(y)) > 1 else None,
-    )
+def temporal_split(
+    X: np.ndarray, y: np.ndarray, test_size: float = 0.25, purge: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Train = pasado, test = futuro; descarta `purge` muestras antes del corte.
+
+    Las muestras son cronológicas y sus ventanas de resultado se solapan, así que
+    un split aleatorio filtra el futuro al entrenamiento.
+    """
+    cut = int(len(y) * (1 - test_size))
+    train_end = max(1, cut - purge)
+    return X[:train_end], X[cut:], y[:train_end], y[cut:]
+
+
+def train_model(X: np.ndarray, y: np.ndarray, algorithm: str = "gb", purge: int = 0):
+    X_train, X_test, y_train, y_test = temporal_split(X, y, purge=purge)
 
     if algorithm == "rf":
         clf = RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42, class_weight="balanced")
@@ -361,6 +370,8 @@ def train_model(X: np.ndarray, y: np.ndarray, algorithm: str = "gb"):
         "precision": round(float(precision_score(y_test, y_pred, zero_division=0)), 4),
         "recall": round(float(recall_score(y_test, y_pred, zero_division=0)), 4),
         "test_winrate_baseline": round(float(y_test.mean()), 4),
+        "brier": round(float(np.mean((y_prob - y_test) ** 2)), 5),
+        "brier_constant": round(float(np.mean((y_train.mean() - y_test) ** 2)), 5),
         "train_samples": int(len(y_train)),
         "test_samples": int(len(y_test)),
         "report": classification_report(y_test, y_pred, zero_division=0),
@@ -399,8 +410,10 @@ def write_report(
         f"| Win rate dataset | {meta_df['label'].mean()*100:.1f}% |",
         f"| Tiempo entrenamiento | {elapsed:.1f}s |",
         "",
-        "## Métricas test (hold-out 25%)",
+        "## Métricas test (último 25% temporal, con purga)",
         "",
+        f"- **Brier:** {metrics['brier']} (constante tasa base: {metrics['brier_constant']}) — "
+        f"{'mejora' if metrics['brier'] < metrics['brier_constant'] else 'NO mejora'} la tasa base",
         f"- **Accuracy:** {metrics['accuracy']}",
         f"- **Precision:** {metrics['precision']}",
         f"- **Recall:** {metrics['recall']}",
@@ -461,7 +474,9 @@ def main() -> int:
         print(f"Samples: {len(y)} | Win rate: {y.mean()*100:.1f}%")
 
         print(f"Training ({args.algorithm})...")
-        model, metrics = train_model(X, y, algorithm=args.algorithm)
+        model, metrics = train_model(
+            X, y, algorithm=args.algorithm, purge=max(1, args.horizon // max(1, args.stride)),
+        )
 
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, MODEL_PATH)

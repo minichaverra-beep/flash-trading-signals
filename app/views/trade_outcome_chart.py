@@ -18,8 +18,10 @@ señal, y Binance BTCUSDT para BTC (la misma fuente que la corrida de la señal)
 
 Con la operación real de MT5 (`--real-entry/--real-exit/--real-close-time`, opcionales
 `--real-open-time/--real-sl/--real-ticket`) la caja va de la entrada real al cierre real, la salida
-se dibuja en su precio real y el plan (TP/SL) queda fino y discontinuo para comparar. Sin MT5 la
-caja termina en la vela donde las velas tocan TP/SL, rotulada como cierre estimado.
+se dibuja en su precio real y el plan (TP/SL) queda fino y discontinuo para comparar. Con
+`--trades-json` (original + duplicada de mt5-sent) se dibujan las dos operaciones y el resultado es
+la suma de sus PnL. Sin MT5 la caja termina en la vela donde las velas tocan TP/SL, rotulada como
+cierre estimado. La caja nunca baja de `MIN_BOX_CANDLES` velas de ancho.
 
 CLI: `python -m app.views.trade_outcome_chart --market xauusd --signal-time ISO --entry .. --sl ..
 --tp .. --out x.png [--price ..] [--direction LONG|SHORT] [--real-entry .. --real-exit ..
@@ -33,7 +35,7 @@ import os
 import sys
 import time
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -175,13 +177,23 @@ class TradeOutcome:
 
 @dataclass(frozen=True)
 class RealExecution:
-    """Operación cerrada en MT5: precios reales y horas UTC (salida = media ponderada de los cierres)."""
+    """Operación cerrada en MT5: precios reales y horas UTC (salida = media ponderada de los cierres).
+
+    Sin `open_time`/`close_time` (envíos sin horas guardadas y sin puente) se estiman con las velas:
+    primera vela desde `sent_at` que toca la entrada y primera posterior que toca la salida.
+    `label`: "" (operación única), "original" o "duplicada".
+    """
     entry: float
     exit: float
-    close_time: datetime
+    close_time: datetime | None
     open_time: datetime | None = None
     sl: float | None = None
     ticket: int | None = None
+    tp: float | None = None
+    label: str = ""
+    pnl_usd: float | None = None
+    close_reason: str | None = None
+    sent_at: datetime | None = None
 
 
 def infer_direction(entry: float, sl: float, tp: float) -> str | None:
@@ -424,6 +436,7 @@ class TradeStats:
     units: float | None = None
     mfe_r: float | None = None
     mae_r: float | None = None
+    duration_estimated: bool = False
 
 
 def compute_trade_stats(
@@ -462,6 +475,7 @@ def compute_trade_stats(
         filled=True, in_progress=outcome.status == "open", duration_min=duration,
         exit_price=exit_price, r_multiple=in_r(move),
         units=None if move is None else move / unit_size, mfe_r=in_r(fav), mae_r=in_r(adv),
+        duration_estimated=True,
     )
 
 
@@ -475,10 +489,46 @@ def candle_index_at(candles: list[dict], t: datetime) -> int:
     return idx
 
 
+def _first_touch(post: list[dict], start: int, price: float) -> int | None:
+    for i in range(max(start, 0), len(post)):
+        if post[i]["low"] <= price <= post[i]["high"]:
+            return i
+    return None
+
+
+@dataclass(frozen=True)
+class TradeSpan:
+    """Velas de entrada/cierre de una operación real y sus horas (reales de MT5 o estimadas)."""
+    fill: int
+    exit: int
+    open_time: datetime
+    close_time: datetime
+    open_estimated: bool = False
+    close_estimated: bool = False
+
+
+def trade_span(real: RealExecution, post: list[dict]) -> TradeSpan:
+    """Horas reales de MT5 si las hay; si no, la primera vela que toca la entrada/salida."""
+    if real.open_time:
+        fill, open_t = candle_index_at(post, real.open_time), real.open_time
+    else:
+        start = candle_index_at(post, real.sent_at) if real.sent_at else 0
+        touched = _first_touch(post, start, real.entry)
+        fill = start if touched is None else touched
+        open_t = max(post[fill]["open_time"], real.sent_at) if real.sent_at else post[fill]["open_time"]
+    if real.close_time:
+        exit_i, close_t = max(candle_index_at(post, real.close_time), fill), real.close_time
+    else:
+        touched = _first_touch(post, fill, real.exit)
+        exit_i = fill if touched is None else touched
+        close_t = max(post[exit_i]["open_time"], open_t)
+    return TradeSpan(fill, exit_i, open_t, close_t, real.open_time is None, real.close_time is None)
+
+
 def real_indices(real: RealExecution, post: list[dict]) -> tuple[int, int]:
     """(vela de la entrada real, vela del cierre real) en `post`."""
-    fill = candle_index_at(post, real.open_time) if real.open_time else 0
-    return fill, max(candle_index_at(post, real.close_time), fill)
+    span = trade_span(real, post)
+    return span.fill, span.exit
 
 
 def real_move(real: RealExecution, direction: str) -> float:
@@ -493,9 +543,9 @@ def compute_real_stats(
 
     MFE/MAE salen de las velas entre la vela de entrada y la de cierre (aproximación M5).
     """
-    f, end = real_indices(real, post)
-    start = real.open_time or post[f]["open_time"]
-    duration = max(int((real.close_time - start).total_seconds() // 60), 0)
+    span = trade_span(real, post)
+    f, end = span.fill, span.exit
+    duration = max(int((span.close_time - span.open_time).total_seconds() // 60), 0)
     risk = abs(real.entry - sl)
     long_ = direction == "LONG"
     fav = adv = 0.0
@@ -511,6 +561,7 @@ def compute_real_stats(
     return TradeStats(
         filled=True, in_progress=False, duration_min=duration, exit_price=real.exit,
         r_multiple=in_r(move), units=move / unit_size, mfe_r=in_r(fav), mae_r=in_r(min(adv, risk)),
+        duration_estimated=span.open_estimated or span.close_estimated,
     )
 
 
@@ -527,6 +578,14 @@ def fmt_duration(minutes: int) -> str:
     return f"{h}h {m:02d}m" if h else f"{m}m"
 
 
+def fmt_duration_label(minutes: int, *, estimated: bool) -> str:
+    """Duración para el gráfico: con velas M5 no se distingue por debajo de una vela («<5m»)."""
+    minutes = max(int(minutes), 0)
+    if estimated and minutes < 5:
+        return "<5m"
+    return "<1m" if minutes < 1 else fmt_duration(minutes)
+
+
 def stats_lines(
     stats: TradeStats, outcome: TradeOutcome, *, direction: str, entry: float, unit_label: str, fmt: str,
     exit_note: str | None = None,
@@ -539,7 +598,8 @@ def stats_lines(
     if not stats.filled:
         reason = outcome.reason[:1].upper() + outcome.reason[1:] if outcome.reason else ""
         return [f"{direction}{sep}Entrada no ejecutada"] + ([reason] if reason else [])
-    head = f"{direction}{sep}Duración {fmt_duration(stats.duration_min or 0)}"
+    duration = fmt_duration_label(stats.duration_min or 0, estimated=stats.duration_estimated)
+    head = f"{direction}{sep}Duración {duration}"
     lines = [head + (f"{sep}en curso" if stats.in_progress else "")]
     parts = []
     if stats.r_multiple is not None and stats.units is not None:
@@ -571,16 +631,54 @@ def stats_payload(stats: TradeStats, unit_label: str) -> dict[str, Any]:
     }
 
 
-def _draw_exit_marker(ax, x: float, y: float, text: str, color: str, *, above: bool) -> None:
-    """Vela de salida resaltada + etiqueta fuera de la caja con flecha al nivel tocado."""
-    ax.axvspan(x - 0.5, x + 0.5, color=color, alpha=0.12, zorder=1, linewidth=0)
-    ax.scatter([x], [y], s=30, color=color, edgecolors=BG, linewidths=1.0, zorder=9)
+MIN_BOX_CANDLES = 6  # una operación de 0–5 min no se comprime a una sola vela
+SIDE_COLORS = {"LONG": "#4fa3ff", "SHORT": "#ff6b6b"}  # flecha de entrada estilo MT5: compra azul, venta roja
+SIDE_WORDS = {"LONG": "Compra", "SHORT": "Venta"}
+DUP_ENTRY_C = "#c586c0"
+TRADE_NAMES = {"original": "Original", "duplicada": "Duplicada"}
+TRADE_SHORT = {"original": "Orig", "duplicada": "Dup"}
+REASON_WORDS = {"tp": "TP", "sl": "SL", "stopout": "stop out", "manual": "manual"}
+CONNECTOR_LS = (0, (4, 3))
+LABEL_STEP_PT = 19
+
+
+def box_span(x_fill: float, x_exit: float, *, x_start: float | None = None) -> tuple[float, float]:
+    """Caja de la operación: de la vela de entrada (o `x_start`) a la de cierre, con ancho mínimo."""
+    x0 = (x_fill if x_start is None else x_start) - 0.5
+    return x0, max(x_exit + 0.5, x0 + MIN_BOX_CANDLES)
+
+
+def _draw_entry_marker(ax, x: float, y: float, direction: str, *, hollow: bool = False) -> None:
+    col = SIDE_COLORS.get(direction, ENTRY_C)
+    ax.scatter([x], [y], s=110, marker="v" if direction == "SHORT" else "^", color=BG if hollow else col,
+               edgecolors=col if hollow else BG, linewidths=1.6 if hollow else 1.0, zorder=11)
+
+
+def _draw_exit_marker(ax, x: float, y: float, color: str, *, win: bool, hollow: bool = False) -> None:
+    """Cierre: círculo si gana, aspa si pierde (color por resultado); hueco para la duplicada."""
+    ax.scatter([x], [y], s=85 if win else 95, marker="o" if win else "X", color=BG if hollow else color,
+               edgecolors=color if hollow else BG, linewidths=1.6 if hollow else 1.0, zorder=11)
+
+
+class _LabelSlots:
+    """Apila las etiquetas de los marcadores por lado (encima/debajo · izquierda/derecha) sin solaparlas."""
+
+    def __init__(self) -> None:
+        self.used: dict[tuple[bool, bool], int] = {}
+
+    def offset(self, *, above: bool, right: bool) -> float:
+        k = self.used.get((above, right), 0)
+        self.used[(above, right)] = k + 1
+        dy = 14 + LABEL_STEP_PT * k
+        return dy if above else -dy
+
+
+def _marker_label(ax, x: float, y: float, text: str, color: str, *, dx: float, dy: float) -> None:
     ax.annotate(
-        text, (x, y), xytext=(0, 34 if above else -34), textcoords="offset points",
-        ha="center", va="bottom" if above else "top", color=color, fontsize=9.5,
-        fontweight="bold", zorder=10,
-        arrowprops={"arrowstyle": "-|>", "color": color, "linewidth": 1.0},
-        bbox={"boxstyle": "round,pad=0.3", "facecolor": PANEL, "edgecolor": color, "alpha": 0.95},
+        text, (x, y), xytext=(dx, dy), textcoords="offset points",
+        ha="left" if dx >= 0 else "right", va="center", color=color, fontsize=9, fontweight="bold",
+        zorder=12, arrowprops={"arrowstyle": "-", "color": color, "linewidth": 0.8, "alpha": 0.8},
+        bbox={"boxstyle": "round,pad=0.25", "facecolor": PANEL, "edgecolor": color, "alpha": 0.93},
     )
 
 
@@ -627,36 +725,88 @@ def _draw_plan_levels(ax, tags: list[dict], plan: dict[str, float], drawn: dict[
         tags.append({"y": v, "text": f"{name} {v:{fmt}}", "fg": col, "bg": PANEL, "edge": col, "prio": 2})
 
 
-def _draw_real_box(ax, tags: list[dict], real: RealExecution, *, direction: str, sl: float,
-                   x0: float, x1: float, unit, fmt: str) -> None:
-    """Caja de la operación real: entrada real → salida real (verde/roja) sobre la zona de riesgo."""
+def trade_gain(real: RealExecution, direction: str) -> float:
+    """Signo del resultado: PnL en $ de MT5 si existe (incluye comisiones), si no el recorrido."""
+    return real.pnl_usd if real.pnl_usd is not None else real_move(real, direction)
+
+
+def trade_result_text(real: RealExecution, direction: str, unit) -> str:
+    if real.pnl_usd is not None:
+        return f"{_signed(real.pnl_usd, 2)} $"
+    return f"{_signed(real_move(real, direction) / unit.size)} {unit.label}"
+
+
+def _hm_mark(t: datetime, estimated: bool) -> str:
+    return ("≈" if estimated else "") + _fmt_hm(_as_utc(t))
+
+
+def _time_x(fr: "_Frame", post: list[dict], i: int, t: datetime, estimated: bool) -> float:
+    """X de un instante dentro de su vela (hora real de MT5); estimado → centro de la vela."""
+    x = float(fr.x(i))
+    if estimated or fr.factor != 1:
+        return x
+    frac = (_as_utc(t) - post[i]["open_time"]).total_seconds() / M5.total_seconds()
+    return x - 0.5 + min(max(frac, 0.1), 0.9)
+
+
+def _draw_trade(ax, tags: list[dict], fr: "_Frame", real: RealExecution, span: TradeSpan, post: list[dict], *,
+                direction: str, plan_sl: float, unit, fmt: str, slots: _LabelSlots) -> None:
+    """Una operación real: caja entrada→salida (ancho mínimo), flecha de entrada, marcador de cierre
+    unidos por una línea discontinua y etiquetas apiladas. La duplicada va en discontinuo/hueca."""
     from matplotlib.patches import Rectangle
 
     e, x = real.entry, real.exit
-    move = real_move(real, direction)
-    color = _result_color(move)
-    text_c = TP_TEXT if move > 0 else SL_TEXT
+    gain = trade_gain(real, direction)
+    color = _result_color(gain)
+    dup = real.label == "duplicada"
+    sl = real.sl or plan_sl
+    x0, x1 = box_span(fr.x(span.fill), fr.x(span.exit))
     w = x1 - x0
-    ax.add_patch(Rectangle((x0, min(e, sl)), w, abs(sl - e), facecolor=SL_C, alpha=0.10,
+    edge_ls = (0, (4, 2)) if dup else "-"
+    entry_c = DUP_ENTRY_C if dup else ENTRY_C
+
+    ax.add_patch(Rectangle((x0, min(e, sl)), w, abs(sl - e), facecolor=SL_C, alpha=0.08,
                            edgecolor="none", zorder=2))
-    ax.add_patch(Rectangle((x0, min(e, x)), w, abs(x - e), facecolor=color, alpha=0.28,
-                           edgecolor=color, linewidth=1.0, zorder=2))
-    ax.hlines(e, x0, x1, color=ENTRY_C, linewidth=1.6, zorder=5)
-    ax.hlines(x, x0, x1, color=color, linewidth=1.4, zorder=5)
-    ax.hlines(sl, x0, x1, color=SL_C, linewidth=1.0, zorder=5)
-    up = x >= e
-    tx = x0 + 0.6
-    ax.text(tx, x, f"Salida {x:{fmt}} · {_signed(move / unit.size)} {unit.label}", color=text_c,
-            fontsize=9, fontweight="bold", va="bottom" if up else "top", ha="left", zorder=6)
-    ax.text(tx, e, f"Entrada MT5 {e:{fmt}}", color=ENTRY_C, fontsize=9, fontweight="bold",
-            va="top" if up else "bottom", ha="left", zorder=6)
-    ax.text(tx, sl, f"SL {sl:{fmt}}", color=SL_TEXT, fontsize=8.5,
-            va="bottom" if sl > e else "top", ha="left", zorder=6)
+    if real.tp:
+        ax.add_patch(Rectangle((x0, min(e, real.tp)), w, abs(real.tp - e), facecolor=TP_C, alpha=0.06,
+                               edgecolor="none", zorder=2))
+    result = Rectangle((x0, min(e, x)), w, abs(x - e), facecolor=color, alpha=0.2 if dup else 0.28,
+                       edgecolor=color, linewidth=1.0, linestyle=edge_ls, zorder=3)
+    result.set_gid("trade-result")
+    ax.add_patch(result)
+    ax.hlines(e, x0, x1, color=entry_c, linewidth=1.5, linestyles=edge_ls, zorder=5)
+    ax.hlines(x, x0, x1, color=color, linewidth=1.3, linestyles=edge_ls, zorder=5)
+    ax.hlines(sl, x0, x1, color=SL_C, linewidth=0.9, linestyles=edge_ls, alpha=0.8, zorder=5)
+    if real.tp:
+        ax.hlines(real.tp, x0, x1, color=TP_C, linewidth=0.9, linestyles=edge_ls, alpha=0.8, zorder=5)
+
+    xe = _time_x(fr, post, span.fill, span.open_time, span.open_estimated)
+    xc = _time_x(fr, post, span.exit, span.close_time, span.close_estimated)
+    ax.plot([xe, xc], [e, x], color=color, linewidth=1.3, linestyle=CONNECTOR_LS, zorder=10)
+    _draw_entry_marker(ax, xe, e, direction, hollow=dup)
+    _draw_exit_marker(ax, xc, x, color, win=gain > 0, hollow=dup)
+
+    short = TRADE_SHORT.get(real.label, real.label)
+    who = f"{short} " if short else ""
+    reason = REASON_WORDS.get(real.close_reason or "")
+    reason_txt = f"{reason} " if reason in ("TP", "SL") else ""
+    mark = "✓" if gain > 0 else "✗"
+    exit_above = x >= e
+    _marker_label(ax, xc, x, f"{mark} {who}{reason_txt}{trade_result_text(real, direction, unit)} · "
+                  f"{_hm_mark(span.close_time, span.close_estimated)}",
+                  TP_TEXT if gain > 0 else SL_TEXT, dx=12, dy=slots.offset(above=exit_above, right=True))
+    side = SIDE_WORDS.get(direction, direction)
+    _marker_label(ax, xe, e, f"{who}{side if not short else side.lower()} {_hm_mark(span.open_time, span.open_estimated)}",
+                  entry_c, dx=-12, dy=slots.offset(above=not exit_above, right=False))
+
+    entry_name = "Dup" if dup else "Entrada"
+    exit_name = "Cierre Dup" if dup else "Cierre"
     tags.extend([
-        {"y": x, "text": f"Salida {x:{fmt}}", "fg": BG, "bg": color, "edge": color, "prio": 1},
-        {"y": e, "text": f"Entrada {e:{fmt}}", "fg": BG, "bg": ENTRY_C, "edge": ENTRY_C, "prio": 1},
-        {"y": sl, "text": f"SL {sl:{fmt}}", "fg": BG, "bg": SL_C, "edge": SL_C, "prio": 1},
+        {"y": x, "text": f"{exit_name} {x:{fmt}}", "fg": color, "bg": PANEL, "edge": color, "prio": 2},
+        {"y": e, "text": f"{entry_name} {e:{fmt}}", "fg": BG, "bg": entry_c, "edge": entry_c, "prio": 1},
     ])
+    if not dup:
+        tags.append({"y": sl, "text": f"SL {sl:{fmt}}", "fg": BG, "bg": SL_C, "edge": SL_C, "prio": 1})
 
 
 @dataclass(frozen=True)
@@ -687,40 +837,80 @@ def _draw_detected(ax, tags: list[dict], fr: _Frame, outcome: TradeOutcome, post
     x0 = fr.offset - 0.5
     fill_x, exit_x = fr.x(outcome.fill_index), fr.x(outcome.exit_index)
     resolved = exit_x is not None and outcome.status in ("tp", "sl", "ambiguous")
-    x1 = max(exit_x + 0.5, x0 + 1) if resolved else max(len(fr.show) - 0.5, x0 + 4)
+    if resolved:
+        x1 = box_span(fr.offset, exit_x)[1]
+    else:
+        x1 = max(len(fr.show) - 0.5, x0 + MIN_BOX_CANDLES)
     word = "Entrada" if market_entry else "Entrada límite"
     _draw_position_box(ax, tags, pos, x0=x0, x1=x1, active=outcome.fill_index is not None,
                        entry_word=word, fmt=fmt, dec=dec)
     if fill_x is not None:
-        ax.scatter([fill_x], [entry], s=30, color=ENTRY_C, edgecolors=BG, linewidths=1.0, zorder=9)
+        _draw_entry_marker(ax, fill_x, entry, pos["direction"])
     if not resolved:
         return None
     level = sl if outcome.status == "sl" else tp
+    color = OUTCOME_COLORS.get(outcome.status, WARN_C)
     when = _fmt_hm(post[outcome.exit_index]["open_time"])
-    estimated = f"cierre estimado {when}"
-    text = {"tp": f"✓ TP alcanzado · {estimated}", "sl": f"✗ SL alcanzado · {estimated}"}.get(
+    if fill_x is not None:
+        ax.plot([fill_x, exit_x], [entry, level], color=color, linewidth=1.3, linestyle=CONNECTOR_LS, zorder=10)
+    _draw_exit_marker(ax, exit_x, level, color, win=outcome.status == "tp")
+    text = {"tp": f"✓ TP alcanzado ≈{when}", "sl": f"✗ SL alcanzado ≈{when}"}.get(
         outcome.status, f"? TP y SL {when}")
-    _draw_exit_marker(ax, exit_x, level, text, OUTCOME_COLORS.get(outcome.status, WARN_C), above=(level > entry))
-    return estimated if outcome.status in ("tp", "sl") else None
+    # fuera de la caja: encima de un nivel superior, debajo de uno inferior
+    _marker_label(ax, exit_x, level, text, color, dx=12, dy=16 if level > entry else -16)
+    return f"cierre estimado {when}" if outcome.status in ("tp", "sl") else None
 
 
-def _draw_real(ax, tags: list[dict], fr: _Frame, real: RealExecution, post: list[dict], *,
-               pos: dict, direction: str, sl: float, fmt: str, dec: int) -> str:
-    """Operación real de MT5 con el plan discontinuo; devuelve la nota de salida («MT5 20:54 UTC»)."""
-    fill_i, exit_i = real_indices(real, post)
-    fill_x, exit_x = fr.x(fill_i), fr.x(exit_i)
-    x0, x1 = fill_x - 0.5, exit_x + 0.5
+def _draw_trades(ax, tags: list[dict], fr: _Frame, trades: list[RealExecution], spans: list[TradeSpan],
+                 post: list[dict], *, pos: dict, direction: str, fmt: str, dec: int) -> None:
+    """Operaciones reales de MT5 (original y duplicada) sobre el plan fino y discontinuo."""
+    main = trades[0]
     _draw_plan_levels(ax, tags, {"entry": pos["entry"], "sl": pos["sl"], "tp": pos["tp"]},
-                      {"entry": real.entry, "sl": sl}, x0=fr.offset - 0.5, x1=len(fr.show) - 0.5,
-                      fmt=fmt, dec=dec)
-    _draw_real_box(ax, tags, real, direction=direction, sl=sl, x0=x0, x1=x1, unit=pos["unit"], fmt=fmt)
-    ax.scatter([fill_x], [real.entry], s=30, color=ENTRY_C, edgecolors=BG, linewidths=1.0, zorder=9)
-    move = real_move(real, direction)
-    when = _fmt_hm(_as_utc(real.close_time))
-    mark = "✓" if move > 0 else "✗"
-    _draw_exit_marker(ax, exit_x, real.exit, f"{mark} Salida MT5 {when}", _result_color(move),
-                      above=real.exit > real.entry)
-    return f"MT5 {when} UTC"
+                      {"entry": main.entry, "sl": main.sl or pos["sl"]}, x0=fr.offset - 0.5,
+                      x1=len(fr.show) - 0.5, fmt=fmt, dec=dec)
+    slots = _LabelSlots()
+    for real, span in zip(trades, spans):
+        _draw_trade(ax, tags, fr, real, span, post, direction=direction, plan_sl=pos["sl"],
+                    unit=pos["unit"], fmt=fmt, slots=slots)
+
+
+def combined_pnl(trades: list[RealExecution]) -> float | None:
+    """PnL total en $ (suma, como combineAnnotations del server); None si ninguna lo trae."""
+    vals = [t.pnl_usd for t in trades if t.pnl_usd is not None]
+    return round(sum(vals), 2) if vals else None
+
+
+def multi_title(trades: list[RealExecution], direction: str, unit) -> str:
+    """«+9.32 $ (original −2.42 $ · duplicada TP +11.74 $)»."""
+    parts = []
+    for t in trades:
+        reason = REASON_WORDS.get(t.close_reason or "")
+        bits = [t.label or "operación", reason if reason in ("TP", "SL") else "",
+                trade_result_text(t, direction, unit)]
+        parts.append(" ".join(b for b in bits if b))
+    total = combined_pnl(trades)
+    head = f"{_signed(total, 2)} $" if total is not None else f"{len(trades)} operaciones"
+    return f"{head} ({' · '.join(parts)})"
+
+
+def multi_lines(trades: list[RealExecution], spans: list[TradeSpan], *, direction: str, unit,
+                fmt: str) -> list[str]:
+    """Recuadro con varias operaciones: total y una línea por operación (precios, horas, duración, $)."""
+    sep = "  ·  "
+    total = combined_pnl(trades)
+    head = f"{direction}{sep}{len(trades)} operaciones"
+    lines = [head + (f"{sep}Total {_signed(total, 2)} $" if total is not None else "")]
+    for t, s in zip(trades, spans):
+        minutes = int((_as_utc(s.close_time) - _as_utc(s.open_time)).total_seconds() // 60)
+        dur = fmt_duration_label(minutes, estimated=s.open_estimated or s.close_estimated)
+        hours = f"{_hm_mark(s.open_time, s.open_estimated)}→{_hm_mark(s.close_time, s.close_estimated)} UTC"
+        parts = [f"{TRADE_NAMES.get(t.label, t.label or 'Operación')}: {t.entry:{fmt}} → {t.exit:{fmt}}",
+                 f"{hours} ({dur})", trade_result_text(t, direction, unit)]
+        reason = REASON_WORDS.get(t.close_reason or "")
+        if reason:
+            parts.append(reason)
+        lines.append(sep.join(parts))
+    return lines
 
 
 def render_outcome_chart(
@@ -728,7 +918,10 @@ def render_outcome_chart(
     asset: str, direction: str, entry: float, sl: float, tp: float, dec: int,
     signal_time: datetime, market_entry: bool, note: str | None = None, dpi: int = 140,
     ref_price: float | None = None, real: RealExecution | None = None,
+    trades: list[RealExecution] | None = None,
 ) -> Path:
+    """Gráfico del resultado. `trades` (original + duplicada) o `real` (una sola) → operaciones de MT5;
+    sin ellas, el resultado estimado con las velas."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -736,14 +929,17 @@ def render_outcome_chart(
 
     from app.views.illustrate_high_entry import savefig_png
 
-    fr = _frame(pre, post, real_indices(real, post)[1] if real else outcome.exit_index)
+    trades = list(trades or ([real] if real else []))
+    spans = [trade_span(t, post) for t in trades]
+    fr = _frame(pre, post, max(s.exit for s in spans) if spans else outcome.exit_index)
     show = fr.show
     price = show[-1]["close"]
     pos = compute_position_levels(direction, entry, sl, tp, asset)
-    real_sl = (real.sl or sl) if real else sl
-    if real:
-        dec = price_decimals(dec, real.entry, real.exit, real_sl)
+    trade_levels = [v for t in trades for v in (t.entry, t.exit, t.sl or sl, t.tp) if v]
+    if trades:
+        dec = price_decimals(dec, *trade_levels)
     fmt = f".{dec}f"
+    multi = len(trades) > 1 or any(t.label for t in trades)
     interval = "M5" if fr.factor == 1 else f"M{5 * fr.factor} (detección en M5)"
 
     fig = None
@@ -752,8 +948,7 @@ def render_outcome_chart(
         ax.set_facecolor(BG)
         fig.subplots_adjust(left=0.025, right=0.885, top=0.865, bottom=0.12)
         _draw_candles(ax, show, price)
-        extra = (real.entry, real.exit, real_sl) if real else ()
-        ax.set_ylim(*_y_limits(show, price, (entry, sl, tp, *extra)))
+        ax.set_ylim(*_y_limits(show, price, (entry, sl, tp, *trade_levels)))
         ax.set_xlim(-1, len(show) + 2)
 
         x0 = fr.offset - 0.5
@@ -762,12 +957,21 @@ def render_outcome_chart(
         ax.text(x0 - 0.4, ymax - (ymax - ymin) * 0.015, f"Señal {_fmt_hm(signal_time)} UTC",
                 color=MUTED, fontsize=8.5, ha="right", va="top", zorder=6)
         tags: list[dict] = []
-        if real:
-            exit_note = _draw_real(ax, tags, fr, real, post, pos=pos, direction=direction, sl=real_sl,
-                                   fmt=fmt, dec=dec)
-            move = real_move(real, direction)
+        lines: list[str] | None = None
+        if trades:
+            _draw_trades(ax, tags, fr, trades, spans, post, pos=pos, direction=direction, fmt=fmt, dec=dec)
+        if multi:
+            total = combined_pnl(trades)
+            color = _result_color(total if total is not None else sum(real_move(t, direction) for t in trades))
+            result = multi_title(trades, direction, pos["unit"])
+            lines = multi_lines(trades, spans, direction=direction, unit=pos["unit"], fmt=fmt)
+        elif trades:
+            one, span = trades[0], spans[0]
+            exit_note = (f"cierre estimado {_fmt_hm(span.close_time)}" if span.close_estimated
+                         else f"MT5 {_fmt_hm(_as_utc(span.close_time))} UTC")
+            move = real_move(one, direction)
             color, result = _result_color(move), real_title(move)
-            stats = compute_real_stats(real, post, direction=direction, sl=real_sl, unit_size=pos["unit"].size)
+            stats = compute_real_stats(one, post, direction=direction, sl=one.sl or sl, unit_size=pos["unit"].size)
         else:
             exit_note = _draw_detected(ax, tags, fr, outcome, post, pos=pos, entry=entry, sl=sl, tp=tp,
                                        market_entry=market_entry, fmt=fmt, dec=dec)
@@ -782,8 +986,9 @@ def render_outcome_chart(
         tags.insert(0, {"y": price, "text": f"{price:{fmt}}", "fg": BG, "bg": pcol, "edge": pcol, "prio": 0})
         _draw_axis_tags(ax, tags)
 
-        lines = stats_lines(stats, outcome, direction=direction, entry=real.entry if real else entry,
-                            unit_label=pos["unit"].label, fmt=fmt, exit_note=exit_note)
+        if lines is None:
+            lines = stats_lines(stats, outcome, direction=direction, entry=trades[0].entry if trades else entry,
+                                unit_label=pos["unit"].label, fmt=fmt, exit_note=exit_note)
         if note:
             lines.append(note)
         ax.text(0.0, 1.012, "\n".join(lines), transform=ax.transAxes, color=color, fontsize=9.5,
@@ -811,6 +1016,7 @@ def evaluate_signal(
     market: str, *, signal_time: datetime, entry: float, sl: float, tp: float,
     out_path: Path | str, price: float | None = None, direction: str | None = None,
     now: datetime | None = None, real: RealExecution | None = None,
+    trades: list[RealExecution] | None = None,
 ) -> dict[str, Any]:
     market = market.lower()
     if market not in MARKETS:
@@ -837,15 +1043,15 @@ def evaluate_signal(
     market_entry = not _is_limit_entry(pos, ref_price, dec)
     outcome = detect_outcome(post, direction=geo, entry=entry, sl=sl, tp=tp,
                              ref_price=ref_price, market_entry=market_entry)
-    if real is not None:
-        real = RealExecution(real.entry, real.exit, _as_utc(real.close_time),
-                             _as_utc(real.open_time) if real.open_time else None, real.sl, real.ticket)
+    trades = [_utc_trade(t) for t in (trades or ([real] if real is not None else []))]
+    real = trades[0] if len(trades) == 1 and not trades[0].label else None
     chart = render_with_retry(lambda: render_outcome_chart(
         pre, post, outcome, out_path, asset=cfg["asset"], direction=geo, entry=entry, sl=sl, tp=tp,
-        dec=dec, signal_time=signal_time, market_entry=market_entry, ref_price=ref_price, real=real,
+        dec=dec, signal_time=signal_time, market_entry=market_entry, ref_price=ref_price, trades=trades,
     ))
-    if real is not None:
-        stats = compute_real_stats(real, post, direction=geo, sl=real.sl or sl, unit_size=pos["unit"].size)
+    if trades:
+        main = trades[0]
+        stats = compute_real_stats(main, post, direction=geo, sl=main.sl or sl, unit_size=pos["unit"].size)
     else:
         stats = compute_trade_stats(outcome, post, direction=geo, entry=entry, sl=sl, tp=tp,
                                     unit_size=pos["unit"].size, ref_price=ref_price, market_entry=market_entry)
@@ -853,17 +1059,26 @@ def evaluate_signal(
     def iso(i: int | None) -> str | None:
         return post[i]["open_time"].isoformat() if i is not None else None
 
+    spans = [trade_span(t, post) for t in trades]
     estimated = outcome.status in ("tp", "sl") and outcome.exit_index is not None
-    if real is not None:
-        close_time, close_source = real.close_time.isoformat(), "mt5"
+    if trades:
+        last = max(spans, key=lambda s: s.close_time)
+        close_time = _as_utc(last.close_time).isoformat()
+        close_source = "velas" if last.close_estimated else "mt5"
     else:
         close_time, close_source = (iso(outcome.exit_index), "velas") if estimated else (None, None)
+    if real is not None:
+        message = real_message(real, geo, signal_time)
+    elif trades:
+        message = multi_message(trades, geo, pos["unit"])
+    else:
+        message = outcome_message(outcome, post, signal_time)
 
     return {
         "ok": True,
         "outcome": outcome.status,
         "label": OUTCOME_LABELS[outcome.status],
-        "message": real_message(real, geo, signal_time) if real else outcome_message(outcome, post, signal_time),
+        "message": message,
         "reason": outcome.reason or None,
         "detected": OUTCOME_RESULTADO.get(outcome.status),
         "direction": geo,
@@ -880,10 +1095,35 @@ def evaluate_signal(
         "real": None if real is None else {
             "ticket": real.ticket, "entry": real.entry, "exit": real.exit, "sl": real.sl,
             "openTime": real.open_time.isoformat() if real.open_time else None,
-            "closeTime": real.close_time.isoformat(),
+            "closeTime": real.close_time.isoformat() if real.close_time else None,
         },
+        "trades": [trade_payload(t, s) for t, s in zip(trades, spans)] if real is None and trades else None,
+        "combinedPnlUsd": combined_pnl(trades) if real is None and trades else None,
         # abspath y no resolve(): realpath puede devolver la ruta proxy del antivirus
         "chart": os.path.abspath(chart),
+    }
+
+
+def _utc_trade(t: RealExecution) -> RealExecution:
+    def utc(v: datetime | None) -> datetime | None:
+        return _as_utc(v) if v else None
+
+    return replace(t, close_time=utc(t.close_time), open_time=utc(t.open_time), sent_at=utc(t.sent_at))
+
+
+def multi_message(trades: list[RealExecution], direction: str, unit) -> str:
+    """«✓ Total en MT5: +9.32 $ (original −2.42 $ · duplicada +11.74 $)»."""
+    total = combined_pnl(trades)
+    gain = total if total is not None else sum(real_move(t, direction) for t in trades)
+    return f"{'✓' if gain > 0 else '✗'} Total en MT5: {multi_title(trades, direction, unit)}"
+
+
+def trade_payload(t: RealExecution, s: TradeSpan) -> dict[str, Any]:
+    return {
+        "label": t.label or None, "ticket": t.ticket, "entry": t.entry, "exit": t.exit, "pnlUsd": t.pnl_usd,
+        "closeReason": t.close_reason, "openTime": _as_utc(s.open_time).isoformat(),
+        "closeTime": _as_utc(s.close_time).isoformat(),
+        "timesSource": "velas" if s.open_estimated or s.close_estimated else "mt5",
     }
 
 
@@ -905,6 +1145,8 @@ def _parse_args(argv: list[str] | None = None):
     ap.add_argument("--real-open-time", default=None, help="ISO 8601 UTC de la entrada MT5")
     ap.add_argument("--real-sl", type=float, default=None, help="SL con que se abrió en MT5")
     ap.add_argument("--real-ticket", type=int, default=None, help="posición MT5")
+    ap.add_argument("--trades-json", default=None,
+                    help="operaciones MT5 (original + duplicada) en JSON; tiene prioridad sobre --real-*")
     return ap.parse_args(argv)
 
 
@@ -925,6 +1167,41 @@ def real_from_args(args) -> RealExecution | None:
     )
 
 
+def _positive(v: Any) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 and math.isfinite(f) else None
+
+
+def trades_from_json(raw: str | None) -> list[RealExecution]:
+    """`--trades-json` del server: [{label, ticket, entry, exit, sl, tp, openedAt, closedAt, sentAt, pnlUsd,
+    closeReason}]. Las operaciones sin entrada o salida se descartan."""
+    if not raw:
+        return []
+    items = json.loads(raw)
+    if not isinstance(items, list):
+        raise ValueError("--trades-json debe ser una lista")
+
+    def when(v: Any) -> datetime | None:
+        return _parse_iso(v) if isinstance(v, str) and v else None
+
+    trades = []
+    for it in items:
+        entry, exit_ = _positive(it.get("entry")), _positive(it.get("exit"))
+        if entry is None or exit_ is None:
+            continue
+        pnl = it.get("pnlUsd")
+        trades.append(RealExecution(
+            entry=entry, exit=exit_, close_time=when(it.get("closedAt")), open_time=when(it.get("openedAt")),
+            sl=_positive(it.get("sl")), ticket=it.get("ticket"), tp=_positive(it.get("tp")),
+            label=str(it.get("label") or ""), pnl_usd=float(pnl) if isinstance(pnl, (int, float)) else None,
+            close_reason=it.get("closeReason") or None, sent_at=when(it.get("sentAt")),
+        ))
+    return trades
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
@@ -933,6 +1210,7 @@ def main(argv: list[str] | None = None) -> int:
             signal_time=datetime.fromisoformat(args.signal_time.replace("Z", "+00:00")),
             entry=args.entry, sl=args.sl, tp=args.tp, out_path=args.out,
             price=args.price, direction=args.direction, real=real_from_args(args),
+            trades=trades_from_json(args.trades_json) or None,
         )
     except Exception as e:
         traceback.print_exc(file=sys.stderr)

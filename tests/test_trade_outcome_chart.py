@@ -193,6 +193,13 @@ def test_fmt_duration(minutes, text):
     assert toc.fmt_duration(minutes) == text
 
 
+def test_fmt_duration_label_never_shows_zero():
+    assert toc.fmt_duration_label(0, estimated=True) == "<5m"
+    assert toc.fmt_duration_label(0, estimated=False) == "<1m"
+    assert toc.fmt_duration_label(3, estimated=False) == "3m"
+    assert toc.fmt_duration_label(50, estimated=True) == "50m"
+
+
 class TestStatsLines:
     def test_unresolved_short(self):
         s = toc.TradeStats(True, True, 95, 84707.4, 0.48, 85.3, 1.68, 0.22)
@@ -258,7 +265,10 @@ def _render_capture(tmp_path, monkeypatch, outcome, **kw):
         ax = fig.axes[0]
         seen["title"] = fig._suptitle.get_text()
         seen["texts"] = [t.get_text() for a in fig.axes for t in a.texts]
-        seen["result_rects"] = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_alpha() == 0.28]
+        seen["result_rects"] = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_gid() == "trade-result"]
+        # cajas de posición: empiezan en un borde de vela (x = n − 0.5); los cuerpos de vela no
+        seen["plan_rects"] = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_facecolor()[3] > 0
+                              and p.get_gid() is None and abs(p.get_x() % 1 - 0.5) < 1e-9]
         return out_path
 
     monkeypatch.setattr(illustrate_high_entry, "savefig_png", fake_save)
@@ -275,16 +285,17 @@ REAL_WIN = toc.RealExecution(entry=100.2, exit=103.5, close_time=T0 + timedelta(
 
 
 class TestRealExecution:
-    def test_box_ends_at_real_close_candle_with_real_exit_label_and_plan_lines(self, tmp_path, monkeypatch):
+    def test_box_starts_at_real_entry_with_minimum_width_and_plan_lines(self, tmp_path, monkeypatch):
         seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("open", 0, None), real=REAL_WIN)
-        # 36 velas previas visibles → la vela 2 (cierre 17:07) está en x=38 → la caja acaba en 38.5
+        # 36 velas previas visibles → entrada (vela 0) en x=36; cierre 17:07 en x=38 → ancho mínimo 6
         rect = seen["result_rects"][0]
-        assert rect.get_x() == pytest.approx(35.5) and rect.get_x() + rect.get_width() == pytest.approx(38.5)
+        assert rect.get_x() == pytest.approx(35.5)
+        assert rect.get_width() == pytest.approx(toc.MIN_BOX_CANDLES)
         texts = seen["texts"]
-        assert any(t.startswith("Salida 103.50 · +33.0 pips") for t in texts)
-        assert "Entrada MT5 100.20" in texts
+        assert "✓ +33.0 pips · 17:07" in texts
+        assert "Compra 16:56" in texts
         assert "TP plan 104.00" in texts and "SL plan 98.00" in texts and "Entrada plan 100.00" in texts
-        assert any("Salida MT5 17:07" in t for t in texts)
+        assert "Cierre 103.50" in texts and "Entrada 100.20" in texts
         assert seen["title"].endswith("Resultado: Ganada en MT5") and "(" not in seen["title"]
         box = next(t for t in texts if t.startswith("LONG"))
         assert "Entrada 100.20 → Salida 103.50  ·  MT5 17:07 UTC" in box
@@ -293,15 +304,89 @@ class TestRealExecution:
     def test_loss_closed_before_sl_shows_real_exit(self, tmp_path, monkeypatch):
         real = toc.RealExecution(entry=100.0, exit=99.1, close_time=T0 + timedelta(minutes=22))
         seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("open", 0, None), real=real)
-        assert any(t.startswith("Salida 99.10 · −9.0 pips") for t in seen["texts"])
+        assert "✗ −9.0 pips · 17:17" in seen["texts"]
         assert "SL plan 98.00" not in seen["texts"]  # sin SL real se dibuja el del plan (no se duplica)
         assert seen["title"].endswith("Resultado: Perdida en MT5")
 
     def test_without_mt5_box_ends_at_detected_exit_labelled_estimated(self, tmp_path, monkeypatch):
         seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("tp", 0, 2))
-        assert any("TP alcanzado · cierre estimado 17:05" in t for t in seen["texts"])
+        assert "✓ TP alcanzado ≈17:05" in seen["texts"]
         box = next(t for t in seen["texts"] if t.startswith("LONG"))
         assert "cierre estimado 17:05" in box
+
+    def test_zero_duration_detected_trade_does_not_collapse_to_one_candle(self, tmp_path, monkeypatch):
+        # entrada y SL en la primera vela tras la señal (duración 0): la caja no se queda en una vela
+        seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("sl", 0, 0))
+        widths = {round(r.get_width(), 6) for r in seen["plan_rects"]}
+        assert widths and min(widths) >= toc.MIN_BOX_CANDLES
+        box = next(t for t in seen["texts"] if t.startswith("LONG"))
+        assert "Duración <5m" in box and "Duración 0m" not in box
+        assert "✗ SL alcanzado ≈16:55" in seen["texts"]
+
+    def test_zero_duration_real_trade_keeps_minimum_box(self, tmp_path, monkeypatch):
+        real = toc.RealExecution(entry=100.2, exit=99.0, open_time=T0 + timedelta(minutes=1),
+                                 close_time=T0 + timedelta(minutes=1, seconds=40))
+        seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("open", 0, None), real=real)
+        assert seen["result_rects"][0].get_width() == pytest.approx(toc.MIN_BOX_CANDLES)
+        box = next(t for t in seen["texts"] if t.startswith("LONG"))
+        assert "Duración <1m" in box
+
+    def test_duplicate_draws_two_trades_and_combined_result_is_the_sum(self, tmp_path, monkeypatch):
+        orig = toc.RealExecution(entry=100.2, exit=99.4, open_time=T0 + timedelta(minutes=1),
+                                 close_time=T0 + timedelta(minutes=3), sl=98.0, label="original",
+                                 pnl_usd=-2.42, close_reason="manual")
+        dup = toc.RealExecution(entry=100.5, exit=102.9, open_time=T0 + timedelta(minutes=6),
+                                close_time=T0 + timedelta(minutes=24), sl=98.3, tp=104.5, label="duplicada",
+                                pnl_usd=11.74, close_reason="tp")
+        seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("sl", 0, 1), trades=[orig, dup])
+        assert len(seen["result_rects"]) == 2
+        assert all(r.get_width() >= toc.MIN_BOX_CANDLES for r in seen["result_rects"])
+        assert seen["title"].endswith("Resultado: +9.32 $ (original −2.42 $ · duplicada TP +11.74 $)")
+        assert "SL alcanzado" not in seen["title"]
+        texts = seen["texts"]
+        assert "✗ Orig −2.42 $ · 16:58" in texts and "✓ Dup TP +11.74 $ · 17:19" in texts
+        assert "Orig compra 16:56" in texts and "Dup compra 17:01" in texts
+        assert "Dup 100.50" in texts and "Cierre Dup 102.90" in texts
+        box = next(t for t in texts if t.startswith("LONG"))
+        assert "2 operaciones  ·  Total +9.32 $" in box
+        assert "Original: 100.20 → 99.40  ·  16:56→16:58 UTC (2m)  ·  −2.42 $  ·  manual" in box
+        assert "Duplicada: 100.50 → 102.90  ·  17:01→17:19 UTC (18m)  ·  +11.74 $  ·  TP" in box
+
+    def test_duplicate_without_times_estimates_them_from_candles(self):
+        post = _seq((99.5, 101), (102, 103), (102.2, 103.8), (101, 102))
+        dup = toc.RealExecution(entry=102.5, exit=101.5, close_time=None, label="duplicada",
+                                sent_at=T0 + timedelta(minutes=6))
+        span = toc.trade_span(dup, post)
+        assert (span.fill, span.exit) == (1, 3)
+        assert span.open_estimated and span.close_estimated
+        assert span.open_time == T0 + timedelta(minutes=6)
+
+    def test_combined_pnl_and_message(self):
+        a = toc.RealExecution(entry=1, exit=2, close_time=T0, label="original", pnl_usd=-2.42)
+        b = toc.RealExecution(entry=1, exit=2, close_time=T0, label="duplicada", pnl_usd=11.74)
+        assert toc.combined_pnl([a, b]) == pytest.approx(9.32)
+        assert toc.combined_pnl([toc.RealExecution(entry=1, exit=2, close_time=T0)]) is None
+        unit = toc.compute_position_levels("SHORT", 100.0, 102.0, 96.0, "BTC")["unit"]
+        assert toc.multi_message([a, b], "SHORT", unit) == \
+            "✓ Total en MT5: +9.32 $ (original −2.42 $ · duplicada +11.74 $)"
+
+    def test_trades_json_cli(self):
+        raw = json.dumps([
+            {"label": "original", "ticket": 687780224, "entry": 83020.95, "exit": 83069.38, "sl": 83201.72,
+             "tp": 82696.33, "openedAt": "2026-10-07T13:50:39.000Z", "closedAt": "2026-10-07T14:01:37.000Z",
+             "pnlUsd": -2.42, "closeReason": "manual", "sentAt": "2026-10-07T13:49:06.452Z"},
+            {"label": "duplicada", "entry": 83264.38, "exit": 83029.58, "openedAt": None, "closedAt": None,
+             "pnlUsd": 11.74},
+            {"label": "duplicada", "entry": 83264.38, "exit": None},
+        ])
+        trades = toc.trades_from_json(raw)
+        assert len(trades) == 2
+        assert trades[0].open_time == datetime(2026, 10, 7, 13, 50, 39, tzinfo=timezone.utc)
+        assert (trades[0].label, trades[0].pnl_usd, trades[0].tp) == ("original", -2.42, 82696.33)
+        assert trades[1].close_time is None and trades[1].pnl_usd == 11.74
+        args = toc._parse_args(["--market", "btc", "--signal-time", "2026-10-07T13:46:00Z", "--entry", "1",
+                                "--sl", "2", "--tp", "0.5", "--out", "x.png", "--trades-json", raw])
+        assert args.trades_json == raw
 
     def test_realized_r_and_duration(self):
         post = _seq((99.5, 101), (99.8, 103), (102, 103.8))

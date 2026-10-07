@@ -1441,7 +1441,40 @@ def winrate_estimate(
     crt: dict | None = None,
     categories: dict | None = None,
 ) -> tuple[str, str]:
-    """Tasa de acierto estimada — proporcional a calidad, no un 82% fijo.
+    """Tasa de acierto: calibrada walk-forward si hay artefacto; si no, heurística.
+
+    La calibración aplica a E1 (auto/break). Reverse (E2) y activos sin artefacto
+    usan `_heuristic_winrate_estimate`.
+    """
+    mode = (setup_mode or "auto").lower()
+    if data and mode != "reverse":
+        from app.models.probability_calibration import (
+            calibrated_estimate,
+            format_estimate_source,
+            store_estimate,
+        )
+
+        est = calibrated_estimate(data, crt, categories=categories)
+        if est:
+            if categories is not None:
+                store_estimate(categories, est)
+            return f"~{est['p'] * 100:.0f}%", format_estimate_source(est)
+    return _heuristic_winrate_estimate(
+        rules_pct, gallery_patterns, setup_mode,
+        data=data, crt=crt, categories=categories,
+    )
+
+
+def _heuristic_winrate_estimate(
+    rules_pct: int,
+    gallery_patterns: list[str] | None = None,
+    setup_mode: str = "auto",
+    *,
+    data: dict | None = None,
+    crt: dict | None = None,
+    categories: dict | None = None,
+) -> tuple[str, str]:
+    """Tasa de acierto heurística (sin calibrar) — respaldo sin artefacto.
 
     Factores (en orden de prioridad en el desglose):
       - zona Premium/Discount vs dirección (chase resta; zona a favor suma)

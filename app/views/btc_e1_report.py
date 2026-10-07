@@ -385,6 +385,12 @@ def build_report_context(
     ext_pct, _, ext_items = score_extended_rules(data, crt, div, dmi, e2)
     flags = collect_red_flags(data, crt, div)
     _, _, _, rules_items = score_e1_rules_8(data, crt, div, dmi, e2)
+    from app.models.probability_calibration import build_rules_review_rows, calibrated_estimate
+
+    est = (
+        calibrated_estimate(data, crt, categories=categories)
+        if data.get("mode_setup") != "reverse" else None
+    )
     return {
         "categories": categories,
         "verdict": verdict,
@@ -392,6 +398,8 @@ def build_report_context(
         "ext_pct": ext_pct,
         "ext_items": ext_items,
         "rules_items": rules_items,
+        "prob_estimate": est,
+        "rules_review": build_rules_review_rows(data, crt, est, rules_items),
     }
 
 
@@ -422,6 +430,10 @@ def format_e1_report(
             lines += format_augmented_categories_md(categories)
     lines += format_crt_block(crt, data, tier)
     lines += format_checklist_e1(ctx["rules_items"], tier)
+    if tier != TIER_LIGHT and ctx.get("rules_review"):
+        from app.models.probability_calibration import format_rules_review_md
+
+        lines += format_rules_review_md(ctx["rules_review"], ctx.get("prob_estimate"))
     lines += format_e2_block(e2, tier)
     lines += format_plan_block(data, verdict, tier)
     max_rf = 4 if tier == TIER_LIGHT else None
