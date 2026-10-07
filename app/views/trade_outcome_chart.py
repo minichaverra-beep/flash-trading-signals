@@ -311,6 +311,29 @@ def _fetch_binance_since(symbol: str, since: datetime) -> list[dict]:
     return rows
 
 
+BROKER_MAX_BARS = 5000
+
+
+def _fetch_broker_since(asset: str, since: datetime, now: datetime, notes: list[str]) -> tuple[list[dict], dict] | None:
+    """Velas M5 del símbolo del broker (puente MT5): misma escala que las órdenes reales."""
+    from app.models.broker_feed import bridge_config, fetch_rates, rates_to_candles
+
+    bcfg = bridge_config(asset)
+    if bcfg is None:
+        return None
+    count = min(BROKER_MAX_BARS, int((now - since) / M5) + 3)
+    try:
+        payload = fetch_rates(bcfg, "M5", count)
+    except (URLError, RuntimeError, TimeoutError, OSError, ValueError, KeyError) as exc:
+        notes.append(f"MT5 {bcfg['symbol']} no disponible: {exc}")
+        return None
+    rows = [c for c in rates_to_candles(payload.get("rates")) if c["open_time"] >= since]
+    if not rows or rows[0]["open_time"] - since > timedelta(hours=2):
+        notes.append(f"MT5 {bcfg['symbol']}: velas insuficientes desde la señal")
+        return None
+    return rows, {"source": f"MT5 {bcfg['symbol']}", "proxy": False, "notes": notes}
+
+
 def fetch_m5_since(market: str, since: datetime, now: datetime | None = None) -> tuple[list[dict], dict]:
     """Velas M5 reales desde `since` → (velas, meta{source, proxy})."""
     from app.models.us30_data import fetch_yahoo_chart
@@ -318,6 +341,9 @@ def fetch_m5_since(market: str, since: datetime, now: datetime | None = None) ->
     cfg = MARKETS[market]
     now = now or datetime.now(timezone.utc)
     notes: list[str] = []
+    broker = _fetch_broker_since(cfg["asset"], since, now, notes)
+    if broker:
+        return broker
     if cfg.get("binance"):
         try:
             rows = _fetch_binance_since(cfg["binance"], since)
@@ -691,9 +717,12 @@ def _result_color(move: float) -> str:
     return SL_C if move < 0 else WARN_C
 
 
+MAX_PRICE_DECIMALS = 5  # los brokers cotizan como mucho a 5 decimales; más es ruido de coma flotante
+
+
 def price_decimals(dec: int, *values: float) -> int:
     """Decimales para mostrar precios del bróker sin redondearlos a la precisión del feed de velas."""
-    places = (len(repr(float(v)).partition(".")[2].rstrip("0")) for v in values)
+    places = (len(f"{float(v):.{MAX_PRICE_DECIMALS}f}".rstrip("0").partition(".")[2]) for v in values)
     return max(dec, *places)
 
 
@@ -1045,9 +1074,12 @@ def evaluate_signal(
                              ref_price=ref_price, market_entry=market_entry)
     trades = [_utc_trade(t) for t in (trades or ([real] if real is not None else []))]
     real = trades[0] if len(trades) == 1 and not trades[0].label else None
+    feed_note = (f"Velas {meta['source']} (sin MT5: pueden no coincidir con los precios del broker)"
+                 if meta["proxy"] else None)
     chart = render_with_retry(lambda: render_outcome_chart(
         pre, post, outcome, out_path, asset=cfg["asset"], direction=geo, entry=entry, sl=sl, tp=tp,
         dec=dec, signal_time=signal_time, market_entry=market_entry, ref_price=ref_price, trades=trades,
+        note=feed_note,
     ))
     if trades:
         main = trades[0]

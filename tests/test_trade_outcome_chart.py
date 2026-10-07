@@ -408,6 +408,38 @@ class TestRealExecution:
         assert toc.price_decimals(1, 84792.7, 84610.17, 85067.54) == 2
         assert toc.price_decimals(2, 100.0, 103.5) == 2
 
+    def test_price_decimals_ignores_float_noise(self):
+        assert toc.price_decimals(2, 4110.8940000000002, 4121.8710000000001) == 3
+
+    def test_fetch_prefers_broker_candles(self, monkeypatch):
+        from app.models import broker_feed
+
+        monkeypatch.setenv("FS_BROKER_FEED", "on")
+        since = datetime(2026, 10, 7, 14, 0, tzinfo=timezone.utc)
+        rates = [{"time": int((since + i * toc.M5).timestamp()), "open": 4110.0, "high": 4122.0,
+                  "low": 4105.0, "close": 4121.0} for i in range(40)]
+        monkeypatch.setattr(broker_feed, "fetch_rates", lambda cfg, tf, count, until=None: {"rates": rates})
+        rows, meta = toc.fetch_m5_since("xauusd", since, since + 40 * toc.M5)
+        assert meta["proxy"] is False
+        assert meta["source"].startswith("MT5 ")
+        assert len(rows) == 40
+
+    def test_fetch_falls_back_when_bridge_down(self, monkeypatch):
+        from app.models import broker_feed
+
+        monkeypatch.setenv("FS_BROKER_FEED", "on")
+
+        def down(*_a, **_k):
+            raise RuntimeError("puente MT5 caído")
+
+        monkeypatch.setattr(broker_feed, "fetch_rates", down)
+        since = datetime(2026, 10, 7, 14, 0, tzinfo=timezone.utc)
+        fake = [{"open_time": since, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}]
+        monkeypatch.setattr("app.models.us30_data.fetch_yahoo_chart", lambda *_a, **_k: fake)
+        rows, meta = toc.fetch_m5_since("xauusd", since, since + toc.M5)
+        assert meta["proxy"] is True
+        assert any("no disponible" in n for n in meta["notes"])
+
     def test_candle_index_clamps(self):
         post = _seq((1, 2), (1, 2), (1, 2))
         assert toc.candle_index_at(post, T0 - timedelta(minutes=3)) == 0
