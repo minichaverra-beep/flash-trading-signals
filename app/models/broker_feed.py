@@ -11,6 +11,11 @@ análisis y el chart deben usar su misma escala de precio:
 Config por entorno (la API de Flash Signals la pasa al lanzar los .ps1):
 FS_MT5_BRIDGE_URL / FS_MT5_BRIDGE_TOKEN / FS_MT5_SYMBOL_{US30,XAUUSD,BTC};
 FS_BROKER_FEED=off desactiva el puente.
+
+Modo «solo Yahoo» (Android/Termux, sin MT5): FS_DATA_SOURCE=yahoo (o FS_DISABLE_MT5=1) omite el
+puente por completo (ni se intenta la conexión) y todas las velas salen de Yahoo Finance
+(BTC-USD, YM=F/^DJI, GC=F/spot). Cualquier otro valor (`auto`, `mt5`, vacío) deja el
+comportamiento de arriba.
 """
 from __future__ import annotations
 
@@ -24,6 +29,12 @@ from urllib.request import Request, urlopen
 DEFAULT_BRIDGE_URL = "http://127.0.0.1:8765"
 DEFAULT_SYMBOLS = {"US30": "US30m", "XAUUSD": "XAUUSDm", "BTC": "BTCUSDm"}
 EXTERNAL_LABELS = {"US30": "YM=F→^DJI", "XAUUSD": "GC=F→spot", "BTC": "Binance BTCUSDT"}
+YAHOO_LABELS = {"US30": "YM=F→^DJI", "XAUUSD": "GC=F→spot", "BTC": "BTC-USD"}
+YAHOO_BTC_TICKERS = ("BTC-USD",)
+DATA_SOURCE_ENV = "FS_DATA_SOURCE"
+DISABLE_MT5_ENV = "FS_DISABLE_MT5"
+YAHOO_VALUES = ("yahoo", "yfinance", "yahoo-only")
+TRUE_VALUES = ("1", "true", "yes", "on")
 MIN_M5_BARS = 60
 MIN_H1_BARS = 55
 TIMEOUT_SEC = 8
@@ -47,8 +58,17 @@ def asset_key(asset: str | None) -> str:
     return a
 
 
+def yahoo_only() -> bool:
+    """True con FS_DATA_SOURCE=yahoo o FS_DISABLE_MT5=1: MT5 se ignora y las velas son de Yahoo."""
+    if os.environ.get(DATA_SOURCE_ENV, "").strip().lower() in YAHOO_VALUES:
+        return True
+    return os.environ.get(DISABLE_MT5_ENV, "").strip().lower() in TRUE_VALUES
+
+
 def bridge_config(asset: str | None) -> dict | None:
-    """URL, token y símbolo del broker para `asset`; None si el puente está desactivado."""
+    """URL, token y símbolo del broker para `asset`; None si el puente está desactivado u omitido."""
+    if yahoo_only():
+        return None
     if os.environ.get("FS_BROKER_FEED", "").strip().lower() in OFF_VALUES:
         return None
     key = asset_key(asset)
@@ -84,6 +104,8 @@ def _post(cfg: dict, path: str, body: dict) -> dict:
 
 
 def fetch_rates(cfg: dict, timeframe: str, count: int, until: datetime | None = None) -> dict:
+    if yahoo_only():
+        raise RuntimeError("MT5 deshabilitado (modo solo Yahoo: FS_DATA_SOURCE=yahoo)")
     body: dict = {"symbol": cfg["symbol"], "timeframe": timeframe, "count": int(count)}
     if until is not None:
         body["to"] = int(until.timestamp())
@@ -154,13 +176,38 @@ def feed_info(source: str, asset: str, symbol: str | None, offset: float | None 
     """Metadatos de la fuente de velas + rótulo para el chart/reporte."""
     key = asset_key(asset)
     ext = EXTERNAL_LABELS.get(key, key)
-    if source == "mt5":
+    if source == "yahoo":
+        label = f"velas Yahoo {YAHOO_LABELS.get(key, key)} (solo Yahoo, sin MT5: precio puede diferir del broker)"
+    elif source == "mt5":
         label = f"velas MT5 {symbol}"
     elif source == "external_shifted":
         label = f"velas {ext} ajustadas {format_offset(key, offset or 0.0)} a {symbol}"
     else:
         label = f"velas {ext} (sin MT5: precio puede diferir del broker)"
-    return {"source": source, "symbol": symbol, "offset": offset, "label": label, "broker": source != "external"}
+    return {
+        "source": source, "symbol": symbol, "offset": offset, "label": label,
+        "broker": source not in ("external", "yahoo"),
+    }
+
+
+def yahoo_klines(asset: str, m5_bars: int = 200, h1_bars: int = 200) -> Klines:
+    """Velas M5/H1 solo de Yahoo para `asset` (BTC-USD, YM=F/^DJI, GC=F/spot). Lanza RuntimeError si Yahoo falla."""
+    key = asset_key(asset)
+    if key == "BTC":
+        from app.models.us30_data import fetch_yahoo_klines
+
+        m5, h1, meta = fetch_yahoo_klines(YAHOO_BTC_TICKERS, m5_bars=m5_bars, h1_bars=h1_bars)
+        meta["asset"] = "BTC"
+        return m5, h1, meta
+    if key == "US30":
+        from app.models.us30_data import fetch_us30_klines
+
+        return fetch_us30_klines(m5_bars=m5_bars, h1_bars=h1_bars)
+    if key == "XAUUSD":
+        from app.models.xauusd_data import fetch_xauusd_klines
+
+        return fetch_xauusd_klines(m5_bars=m5_bars, h1_bars=h1_bars)
+    raise RuntimeError(f"mercado sin ticker de Yahoo: {asset!r}")
 
 
 def load_broker_klines(
@@ -170,6 +217,18 @@ def load_broker_klines(
     p5 = fetch_rates(cfg, "M5", m5_bars, until)
     p1 = fetch_rates(cfg, "H1", h1_bars, until)
     return rates_to_candles(p5.get("rates")), rates_to_candles(p1.get("rates")), p5
+
+
+def _load_yahoo_only(key: str, external_fetch: Callable[[], Klines], m5_bars: int, h1_bars: int) -> Klines:
+    """Modo solo Yahoo: sin puente, sin reintentos. BTC pasa de Binance a Yahoo (BTC-USD); US30/XAUUSD ya son Yahoo."""
+    if key == "BTC":
+        m5, h1, meta = yahoo_klines(key, m5_bars, h1_bars)
+    else:
+        m5, h1, meta = external_fetch()
+    meta = dict(meta or {})
+    meta["notes"] = ["Modo solo Yahoo (FS_DATA_SOURCE=yahoo): MT5 omitido"] + list(meta.get("notes") or [])
+    meta["feed"] = feed_info("yahoo", key, None)
+    return m5, h1, meta
 
 
 def load_klines(
@@ -182,6 +241,8 @@ def load_klines(
 ) -> Klines:
     """Velas M5/H1 en la escala del broker (ver docstring del módulo). meta['feed'] describe la fuente."""
     key = asset_key(asset)
+    if yahoo_only():
+        return _load_yahoo_only(key, external_fetch, m5_bars, h1_bars)
     cfg = bridge_config(key)
     notes: list[str] = []
     quote_payload = None
@@ -227,6 +288,8 @@ def describe_source(meta: dict, fallback: str) -> str:
     feed = meta.get("feed") or {}
     if feed.get("source") == "mt5":
         return f"MT5 {feed.get('symbol')} (broker, M5/H1)"
+    if feed.get("source") == "yahoo":
+        return f"{meta.get('ticker') or fallback} (solo Yahoo) · sin MT5 (precio puede diferir del broker)"
     if feed.get("source") == "external_shifted":
         return f"{fallback} · {feed.get('label')}"
     return f"{fallback} · sin MT5 (precio puede diferir del broker)"

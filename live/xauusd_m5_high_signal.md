@@ -1,9 +1,9 @@
 # XAUUSD M5 High Signal — CRT + Turtle Soup (Deep Analysis)
 
-> 2026-10-09 14:15 UTC | NY 2026-10-09 10:15 | NY AM 10-11
-> Precio **4188.24** | HIGH mode | PF E1=4.77 | E2 max 10%
+> 2026-10-09 18:31 UTC | NY 2026-10-09 14:31 | NY PM 14-16
+> Precio **4193.75** | HIGH mode | PF E1=4.77 | E2 max 10%
 > Plan refs: TRADING_VISUAL SS1.1-1.2 SS7 | TRADING_INDICATORS_RULES SS3-6
-> Última vela M5 **2026-10-09 14:15 UTC** · hace 0 min · fuente MT5 XAUUSDm (broker, M5/H1)
+> Última vela M5 **2026-10-09 18:30 UTC** · hace 1 min · fuente MT5 XAUUSDm (broker, M5/H1)
 > **Modo:** BEARISH + BREAK — Bias CLI **BEARISH** — setup re-puntuado como SHORT
 > Modo **ADVANCED** — Categories ampliada + secciones A–I
 
@@ -27,9 +27,9 @@
 
 **E1/E2:** E1 primario
 **Tendencia:** Sin dirección
-**Reglas:** **4 de 6** (66%) | Extendidas: **70%**
+**Reglas:** **5 de 6** (83%) | Extendidas: **80%**
 **Calidad:** Setup fuerte
-**Probabilidad histórica:** **~50%** — histórico E1 BTC · SHORT en PREMIUM +2 (zona a favor); H1 BULLISH vs SHORT -6; acuerdo BAJA -8; patron WIN similar +3; 66% reglas
+**Probabilidad histórica:** **~58%** — histórico E1 BTC · SHORT en PREMIUM +2 (zona a favor); H1 BULLISH vs SHORT -6; acuerdo BAJA -8; patron WIN similar +3; 83% reglas
 
 ### CRT
 
@@ -37,7 +37,7 @@
 |------|-------|-----------|
 | PD reading | **BULLISH** | Longs E1 pullback soporte debil (discount) | Modo BREAK: breakout de nivel/estructura (no reversión) |
 | Premium/Discount | PREMIUM | Long discount / Short premium |
-| H1 state | **INSIDE_RANGE** | Rango H1 4174-4196; 0.5=4185 |
+| H1 state | **PENDING_BEAR** | Sweep high H1 sin hold |
 | Fakeout PDH | NO | CRT invalid bear |
 | Fakeout PDL | NO | Turtle soup ctx |
 | PDH | 4146 | Bull si cierre arriba |
@@ -52,9 +52,9 @@
 |-------|----|------|
 | Solo E1 | ✅ | Operar solo E1 |
 | Tendencia H1 alineada | ✅ | Bajista |
-| 2 velas M5 confirman | ❌ | Falta confirmación |
+| 2 velas M5 confirman | ✅ | Velas confirman |
 | R:R mínimo 1:2 | ✅ | 1:2 |
-| RSI no contradice | ✅ | RSI 67 OK |
+| RSI no contradice | ✅ | RSI 55 OK |
 | Rango coherente | ❌ | rango alcista |
 
 ### Reglas revisadas (graduadas)
@@ -63,9 +63,9 @@ _✓✓ ≥ +4 pts · ✓ +1 a +4 · ~ neutro · ✗ −1 a −4 · ✗✗ ≤ �
 
 | Regla | Estado | Valor actual | Impacto | Acierto histórico | Tipo |
 |-------|--------|--------------|---------|-------------------|------|
-| RSI M5 vs dirección | ✓✓ | RSI 66.6 (SHORT: con recorrido a favor) | sin calibrar | n/d | ponderada |
+| RSI M5 vs dirección | ✓ | RSI 54.6 (SHORT: neutral) | sin calibrar | n/d | ponderada |
 | Zona premium/discount | ✓ | PREMIUM (a favor) | sin calibrar | n/d | ponderada |
-| 2 velas M5 confirman | ✗ | no | sin calibrar | n/d | ponderada |
+| 2 velas M5 confirman | ✓ | sí | sin calibrar | n/d | ponderada |
 | Rango CRT coherente | ✗ | rango alcista | sin calibrar | n/d | ponderada |
 | Solo E1 | · | Operar solo E1 | — | constante en histórico | info |
 | Tendencia H1 alineada | · | Bajista | — | constante en histórico | info |
@@ -100,33 +100,33 @@ _Modo BREAK: breakout de nivel — E2/reversión despriorizada, NO operable_
 
 | Sección | Detalle |
 |---------|---------|
-| Precio | **4188.24** |
+| Precio | **4193.75** |
 | Veredicto | **No operar** (SHORT) |
-| Entrada óptima | **4191.64** |
-| ICT | 4185.80→4191.64 · Refinada 4185.8→4191.6 (sweep swing_high) · Sweep swing_high @ 4192.6 + reclaim · PD PREMIUM · H1 INSIDE_RANGE · killzone NY AM 10-11 |
-| Plan | Entry **4191.64** · SL **4197.64** · TP **4179.64** |
+| Entrada óptima | **4197.53** |
+| ICT | 4193.03→4197.53 · Refinada 4193.0→4197.5 (FVG BEARISH edge) · Sweep swing_high @ 4195.6 + reclaim · PD PREMIUM · H1 PENDING_BEAR · killzone NY PM 14-16 |
+| Plan | Entry **4197.53** · SL **4203.53** · TP **4185.53** |
 | E2 / Break | BREAK / E1 — Sin reversión E2 — E1 primario |
-| Métricas | Rules **66%** · Neural **73%** · ML **7.2%** · Confluencia **BAJA** — 38% · Rules 66%; Neural gated 65% (medium); ML 7% veto suave; 2M5 no listo; Break con fricción CRT |
-| Historial ref | **xauusd-042** · 2026-10-08 11:36 NY · Entry **4115.41** · **REGULAR** — precio cerca de Entry actual; sin 2M5; zona OK · (MÁS CERCA) · Δ Entry +76.23 pts (+1.852%) · precio→última 72.83 pts (1.770%) · precio→actual 3.40 pts (0.081%) |
+| Métricas | Rules **83%** · Neural **57%** · ML **15.3%** · Confluencia **BAJA** — 44% · Rules 83%; Neural débil/gating 57% conf=low; ML 15% veto suave; 2M5 OK; Break con fricción CRT |
+| Historial ref | **xauusd-043** · 2026-10-09 10:15 NY · Entry **4191.64** · **BUENA** — precio cerca de última Entry + 2M5 OK + zona OK · (MISMA ZONA) · Δ Entry +5.89 pts (+0.141%) · precio→última 2.11 pts (0.050%) · precio→actual 3.78 pts (0.090%) |
 | Bando usado (lado asumido) | **BEARISH** |
 | Bando mercado (H1) | **BULLISH** |
 | R:R | 1:2 |
-| Dist. a Entry | +3.40 pts (0.081%) |
-| Dist. a SL | +9.40 pts (0.224%) |
-| Dist. a TP | -8.60 pts (0.205%) |
+| Dist. a Entry | +3.78 pts (0.090%) |
+| Dist. a SL | +9.78 pts (0.233%) |
+| Dist. a TP | -8.22 pts (0.196%) |
 | Riesgo (pts) | 6.00 |
-| Winrate setup | ~50% — histórico E1 BTC · SHORT en PREMIUM +2 (zona a favor); H1 BULLISH vs SHORT -6; acuerdo BAJA -8; patron WIN similar +3; 66% reglas |
+| Winrate setup | ~58% — histórico E1 BTC · SHORT en PREMIUM +2 (zona a favor); H1 BULLISH vs SHORT -6; acuerdo BAJA -8; patron WIN similar +3; 83% reglas |
 | Zona PD vs dirección | SHORT en PREMIUM +2 (zona a favor) |
 | Bias vs dirección | H1 BULLISH vs SHORT -6 |
-| Score Rules extendido | **70%** |
-| Estado 2M5 | Sin 2M5 (info, no gate) |
+| Score Rules extendido | **80%** |
+| Estado 2M5 | VÁLIDO SHORT (2M5) |
 | Bias H1 vs bando | H1 **BULLISH** · CLI **BEARISH** |
 | Calidad break/reverse | BREAK (continuación E1) |
-| Neural grade/conf | **B** · conf. medium · 73% WIN |
-| Rules E1 detalle | **4/6** (66%) |
-| Vol Zentinel (filtro) | **muy_bajo** · 0.03× · Zentinel_US30_E1 |
-| MACD-quant (filtro) | **en contra** · Hist 8.457 · never trigger |
-| Watchtower KZ | NY AM 10-11 · Watchtower_US30_E1 |
+| Neural grade/conf | **B** · conf. low · 57% WIN |
+| Rules E1 detalle | **5/6** (83%) |
+| Vol Zentinel (filtro) | **muy_bajo** · 0.26× · Zentinel_US30_E1 |
+| MACD-quant (filtro) | **en contra** · Hist 8.691 · never trigger |
+| Watchtower KZ | NY PM 14-16 · Watchtower_US30_E1 |
 | Chart | **Preview en navegador** |
 
 ---
@@ -142,24 +142,24 @@ _Modo BREAK: breakout de nivel — E2/reversión despriorizada, NO operable_
 
 | | **AHORA** | **ENTRADA OPTIMIZADA** |
 |---|-----------|-------------------------|
-| Precio | **4188.24** | Retest **4182.72–4191.64** |
-| 2M5 SHORT | No | Nuevas 2 rojas en zona tras retest (no las actuales lejos) |
-| Zona (info) | 0.04% de ref | contexto entry @ 4186.48 |
-| Acción | **ENTRAR SHORT** | **ENTRAR SHORT** |
+| Precio | **4193.75** | Retest **4189.94–4197.53** |
+| 2M5 SHORT | Sí | Nuevas 2 rojas en zona tras retest (no las actuales lejos) |
+| Zona (info) | 0.00% de ref | contexto entry @ 4193.71 |
+| Acción | **ENTRAR SHORT** | **ENTRAR SHORT (condiciones actuales OK)** |
 
 ### Plan concreto
 
 | Campo | Valor |
 |-------|-------|
-| Trigger | ICT retest sweep swing_high @ 4191.64 + 2 velas M5 rojas en zona |
+| Trigger | ICT retest FVG BEARISH edge @ 4197.53 + 2 velas M5 rojas en zona |
 | Confirmación | 2 velas M5 rojas consecutivas (zona ref info) |
-| Entry | **4191.64** (limit retest o market al cierre 2ª vela) |
-| SL | **4197.64** (estructural) · SL cuenta ~$9 (ajustar lotaje) |
-| TP | **4179.64** (1:2) |
+| Entry | **4197.53** (limit retest o market al cierre 2ª vela) |
+| SL | **4203.53** (estructural) · SL cuenta ~$9 (ajustar lotaje) |
+| TP | **4185.53** (1:2) |
 | R:R | **1:2** · riesgo **6.00** pts |
-| Invalidación | Cierre M5 > 4191.80 o breakout > 4186.48 sin rechazo |
+| Invalidación | Cierre M5 > 4199.03 o breakout > 4193.71 sin rechazo |
 | Plan B | Light re-scan ~30 min: si precio no retestea zona → skip trade AM; reservar PM solo si AM=ESPERAR y <2 SL |
-| ICT nota | Refinada 4185.8→4191.6 (sweep swing_high) · Sweep swing_high @ 4192.6 + reclaim · PD PREMIUM · H1 INSIDE_RANGE · killzone NY AM 10-11 |
+| ICT nota | Refinada 4193.0→4197.5 (FVG BEARISH edge) · Sweep swing_high @ 4195.6 + reclaim · PD PREMIUM · H1 PENDING_BEAR · killzone NY PM 14-16 |
 
 ---
 
@@ -175,14 +175,14 @@ Chart: **Preview en navegador**
 |----------|---------|
 | Premium/Discount | **PREMIUM** ✅ |
 | 0.5 midpoint | 4125.55 |
-| H1 CRT state | **INSIDE_RANGE** |
-| Killzone / sesión | NY AM 10-11 ✅ |
+| H1 CRT state | **PENDING_BEAR** |
+| Killzone / sesión | NY PM 14-16 ✅ |
 | Displacement M5 | No |
-| Liquidity sweep | Sweep swing_high @ 4192.6 + reclaim |
-| FVG alineados | 2 |
-| Order blocks | 1 |
-| Entrada refinada | **4191.64** (antes 4185.80 · sweep swing_high) |
-| Nota | Refinada 4185.8→4191.6 (sweep swing_high) · Sweep swing_high @ 4192.6 + reclaim · PD PREMIUM · H1 INSIDE_RANGE · killzone NY AM 10-11 |
+| Liquidity sweep | Sweep swing_high @ 4195.6 + reclaim |
+| FVG alineados | 4 |
+| Order blocks | 5 |
+| Entrada refinada | **4197.53** (antes 4193.03 · FVG BEARISH edge) |
+| Nota | Refinada 4193.0→4197.5 (FVG BEARISH edge) · Sweep swing_high @ 4195.6 + reclaim · PD PREMIUM · H1 PENDING_BEAR · killzone NY PM 14-16 |
 
 ---
 
@@ -190,69 +190,69 @@ Chart: **Preview en navegador**
 
 | Patrón | Estado | Nota |
 |--------|--------|------|
-| ✅ SHORT OK: [R][R] en resistencia_debil @ 4186.48 | Referencia — requiere 2 rojas **nuevas** en dirección | Patrón válido SHORT en resistencia |
+| ✅ SHORT OK: [R][R] en resistencia_debil @ 4193.71 | **VÁLIDO** — Últimas 2 rojas en zona ≤0.15% | Patrón válido SHORT en resistencia |
 | ❌ NO: [G][R] | **INVÁLIDO** | 1ª vela verde invalida secuencia SHORT |
-| ❌ NO: [R][R] … [G][R] | **INVÁLIDO** | 2M5 válidas deben ser las **últimas 2** velas (no anteriores) |
+| ❌ NO: [R][R] … [R][R] | **INVÁLIDO** | 2M5 válidas deben ser las **últimas 2** velas (no anteriores) |
 
 ---
 
 ## Checklist 2M5
 
-_Reloj (info): NY AM 10-11_
+_Reloj (info): NY PM 14-16_
 
-- [❌] 2 velas M5 confirman SHORT
+- [✅] 2 velas M5 confirman SHORT
 - [✅] Bias H1 alineado o bias CLI forzado
 - [✅] RSI M5 + CRT premium/discount coherentes
 - [✅] Estructura/CRT sin contradicción dura
 
-**Falta al menos 1 ítem (info, no bloquea entrada).**
+**Las 4 ✅ → 2M5 OK.**
 
 ---
 
 
 ## Indicadores Legacy Pro (proxy)
 
-| CRT | INSIDE_RANGE/BULLISH | Núcleo |
+| CRT | PENDING_BEAR/BULLISH | Núcleo |
 | RSI TORYS | NONE | Sin divergencia M5 clara |
-| DMI | BULL | +DI domina (22/11) |
-| Swings | HL 4168->4183 | HH 4193->4196 |
+| DMI | BULL | +DI domina (9/8) |
+| Swings | HL 4185->4187 | HH 4196->4200 |
 
 ---
 
 ## M5 detalle
 
-- RSI M5/H1: 66.6 / 72.8
-- Zona: resistencia_debil @ 4186
-- 2M5 LONG: NO | SHORT: NO
+- RSI M5/H1: 54.6 / 57.6
+- Zona: resistencia_debil @ 4194
+- 2M5 LONG: NO | SHORT: SÍ
 
 ### 12 velas M5
 
-- `13:20 O=4183.94 H=4187.25 L=4180.15 C=4187.08 [G]`
-- `13:25 O=4187.09 H=4189.99 L=4186.49 C=4189.07 [G]`
-- `13:30 O=4188.77 H=4192.55 L=4185.14 C=4186.28 [R]`
-- `13:35 O=4186.34 H=4190.68 L=4183.56 C=4186.65 [G]`
-- `13:40 O=4186.79 H=4191.76 L=4182.60 C=4184.82 [R]`
-- `13:45 O=4185.05 H=4191.47 L=4184.84 C=4190.27 [G]`
-- `13:50 O=4190.32 H=4196.25 L=4189.40 C=4191.92 [G]`
-- `13:55 O=4191.97 H=4196.41 L=4189.79 C=4190.48 [R]`
-- `14:00 O=4190.36 H=4191.29 L=4185.48 C=4185.70 [R]`
-- `14:05 O=4185.69 H=4189.85 L=4184.76 C=4185.63 [R]`
-- `14:10 O=4185.76 H=4189.09 L=4184.94 C=4188.10 [G]`
-- `14:15 O=4188.41 H=4188.61 L=4187.84 C=4188.24 [R]`
+- `17:35 O=4191.04 H=4194.29 L=4191.04 C=4193.16 [G]`
+- `17:40 O=4193.20 H=4194.33 L=4192.85 C=4192.92 [R]`
+- `17:45 O=4192.97 H=4195.24 L=4192.46 C=4194.23 [G]`
+- `17:50 O=4194.20 H=4197.52 L=4193.59 C=4196.89 [G]`
+- `17:55 O=4196.90 H=4197.38 L=4195.04 C=4195.53 [R]`
+- `18:00 O=4195.40 H=4197.47 L=4195.34 C=4195.49 [G]`
+- `18:05 O=4195.61 H=4199.16 L=4195.61 C=4198.94 [G]`
+- `18:10 O=4198.98 H=4200.39 L=4197.53 C=4198.25 [R]`
+- `18:15 O=4198.05 H=4198.05 L=4195.70 C=4196.64 [R]`
+- `18:20 O=4196.62 H=4197.39 L=4195.92 C=4196.20 [R]`
+- `18:25 O=4195.93 H=4196.55 L=4195.24 C=4195.59 [R]`
+- `18:30 O=4195.55 H=4196.32 L=4193.23 C=4193.75 [R]`
 
 ---
 
-## Score reglas extendidas (70%)
+## Score reglas extendidas (80%)
 
 | Regla | OK | Nota |
 |-------|----|------|
 | Solo E1 | SÍ | Operar solo E1 |
 | Tendencia H1 alineada | SÍ | Bajista |
-| 2 velas M5 confirman | NO | Falta confirmación |
+| 2 velas M5 confirman | SÍ | Velas confirman |
 | R:R mínimo 1:2 | SÍ | 1:2 |
-| RSI no contradice | SÍ | RSI 67 OK |
+| RSI no contradice | SÍ | RSI 55 OK |
 | Rango coherente | NO | rango alcista |
-| DMI alineado | NO | +DI domina (22/11) |
+| DMI alineado | NO | +DI domina (9/8) |
 | 0.5 midpoint E1 | SÍ | premium OK |
 | 2 SL / 3 ops hoy | SÍ | Confirmar trader |
 | SL ~$9 cuenta | SÍ | Ajustar lotaje |
@@ -263,10 +263,10 @@ _Reloj (info): NY AM 10-11_
 
 ## A) Síntesis ejecutiva
 
-- **Contexto macro:** Precio 4188 · reloj NY AM 10-11 · CRT PD=BULLISH · H1 bias **BULLISH**
-- **Setup:** NO_OPERAR SHORT · dirección **SHORT** · modo **BREAK** · reglas E1 4/6 (66%)
+- **Contexto macro:** Precio 4194 · reloj NY PM 14-16 · CRT PD=BULLISH · H1 bias **BULLISH**
+- **Setup:** NO_OPERAR SHORT · dirección **SHORT** · modo **BREAK** · reglas E1 5/6 (83%)
 - **Conflicto bando:** CLI **BEARISH** vs mercado H1 **BULLISH** — confirmar en TradingView antes de ejecutar
-- **Veredicto integrado:** NO_OPERAR — score combinado 41%
+- **Veredicto integrado:** NO_OPERAR — score combinado 46%
 
 ---
 
@@ -274,15 +274,15 @@ _Reloj (info): NY AM 10-11_
 
 | Capa | Score | Peso | Nota |
 |------|-------|------|------|
-| Rules E1 | 4/6 | 28% | 66% OK |
-| Rules extendidas (10) | 70% | 12% | meta >70% |
+| Rules E1 | 5/6 | 28% | 83% OK |
+| Rules extendidas (10) | 80% | 12% | meta >70% |
 | CRT coherence | fail | 12% | rango alcista |
-| Neural galería (gated) | 73.1% | 25% | alineado WIN; conf=medium; gate×0.65 → 65% |
-| ML tabular (gated) | 7.2% | 18% | grade C; conf=high; → 7% |
+| Neural galería (gated) | 56.8% | 25% | no alineado; conf=low; gate×0.35 → 52% |
+| ML tabular (gated) | 15.3% | 18% | grade C; conf=high; → 15% |
 | Penalización dirección | ×0.88 | — | penalización H1 BULLISH vs SHORT |
 | Bonificación ubicación | ×1.03 | — | SHORT en PREMIUM (zona a favor) |
-| Acuerdo entre capas | 38% | 38% | blend 62/38 con acuerdo BAJA 38% |
-| **Probabilidad de éxito** | **41%** | 100% | pesos + acuerdo entre capas |
+| Acuerdo entre capas | 44% | 38% | blend 62/38 con acuerdo BAJA 44% |
+| **Probabilidad de éxito** | **46%** | 100% | pesos + acuerdo entre capas |
 
 ---
 
@@ -290,13 +290,13 @@ _Reloj (info): NY AM 10-11_
 
 ### Distancias PDH/PDL
 
-- **PDH** 4146: +42.3 pts (+1.021%)
-- **PDL** 4105: +83.1 pts (+2.023%)
+- **PDH** 4146: +47.8 pts (+1.154%)
+- **PDL** 4105: +88.6 pts (+2.158%)
 
 ### Premium / Discount 0.5
 
 - Midpoint 0.5: **4126**
-- Posición precio: **PREMIUM** (precio 4188)
+- Posición precio: **PREMIUM** (precio 4194)
 - Lectura PD: **BULLISH**
 
 ### Fakeout — análisis paso a paso
@@ -305,11 +305,11 @@ _Reloj (info): NY AM 10-11_
 
 ### Timeline H1 (últimas 3 velas)
 
-- `10-09 12:00 O=4183 H=4192 L=4168 C=4175 [R]`
-- `10-09 13:00 O=4175 H=4196 L=4174 C=4190 [G]`
-- `10-09 14:00 O=4190 H=4191 L=4185 C=4188 [R]`
+- `10-09 16:00 O=4188 H=4194 L=4185 C=4191 [G]`
+- `10-09 17:00 O=4191 H=4198 L=4187 C=4196 [G]`
+- `10-09 18:00 O=4195 H=4200 L=4193 C=4194 [R]`
 
-- Estado CRT H1: **INSIDE_RANGE** — Rango H1 4174-4196; 0.5=4185
+- Estado CRT H1: **PENDING_BEAR** — Sweep high H1 sin hold
 
 ### Matriz acción E1 (TRADING_INDICATORS_RULES §3.2)
 
@@ -325,11 +325,11 @@ _Reloj (info): NY AM 10-11_
 
 ## E) Cruce Neural + Rules
 
-**Acuerdo Rules/Neural:** CONFLICT
+**Acuerdo Rules/Neural:** NEUTRAL
 
-- Tensión: ML bajo veto vs Neural alto — típico en sesiones con setup visual fuerte pero features ML desfavorables; priorizar Rules % + CRT
+- Ambos en zona media — decidir con Rules % y CRT
 
-- **Neural galería:** 73.1% WIN (grade B, conf medium) · gate×0.65 → 65% efectivo
+- **Neural galería:** 56.8% WIN (grade B, conf low) · gate×0.35 → 52% efectivo
 
 ---
 
@@ -337,7 +337,7 @@ _Reloj (info): NY AM 10-11_
 
 | # | Patrón | Archivo | Similitud | Tags |
 |---|--------|---------|-----------|------|
-| 1 | WIN: Rechazo resistencia (BTC-02-07-26) | BTC-02-07-26.png | 73% | rechazo, WIN |
+| 1 | WIN: Rechazo resistencia (BTC-02-07-26) | BTC-02-07-26.png | 57% | rechazo, WIN |
 
 - Cruzar con `docs/strategy/TRADING_OPERATIONS_DESKTOP_CONTEXT.md` §5.1
 
@@ -346,7 +346,6 @@ _Reloj (info): NY AM 10-11_
 ## H) Psicología y guardas
 
 - ❓ ¿2 SL hoy? — confirmar trader (límite de riesgo diario)
-- ⚠ Tensión ML/Neural — no entrar por galería sola
 
 > **Frase guía:** "Si no es A+ con CRT + 2 velas M5, es ESPERAR — el mercado mañana sigue ahí." (TRADING_VISUAL §7)
 
@@ -358,15 +357,15 @@ _Reloj (info): NY AM 10-11_
 ### Zentinel (presets TV → stack local)
 
 - **FVG+Vol:** `Zentinel_US30_E1` — alto 1.6 / extremo 2.8 / bajo 0.7 / muy bajo 0.4 / período 48 · **rol: filtro, nunca trigger**
-- **Watchtower:** `Watchtower_US30_E1` — KZ NY only (08-10 · 10-11 · 14-16) · ahora **NY AM 10-11**
-- **Vol relativo:** 0.03× → banda **muy_bajo** (vol×0.03 ≤ muy_bajo 0.4)
+- **Watchtower:** `Watchtower_US30_E1` — KZ NY only (08-10 · 10-11 · 14-16) · ahora **NY PM 14-16**
+- **Vol relativo:** 0.26× → banda **muy_bajo** (vol×0.26 ≤ muy_bajo 0.4)
 - **Bias table:** avg 3 · neutral 0.3%
 - Checklist TV manual (stack no lee indicadores en vivo).
 
 ### MACD-quant (filtro E1 · H4)
 
 - **Rol:** confluence_filter — **NUNCA trigger solo**. Entrada = H1/CTR + zona + 2M5.
-- **TF filtro:** H4 · fuente `h1_resample_h4` · Hist: 8.457 · soft-filter vs setup: **en contra**
+- **TF filtro:** H4 · fuente `h1_resample_h4` · Hist: 8.691 · soft-filter vs setup: **en contra**
 - **Strategy A (última H4):** sin cruce A (EMA200 filter)
 - Strategy B (zero-line): variante documentada; no dispara E1 sola.
 - Backtest WR/PF: **PENDING** (ver TRADING_QUANT_MACD_E1_BACKTEST.md).
@@ -398,4 +397,4 @@ Leer Categories (incl. Entrada óptima + Confluencia + Advanced) y secciones A�
 
 
 ---
-*high signal | 2026-10-09 14:15 UTC*
+*high signal | 2026-10-09 18:31 UTC*

@@ -79,6 +79,10 @@ def load_render_inputs(path: Path | str) -> dict:
 
 def _fetch_m5(asset: str) -> list[dict]:
     key = asset.upper()
+    from app.models.broker_feed import yahoo_klines, yahoo_only
+
+    if yahoo_only():  # sin MT5 (Android): todo desde Yahoo, también BTC (BTC-USD en vez de Binance)
+        return yahoo_klines(key, m5_bars=300)[0]
     if key == "US30":
         from app.models.us30_data import fetch_us30_klines
 
@@ -241,8 +245,17 @@ def main(argv: list[str] | None = None) -> int:
             order_state=args.order_state,
         )
         result.update(ok=True, chart=str(Path(written).resolve()))
-    except Exception as e:
-        result["error"] = str(e)
+    except Exception as e:  # incluye RecursionError: JSON limpio + traceback acotado en stderr
+        from app.views.mpl_safe import print_compact_traceback
+
+        print_compact_traceback(e)
+        if isinstance(e, RecursionError):
+            result.update(
+                code="recursion", detail=str(e),
+                error="No se pudo dibujar el gráfico: recursión excedida (revisa texto/datos de entrada).",
+            )
+        else:
+            result["error"] = str(e) or type(e).__name__
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["ok"] else 1
 

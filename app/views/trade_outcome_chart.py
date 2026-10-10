@@ -34,7 +34,6 @@ import math
 import os
 import sys
 import time
-import traceback
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -42,6 +41,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.views.mpl_safe import print_compact_traceback, safe_text
 from app.views.trade_chart import (
     BG,
     DOWN,
@@ -113,6 +113,16 @@ FILE_BLOCKED_MSG = (
 )
 
 
+RECURSION_CODE = "recursion"
+RECURSION_MSG = (
+    "No se pudo dibujar el gráfico: algún texto o dato de entrada es demasiado anidado "
+    "(recursión excedida). Revisa comentarios/etiquetas de las operaciones."
+)
+MAX_TRADES = 20
+MAX_JSON_DEPTH = 8
+MAX_JSON_LEN = 200_000
+
+
 class FileAccessBlockedError(RuntimeError):
     """Acceso a archivo denegado tras los reintentos (normalmente el antivirus)."""
 
@@ -164,6 +174,9 @@ def error_payload(exc: BaseException) -> dict[str, Any]:
     """JSON de error para la API: mensaje limpio en español + detalle técnico aparte."""
     if isinstance(exc, FileAccessBlockedError) or is_access_blocked(exc):
         return {"ok": False, "code": FILE_BLOCKED_CODE, "error": FILE_BLOCKED_MSG, "detail": str(exc)}
+    if isinstance(exc, RecursionError):
+        # No volcar el mensaje crudo de Python: dejarlo como detalle técnico y explicar la causa probable.
+        return {"ok": False, "code": RECURSION_CODE, "error": RECURSION_MSG, "detail": str(exc)}
     return {"ok": False, "error": str(exc) or type(exc).__name__}
 
 
@@ -336,15 +349,20 @@ def _fetch_broker_since(asset: str, since: datetime, now: datetime, notes: list[
 
 def fetch_m5_since(market: str, since: datetime, now: datetime | None = None) -> tuple[list[dict], dict]:
     """Velas M5 reales desde `since` → (velas, meta{source, proxy})."""
+    from app.models.broker_feed import yahoo_only
     from app.models.us30_data import fetch_yahoo_chart
 
     cfg = MARKETS[market]
     now = now or datetime.now(timezone.utc)
     notes: list[str] = []
-    broker = _fetch_broker_since(cfg["asset"], since, now, notes)
-    if broker:
-        return broker
-    if cfg.get("binance"):
+    only_yahoo = yahoo_only()  # Android/sin MT5: ni puente ni Binance, solo Yahoo
+    if only_yahoo:
+        notes.append("Modo solo Yahoo (FS_DATA_SOURCE=yahoo): MT5 omitido")
+    else:
+        broker = _fetch_broker_since(cfg["asset"], since, now, notes)
+        if broker:
+            return broker
+    if cfg.get("binance") and not only_yahoo:
         try:
             rows = _fetch_binance_since(cfg["binance"], since)
             if rows:
@@ -355,11 +373,11 @@ def fetch_m5_since(market: str, since: datetime, now: datetime | None = None) ->
     for ticker in cfg["tickers"]:
         try:
             rows = [c for c in fetch_yahoo_chart(ticker, "5m", rng) if c["open_time"] >= since]
-        except (URLError, HTTPError, RuntimeError, TimeoutError, ValueError) as exc:
+        except (URLError, HTTPError, RuntimeError, TimeoutError, ValueError, OSError) as exc:
             notes.append(f"{ticker}: {exc}")
             continue
         if rows:
-            return rows, {"source": f"{ticker} (Yahoo)", "proxy": True, "notes": notes}
+            return rows, {"source": f"{ticker} (Yahoo)", "proxy": True, "notes": notes, "yahoo_only": only_yahoo}
         notes.append(f"{ticker}: sin velas desde la señal")
     raise OutcomeDataError("No se pudieron obtener velas M5 reales: " + "; ".join(notes))
 
@@ -957,6 +975,9 @@ def render_outcome_chart(
     import matplotlib.pyplot as plt
 
     from app.views.illustrate_high_entry import savefig_png
+    from app.views.mpl_safe import disable_mathtext
+
+    disable_mathtext()  # "$" de importes/motivos de cierre ≠ mathtext (ValueError / RecursionError)
 
     trades = list(trades or ([real] if real else []))
     spans = [trade_span(t, post) for t in trades]
@@ -1076,6 +1097,8 @@ def evaluate_signal(
     real = trades[0] if len(trades) == 1 and not trades[0].label else None
     feed_note = (f"Velas {meta['source']} (sin MT5: pueden no coincidir con los precios del broker)"
                  if meta["proxy"] else None)
+    if meta.get("yahoo_only"):
+        feed_note = f"Velas {meta['source']} (solo Yahoo, sin MT5: pueden no coincidir con los precios del broker)"
     chart = render_with_retry(lambda: render_outcome_chart(
         pre, post, outcome, out_path, asset=cfg["asset"], direction=geo, entry=entry, sl=sl, tp=tp,
         dec=dec, signal_time=signal_time, market_entry=market_entry, ref_price=ref_price, trades=trades,
@@ -1120,6 +1143,9 @@ def evaluate_signal(
         "exitTime": iso(outcome.exit_index),
         "lastCandle": post[-1]["open_time"].isoformat(),
         "source": meta["source"],
+        "dataSource": ("yahoo" if meta.get("yahoo_only")
+                       else "mt5" if str(meta["source"]).startswith("MT5") else "external"),
+        "feedNotes": [str(n)[:300] for n in (meta.get("notes") or [])][:8],
         "shift": round(shift, dec),
         "stats": stats_payload(stats, pos["unit"].label),
         "closeTime": close_time,
@@ -1212,15 +1238,24 @@ def trades_from_json(raw: str | None) -> list[RealExecution]:
     closeReason}]. Las operaciones sin entrada o salida se descartan."""
     if not raw:
         return []
-    items = json.loads(raw)
+    if len(raw) > MAX_JSON_LEN:
+        raise ValueError("--trades-json demasiado grande")
+    try:
+        items = json.loads(raw)
+    except RecursionError as exc:  # [[[[…]]]] muy profundo: json.loads es recursivo
+        raise ValueError("--trades-json demasiado anidado") from exc
     if not isinstance(items, list):
         raise ValueError("--trades-json debe ser una lista")
+    if len(items) > MAX_TRADES:
+        raise ValueError(f"--trades-json: máximo {MAX_TRADES} operaciones")
 
     def when(v: Any) -> datetime | None:
         return _parse_iso(v) if isinstance(v, str) and v else None
 
     trades = []
     for it in items:
+        if not isinstance(it, dict):
+            continue
         entry, exit_ = _positive(it.get("entry")), _positive(it.get("exit"))
         if entry is None or exit_ is None:
             continue
@@ -1228,8 +1263,9 @@ def trades_from_json(raw: str | None) -> list[RealExecution]:
         trades.append(RealExecution(
             entry=entry, exit=exit_, close_time=when(it.get("closedAt")), open_time=when(it.get("openedAt")),
             sl=_positive(it.get("sl")), ticket=it.get("ticket"), tp=_positive(it.get("tp")),
-            label=str(it.get("label") or ""), pnl_usd=float(pnl) if isinstance(pnl, (int, float)) else None,
-            close_reason=it.get("closeReason") or None, sent_at=when(it.get("sentAt")),
+            label=safe_text(it.get("label")),
+            pnl_usd=float(pnl) if isinstance(pnl, (int, float)) and math.isfinite(pnl) else None,
+            close_reason=safe_text(it.get("closeReason")) or None, sent_at=when(it.get("sentAt")),
         ))
     return trades
 
@@ -1244,8 +1280,8 @@ def main(argv: list[str] | None = None) -> int:
             price=args.price, direction=args.direction, real=real_from_args(args),
             trades=trades_from_json(args.trades_json) or None,
         )
-    except Exception as e:
-        traceback.print_exc(file=sys.stderr)
+    except Exception as e:  # incluye RecursionError (subclase de RuntimeError): siempre JSON limpio
+        print_compact_traceback(e)  # RecursionError: primeros frames (el ciclo), no los 1000
         result = error_payload(e)
     print(json.dumps(result))
     return 0 if result["ok"] else 1

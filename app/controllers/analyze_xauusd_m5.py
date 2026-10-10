@@ -50,6 +50,7 @@ def save_chart(m5: list[dict], path: Path, title: str) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
+    matplotlib.rcParams["text.parse_math"] = False  # "$" ≠ mathtext
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 

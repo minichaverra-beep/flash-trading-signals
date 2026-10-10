@@ -593,6 +593,9 @@ def render_trade_chart(
     import matplotlib.pyplot as plt
 
     from app.views.illustrate_high_entry import savefig_png
+    from app.views.mpl_safe import disable_mathtext
+
+    disable_mathtext()  # "$" de importes/notas ≠ mathtext (ValueError / RecursionError)
 
     m5 = data.get("m5") or []
     show = m5[-HISTORY_CANDLES:]

@@ -289,6 +289,7 @@ def save_chart(m5: list[dict], path: Path, title: str) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
+    matplotlib.rcParams["text.parse_math"] = False  # "$" ≠ mathtext
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 
@@ -560,8 +561,8 @@ def main() -> int:
         else:
             m5, h1, fetch_meta = _binance()
             data_source = f"Binance {args.symbol}"
-    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError) as e:
-        print(f"ERROR fetching Binance: {e}")
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError, RuntimeError, OSError, ValueError) as e:
+        print(f"ERROR obteniendo velas (Binance/Yahoo): {e}")
         return 1
 
     price = m5[-1]["close"]

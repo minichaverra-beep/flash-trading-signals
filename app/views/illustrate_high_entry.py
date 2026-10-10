@@ -148,6 +148,7 @@ def create_annotated_entry_chart(
         import matplotlib
 
         matplotlib.use("Agg")
+        matplotlib.rcParams["text.parse_math"] = False
         import matplotlib.pyplot as plt
 
         # Minimal placeholder so callers/tests still get a file

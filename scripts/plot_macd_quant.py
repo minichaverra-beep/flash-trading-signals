@@ -46,6 +46,8 @@ from app.models.macd_quant import (
     resample_to_h4,
 )
 
+plt.rcParams["text.parse_math"] = False  # "$" ≠ mathtext (ValueError / RecursionError)
+
 BINANCE = "https://api.binance.com/api/v3/klines"
 # Si el último open_time del parquet tiene más de esto, se refresca solo.
 STALE_MAX_AGE = timedelta(hours=6)
