@@ -1935,6 +1935,193 @@
       "archive": "live/archive/btc_20261010_161525_annotated.png",
       "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
       "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261010_161525_annotated.png"
+    },
+    {
+      "id": "xauusd-044",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-13 14:35",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261013_143525_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261013_143525_annotated.png"
+    },
+    {
+      "id": "btc-093",
+      "asset": "BTC",
+      "mode": "high",
+      "time_utc": "2026-10-13 14:37",
+      "source": "btc_m5_chart_annotated.png",
+      "latest": "live/latest/btc_latest_annotated.png",
+      "archive": "live/archive/btc_20261013_143747_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261013_143747_annotated.png"
+    },
+    {
+      "id": "xauusd-045",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 14:04",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_140452_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_140452_annotated.png"
+    },
+    {
+      "id": "xauusd-046",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 14:10",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_141017_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_141017_annotated.png"
+    },
+    {
+      "id": "btc-094",
+      "asset": "BTC",
+      "mode": "high",
+      "time_utc": "2026-10-14 14:10",
+      "source": "btc_m5_chart_annotated.png",
+      "latest": "live/latest/btc_latest_annotated.png",
+      "archive": "live/archive/btc_20261014_141048_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261014_141048_annotated.png"
+    },
+    {
+      "id": "btc-095",
+      "asset": "BTC",
+      "mode": "high",
+      "time_utc": "2026-10-14 14:26",
+      "source": "btc_m5_chart_annotated.png",
+      "latest": "live/latest/btc_latest_annotated.png",
+      "archive": "live/archive/btc_20261014_142632_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261014_142632_annotated.png"
+    },
+    {
+      "id": "us30-068",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-10-14 14:27",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20261014_142707_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20261014_142707_annotated.png"
+    },
+    {
+      "id": "btc-096",
+      "asset": "BTC",
+      "mode": "high",
+      "time_utc": "2026-10-14 16:47",
+      "source": "btc_m5_chart_annotated.png",
+      "latest": "live/latest/btc_latest_annotated.png",
+      "archive": "live/archive/btc_20261014_164724_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261014_164724_annotated.png"
+    },
+    {
+      "id": "xauusd-047",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 18:09",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_180859_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_180859_annotated.png"
+    },
+    {
+      "id": "us30-069",
+      "asset": "US30",
+      "mode": "high",
+      "time_utc": "2026-10-14 19:13",
+      "source": "us30_m5_chart_annotated.png",
+      "latest": "live/latest/us30_latest_annotated.png",
+      "archive": "live/archive/us30_20261014_191333_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20261014_191333_annotated.png"
+    },
+    {
+      "id": "xauusd-048",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 20:30",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_203023_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_203023_annotated.png"
+    },
+    {
+      "id": "btc-097",
+      "asset": "BTC",
+      "mode": "high",
+      "time_utc": "2026-10-14 20:31",
+      "source": "btc_m5_chart_annotated.png",
+      "latest": "live/latest/btc_latest_annotated.png",
+      "archive": "live/archive/btc_20261014_203114_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261014_203114_annotated.png"
+    },
+    {
+      "id": "xauusd-049",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 22:14",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_221459_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_221459_annotated.png"
+    },
+    {
+      "id": "btc-098",
+      "asset": "BTC",
+      "mode": "high",
+      "time_utc": "2026-10-14 22:15",
+      "source": "btc_m5_chart_annotated.png",
+      "latest": "live/latest/btc_latest_annotated.png",
+      "archive": "live/archive/btc_20261014_221551_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261014_221551_annotated.png"
+    },
+    {
+      "id": "xauusd-050",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 22:45",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_224502_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_224502_annotated.png"
+    },
+    {
+      "id": "xauusd-051",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 22:46",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_224646_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_224646_annotated.png"
+    },
+    {
+      "id": "xauusd-052",
+      "asset": "XAUUSD",
+      "mode": "high",
+      "time_utc": "2026-10-14 22:47",
+      "source": "xauusd_m5_chart_annotated.png",
+      "latest": "live/latest/xauusd_latest_annotated.png",
+      "archive": "live/archive/xauusd_20261014_224725_annotated.png",
+      "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
+      "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261014_224725_annotated.png"
     }
   ]
 }
