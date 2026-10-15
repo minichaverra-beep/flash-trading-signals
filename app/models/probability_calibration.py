@@ -680,8 +680,14 @@ def fit_calibration(
     c: float = 0.5,
     n_boot: int = 200,
     seed: int = 7,
+    outcomes: list[dict] | None = None,
 ) -> dict[str, Any]:
-    """Walk-forward con purga + bootstrap por días. Devuelve el artefacto JSON."""
+    """Walk-forward con purga + bootstrap por días. Devuelve el artefacto JSON.
+
+    `outcomes`: resultados reales de la app (real_outcomes.load_outcomes) para validar
+    las capas ML / Neural; sin ellos las capas quedan fuera (oos_ok False).
+    """
+    from app.models.real_outcomes import layer_validation
     import numpy as np
 
     data = sorted((r for r in rows if r["label"] is not None), key=lambda r: r["time"])
@@ -735,11 +741,7 @@ def fit_calibration(
         "rule_stats": _rule_stats(data),
         "risk_pct_median": round(risk[len(risk) // 2], 5) if risk else None,
         "cost_pct": DEFAULT_COST_PCT.get(asset_key(asset), 0.01),
-        "layers": {
-            "ml": {"oos_ok": False, "weight": 0.0,
-                   "reason": "sin predicciones ML fuera de muestra registradas"},
-            "neural": {"oos_ok": False, "weight": 0.0,
-                       "reason": "galería sin histórico de predicciones con resultado"},
-        },
+        "layers": layer_validation(outcomes or []),
+        "layers_source": "live_outcomes" if outcomes else "none",
         "bootstrap": boot,
     }

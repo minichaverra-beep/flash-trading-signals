@@ -4,6 +4,7 @@ Calibra la Probabilidad de éxito E1 con replay histórico + walk-forward.
 Usage:
   python -m app.controllers.calibrate_signals --asset btc
   python -m app.controllers.calibrate_signals --asset btc --evaluate-log
+  python -m app.controllers.calibrate_signals --asset btc --evaluate-outcomes [--apply-layers]
 """
 from __future__ import annotations
 
@@ -174,6 +175,52 @@ def evaluate_log(asset: str) -> int:
     return 0
 
 
+def _stats_line(label: str, st: dict) -> str:
+    if not st["n"]:
+        return f"- {label}: sin muestras"
+    skill = f"{st['skill'] * 100:+.1f}%" if st["skill"] is not None else "n/d"
+    return (f"- {label}: n={st['n']} · acierto real {st['hit_rate'] * 100:.1f}% · "
+            f"predicho medio {st['mean_pred'] * 100:.1f}% · Brier {st['brier']} vs constante "
+            f"{st['brier_const']} (skill {skill})")
+
+
+def evaluate_outcomes_cmd(asset: str, apply_layers: bool = False, path=None) -> int:
+    """Resultados reales registrados por la app: acierto/Brier vs probabilidad predicha y capas."""
+    from app.models.real_outcomes import (
+        apply_layers_to_calibration,
+        evaluate_outcomes,
+        layer_validation,
+        load_outcomes,
+        outcomes_path,
+    )
+
+    src = path or outcomes_path(asset)
+    records = load_outcomes(asset, path=src)
+    if not records:
+        print(f"Sin resultados reales registrados: {src}")
+        return 0
+    ev = evaluate_outcomes(records)
+    counts = " · ".join(f"{k or 'vacío'} {v}" for k, v in sorted(ev["counts"].items()))
+    hit = f"{ev['hit_rate'] * 100:.1f}%" if ev["hit_rate"] is not None else "n/d"
+    print(f"{asset_key(asset)} resultados reales: {ev['n_records']} filas ({counts}) · "
+          f"resueltas {ev['n_resolved']} · acierto {hit} · PnL {ev['pnl_usd']:+.2f} USD")
+    print(_stats_line("Probabilidad de éxito", ev["probability"]))
+    for name, st in ev["layers"].items():
+        print(_stats_line(f"Capa {name}", st))
+    for name, cfg in layer_validation(records).items():
+        print(f"- layers.{name}: {'entra' if cfg['oos_ok'] else 'no entra'} — {cfg['reason']}")
+    if apply_layers:
+        art = calibration_path(asset)
+        if not art.is_file():
+            print(f"Sin artefacto de calibración para aplicar capas: {art}")
+            return 1
+        calib = json.loads(art.read_text(encoding="utf-8"))
+        apply_layers_to_calibration(calib, records)
+        art.write_text(json.dumps(calib, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        print(f"Capas actualizadas en {art}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Calibrar Probabilidad de éxito E1")
     parser.add_argument("--asset", default="btc")
@@ -181,16 +228,24 @@ def main() -> int:
     parser.add_argument("--stride", type=int, default=3)
     parser.add_argument("--cooldown", type=int, default=12)
     parser.add_argument("--evaluate-log", action="store_true")
+    parser.add_argument("--evaluate-outcomes", action="store_true",
+                        help="Acierto/Brier con resultados reales de la app (live/outcomes)")
+    parser.add_argument("--apply-layers", action="store_true",
+                        help="Con --evaluate-outcomes: reescribe layers ML/Neural del artefacto")
     args = parser.parse_args()
 
     if args.evaluate_log:
         return evaluate_log(args.asset)
+    if args.evaluate_outcomes:
+        return evaluate_outcomes_cmd(args.asset, apply_layers=args.apply_layers)
+
+    from app.models.real_outcomes import load_outcomes
 
     t0 = time.time()
     m5, h1 = _load_candles(args.asset)
     print(f"Replay {asset_key(args.asset)}: M5={len(m5)} H1={len(h1)} …")
     rows = build_replay_dataset(m5, h1, horizon=args.horizon, stride=args.stride, cooldown=args.cooldown)
-    calib = fit_calibration(rows, asset=args.asset, horizon=args.horizon)
+    calib = fit_calibration(rows, asset=args.asset, horizon=args.horizon, outcomes=load_outcomes(args.asset))
     out = calibration_path(args.asset)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(calib, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")

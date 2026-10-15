@@ -2532,3 +2532,22 @@ def write_high_signal(
         )
     lines += ["", f"---\n*high signal | {data['generated']} UTC*\n"]
     path.write_text("\n".join(lines), encoding="utf-8")
+    _write_high_signal_json(path, data, ctx, opt, advanced=advanced)
+
+
+def _write_high_signal_json(path: Path, data: dict, ctx: dict, opt: dict, *, advanced: bool) -> None:
+    """JSON estructurado junto al .md; un fallo aquí nunca rompe el reporte markdown."""
+    from app.views.high_signal_json import (
+        build_high_signal_json,
+        json_path_for,
+        latest_signal_id,
+        write_json_atomic,
+    )
+
+    try:
+        appended = bool(data.get("history_mode")) or (opt or {}).get("entry") is not None
+        signal_id = latest_signal_id(data) if appended else None
+        payload = build_high_signal_json(data, ctx, opt, signal_id=signal_id, advanced=advanced)
+        write_json_atomic(json_path_for(path), payload)
+    except Exception as exc:  # noqa: BLE001 — el .md ya está escrito; el JSON es opcional
+        print(f"WARN high signal JSON: {exc}")
