@@ -13,6 +13,7 @@ BASE = PROJECT_ROOT
 sys.path.insert(0, str(BASE))
 
 from app.controllers.analyze_btc_m5 import fetch_klines, nearest_zone, save_chart  # noqa: E402
+from app.views.trade_chart import _draw_candles  # noqa: E402
 
 OUT = BASE / "live" / "btc_m5_chart_annotated.png"
 RESISTANCE = 77444.0
@@ -28,12 +29,7 @@ def save_annotated_chart(m5: list[dict], path: Path, title: str) -> None:
     show = m5[-60:]
     n = len(show)
 
-    for i, c in enumerate(show):
-        color = "#4ec9b0" if c["close"] >= c["open"] else "#f48771"
-        ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.8)
-        bottom = min(c["open"], c["close"])
-        height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.01
-        ax.add_patch(Rectangle((i - 0.3, bottom), 0.6, height, facecolor=color, edgecolor=color))
+    _draw_candles(ax, show, float(show[-1]["close"]) if show else 1.0)
 
     # Highlight last 2 candles (2M5 actuales — lejos de zona)
     for idx in (n - 2, n - 1):

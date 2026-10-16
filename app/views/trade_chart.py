@@ -18,8 +18,10 @@ GRID = "#2a2a2e"
 SPINE = "#3e3e42"
 TEXT = "#e0e0e0"
 MUTED = "#808080"
-UP = "#4ec9b0"
-DOWN = "#f48771"
+UP = "#39FF14"  # vela alcista neón
+DOWN = "#FF2BD6"  # vela bajista neón (magenta)
+UP_WICK = "#C6FFB0"
+DOWN_WICK = "#FFB4F2"
 ENTRY_C = "#4fc1ff"
 SL_C = "#f44747"
 TP_C = "#6a9955"
@@ -303,15 +305,36 @@ def consistent_callout(state: str, callout: str, reasons: list[str]) -> str:
 
 
 def _draw_candles(ax, show: list[dict], price: float) -> None:
+    """Velas OHLC neón: cuerpo brillante, mecha más clara y halo suave. SL/TP/entrada quedan encima."""
     from matplotlib.patches import Rectangle
 
     for i, c in enumerate(show):
-        color = UP if c["close"] >= c["open"] else DOWN
-        ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.9, zorder=3)
+        up = c["close"] >= c["open"]
+        body = UP if up else DOWN
+        wick = UP_WICK if up else DOWN_WICK
+        lo, hi = c["low"], c["high"]
+        ax.plot([i, i], [lo, hi], color=body, linewidth=4.4, alpha=0.16,
+                solid_capstyle="round", zorder=3)
+        ax.plot([i, i], [lo, hi], color=body, linewidth=2.2, alpha=0.32,
+                solid_capstyle="round", zorder=3)
+        ax.plot([i, i], [lo, hi], color=wick, linewidth=1.0,
+                solid_capstyle="round", zorder=3)
         bottom = min(c["open"], c["close"])
-        height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.02 or price * 1e-6
+        height = abs(c["close"] - c["open"]) or (hi - lo) * 0.02 or price * 1e-6
+        pad = max((hi - lo) * 0.04, height * 0.1, abs(price) * 1e-6)
+        for grow, ypad, alpha in (
+            (0.18, pad * 1.5, 0.05),
+            (0.12, pad * 1.05, 0.08),
+            (0.07, pad * 0.65, 0.12),
+            (0.03, pad * 0.28, 0.16),
+        ):
+            ax.add_patch(Rectangle(
+                (i - 0.32 - grow, bottom - ypad), 0.64 + grow * 2, height + ypad * 2,
+                facecolor=body, edgecolor="none", alpha=alpha, zorder=3,
+            ))
         ax.add_patch(Rectangle(
-            (i - 0.32, bottom), 0.64, height, facecolor=color, edgecolor=color, zorder=4,
+            (i - 0.32, bottom), 0.64, height,
+            facecolor=body, edgecolor=wick, linewidth=0.55, zorder=4,
         ))
 
 

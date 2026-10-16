@@ -52,21 +52,16 @@ def save_chart(m5: list[dict], path: Path, title: str) -> None:
     matplotlib.use("Agg")
     matplotlib.rcParams["text.parse_math"] = False  # "$" ≠ mathtext
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
 
     from app.views.illustrate_high_entry import savefig_png
+    from app.views.trade_chart import _draw_candles
 
     fig = None
     try:
         fig, ax = plt.subplots(figsize=(12, 5), facecolor="#1e1e1e")
         ax.set_facecolor("#1e1e1e")
         show = m5[-60:]
-        for i, c in enumerate(show):
-            color = "#4ec9b0" if c["close"] >= c["open"] else "#f48771"
-            ax.plot([i, i], [c["low"], c["high"]], color=color, linewidth=0.8)
-            bottom = min(c["open"], c["close"])
-            height = abs(c["close"] - c["open"]) or (c["high"] - c["low"]) * 0.01
-            ax.add_patch(Rectangle((i - 0.3, bottom), 0.6, height, facecolor=color, edgecolor=color))
+        _draw_candles(ax, show, float(show[-1]["close"]) if show else 1.0)
         ax.set_title(title, color="#dcdcaa", fontsize=12, fontweight="bold")
         ax.tick_params(colors="#e0e0e0")
         for spine in ax.spines.values():
