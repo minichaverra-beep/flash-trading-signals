@@ -3,86 +3,102 @@
  "asset": "BTC",
  "symbol": "BTCUSDT",
  "mode": "high",
- "advanced": false,
- "generatedUtc": "2026-10-15T14:07:00Z",
- "signalId": "btc-104",
+ "advanced": true,
+ "generatedUtc": "2026-10-16T15:35:00Z",
+ "signalId": "btc-113",
  "reviewedSignalId": null,
- "verdict": "ESPERAR",
- "direction": "SHORT",
- "price": 80569.19,
- "bias": "AUTO",
+ "verdict": "ENTRAR",
+ "direction": "LONG",
+ "price": 81637.85,
+ "bias": "BULLISH",
  "biasH1": "BEARISH",
- "setup": "AUTO",
+ "setup": "BREAK (breakout)",
  "setupGrade": "A+",
  "winrate": {
-  "value": "~50%",
-  "source": "calibrado walk-forward BTC E1 · 80%: 48–52% · n=2097 (n_eff 755) · EV +0.30R"
+  "value": "~59%",
+  "source": "calibrado walk-forward BTC E1 · 80%: 56–62% · n=2097 (n_eff 755) · EV +0.69R"
  },
  "plan": {
-  "entry": 80601.82,
-  "optimalEntry": 80601.82,
-  "sl": 80850.37371428573,
-  "tp": 80104.71257142858,
+  "entry": 81667.85805006001,
+  "optimalEntry": 81667.85805006001,
+  "sl": 81525.75576434573,
+  "tp": 81952.06262148859,
   "rr": 2.0,
-  "risk": 248.55371428571445,
-  "trigger": "ICT retest FVG BEARISH edge @ 80601.8 + 2 velas M5 rojas en zona",
-  "invalidation": "Cierre M5 > 80817.7 o breakout > 80460.8 sin rechazo",
-  "confirmation": "2 velas M5 rojas consecutivas (zona ref info)",
+  "risk": 142.10228571428783,
+  "trigger": "Retest 81654.6–81728.1 (soporte_debil @ 81654.6) + 2 velas M5 verdes consecutivas en zona",
+  "invalidation": "Cierre M5 < 81525.8 o breakdown < 81654.6 sin reclaim",
+  "confirmation": "2 velas M5 verdes consecutivas (zona ref info)",
   "planB": "Light re-scan ~30 min: si precio no retestea zona → skip trade AM; reservar PM solo si AM=ESPERAR y <2 SL",
   "slTpSource": null
  },
  "probability": {
-  "pct": 50.1,
+  "pct": 58.7,
   "ci": [
-   48.2,
-   52.3
+   55.6,
+   62.4
   ],
-  "evR": 0.301,
+  "evR": 0.686,
   "kellyFrac": 0.01,
   "calibrated": true,
   "hasEdge": true,
   "method": "walk_forward_logistic",
   "n": 2097,
   "nEff": 755,
-  "legacyPct": null,
+  "legacyPct": 49.3,
   "layersUsed": []
  },
  "fusion": {
-  "score": null,
-  "preAcuerdo": null,
-  "weights": null,
+  "score": 58.7,
+  "preAcuerdo": 48.8,
+  "weights": {
+   "rules_e1": 0.295,
+   "rules_ext": 0.126,
+   "crt": 0.126,
+   "neural": 0.263,
+   "ml": 0.189
+  },
   "layers": {
-   "rules": 66.0,
+   "rules": 83.0,
    "extended": 70.0,
    "crt": 100.0,
-   "neural": null,
-   "ml": null,
-   "e2": 33.3
+   "neural": 59.8,
+   "ml": 81.5,
+   "e2": 0.0
   }
  },
  "confluence": {
-  "pct": 61.0,
+  "pct": 50.0,
   "label": "MEDIA",
-  "detail": "61% · Rules 66%; 2M5 no listo; Setup auto con dirección; H1 alineado; Vol normal"
+  "detail": "50% · Rules 83%; Neural gated 60% (medium); ML 81% (high); 2M5 no listo; Break vs PREMIUM (chase)"
  },
  "rules": {
   "e1": {
-   "ok": 4,
+   "ok": 5,
    "total": 6,
-   "pct": 66.0
+   "pct": 83.0
   },
   "extended": {
    "pct": 70.0
   }
  },
- "ml": null,
- "neural": null,
+ "ml": {
+  "pct": 81.5,
+  "grade": "A+",
+  "conf": "high"
+ },
+ "neural": {
+  "pct": 65.0,
+  "grade": "B",
+  "conf": "medium",
+  "effectivePct": 59.8,
+  "gate": 0.65
+ },
  "zentinel": {
   "volume": {
-   "ratio": 0.8841949882261976,
-   "band": "normal",
-   "confluence": "neutral",
-   "note": "vol×0.88 en rango normal",
+   "ratio": 0.2267684332313874,
+   "band": "muy_bajo",
+   "confluence": "negative_filter",
+   "note": "vol×0.23 ≤ muy_bajo 0.45",
    "period": 84,
    "preset_name": "Zentinel_BTC_E1",
    "role": "confluence_filter",
@@ -94,9 +110,9 @@
    "watchtower_preset": "Watchtower_BTC_E1",
    "role_note": "FVG Multi TF + Volumen = filtro de confluencia, NUNCA trigger. Entrada = H1/CTR + zona + 2M5.\n"
   },
-  "killzone": "NY AM 10-11",
-  "killzoneOn": true,
-  "nyLocal": "2026-10-15 10:07"
+  "killzone": "FUERA_NY (Lunch)",
+  "killzoneOn": false,
+  "nyLocal": "2026-10-16 11:35"
  },
  "macdQuant": {
   "role": "confluence_filter",
@@ -104,10 +120,10 @@
   "available": true,
   "timeframe": "H4",
   "source": "h1_resample_h4",
-  "macd": -569.6714993697242,
-  "signal_line": -307.3691918245057,
-  "histogram": -262.30230754521847,
-  "trend_ema": 83542.03369056637,
+  "macd": -245.73521961111692,
+  "signal_line": -259.00383939891896,
+  "histogram": 13.268619787802038,
+  "trend_ema": 82825.25050754649,
   "signal": 0,
   "soft_filter_ok": true,
   "params": {
@@ -122,52 +138,50 @@
   "bars_h4": 51
  },
  "ict": {
-  "refined": true,
-  "source": "FVG BEARISH edge",
-  "note": "Refinada 80569.2→80601.8 (FVG BEARISH edge) · Sweep swing_high @ 80686.6 + reclaim · PD DISCOUNT · H1 INSIDE_RANGE · killzone NY AM 10-11",
-  "entryBeforeIct": 80569.19,
-  "summary": "80569.2→80601.8 · Refinada 80569.2→80601.8 (FVG BEARISH edge) · Sweep swing_high @ 80686.6 + reclaim · PD DISCOUNT · H1 INSIDE_RANGE · killzone NY AM 10-11",
+  "refined": false,
+  "source": "zona base (sin cambio ICT)",
+  "note": "Base 81667.9 (zona base) · Sweep swing_high @ 82043.9 + reclaim · PD PREMIUM · H1 COMPLETED_BEAR",
+  "entryBeforeIct": 81667.85805006001,
+  "summary": "Base 81667.9 (zona base) · Sweep swing_high @ 82043.9 + reclaim · PD PREMIUM · H1 COMPLETED_BEAR",
   "scan": {
-   "premium_discount": "DISCOUNT",
-   "midpoint": 82690.255,
+   "premium_discount": "PREMIUM",
+   "midpoint": 81174.045,
    "pd_ok": false,
-   "h1_state": "INSIDE_RANGE",
+   "h1_state": "COMPLETED_BEAR",
    "displacement": false,
-   "killzone": "NY AM 10-11",
-   "killzone_ok": true,
-   "price": 80569.19,
-   "zone_level": 80460.79,
+   "killzone": "FUERA_NY (Lunch)",
+   "killzone_ok": false,
+   "price": 81637.85,
+   "zone_level": 81654.63,
    "zone_type": "soporte_debil",
-   "direction": "SHORT"
+   "direction": "LONG"
   }
  },
  "crt": {
-  "pd_reading": "BEARISH",
-  "midpoint": 82690.255,
-  "premium_discount": "DISCOUNT",
-  "h1_state": "INSIDE_RANGE",
-  "h1_detail": "Rango H1 79677-80687; 0.5=80182",
+  "pd_reading": "NEUTRAL",
+  "midpoint": 81174.045,
+  "premium_discount": "PREMIUM",
+  "h1_state": "COMPLETED_BEAR",
+  "h1_detail": "Low H1 81829 alcanzado",
   "fakeout_pdh": false,
   "fakeout_pdl": false,
-  "fakeout_note": "",
-  "crt_action_e1": "Shorts E1 rechazo resistencia (premium)"
+  "fakeout_note": "BREAK pendiente: Sin breakout de nivel detectado",
+  "crt_action_e1": "No forzar; esperar pending CRT HTF | Modo BREAK: breakout de nivel/estructura (no reversión)",
+  "mode_setup": "break"
  },
  "e2": {
-  "score": 2,
+  "score": 0,
   "max": 6,
   "eligible": false,
   "verdict": "E2_NO",
-  "note": "E2 max 10%; PF E1=4.77; PROHIBIDO eval (TRADING_VISUAL SS7)"
+  "note": "Modo BREAK: breakout de nivel — E2/reversión despriorizada, NO operable",
+  "winrate": null,
+  "mode_setup": "break"
  },
- "contingencies": [
-  "No añadas tamaño en SHORT · 0.040% de Entrada óptima — sistema pide espera (**ESPERAR SHORT**); trail o BE según contingencias",
-  "Sin Neural: prioriza Rules/Confluencia — cerca de Entrada óptima mantener; lejos → no chase",
-  "Si Rules <70% (ahora 66%) o Confluencia MEDIA → reducir / salir a BE",
-  "H1 BEARISH a favor de SHORT — hold; espera confirmación",
-  "Cerca de Entrada óptima (0.040%) — trail o BE; no scales hasta veredicto ENTRAR"
- ],
+ "contingencies": [],
  "redFlags": [
-  "RSI TORYS en contra: Fondo verde TORYS-proxy - filtro long"
+  "Precio dentro PDH/PDL — contexto NEUTRAL, no forzar",
+  "RSI M5 26.6 sobrevendido — filtro TORYS-like"
  ],
  "checklists": {
   "e1": [
@@ -179,7 +193,7 @@
    {
     "label": "Tendencia H1 alineada",
     "ok": true,
-    "note": "Bajista"
+    "note": "Alcista"
    },
    {
     "label": "2 velas M5 confirman",
@@ -193,13 +207,13 @@
    },
    {
     "label": "RSI no contradice",
-    "ok": false,
-    "note": "Fondo verde TORYS-proxy - filtro long"
+    "ok": true,
+    "note": "RSI 27 OK"
    },
    {
     "label": "Rango coherente",
     "ok": true,
-    "note": "Shorts E1 rechazo resistencia (premium)"
+    "note": "No forzar; esperar pending CRT HTF | Mod"
    }
   ],
   "extended": [
@@ -211,7 +225,7 @@
    {
     "label": "Tendencia H1 alineada",
     "ok": true,
-    "note": "Bajista"
+    "note": "Alcista"
    },
    {
     "label": "2 velas M5 confirman",
@@ -225,23 +239,23 @@
    },
    {
     "label": "RSI no contradice",
-    "ok": false,
-    "note": "Fondo verde TORYS-proxy - filtro long"
+    "ok": true,
+    "note": "RSI 27 OK"
    },
    {
     "label": "Rango coherente",
     "ok": true,
-    "note": "Shorts E1 rechazo resistencia (premium)"
+    "note": "No forzar; esperar pending CRT HTF | Mod"
    },
    {
     "label": "DMI alineado",
-    "ok": true,
-    "note": "Momentum mixto"
+    "ok": false,
+    "note": "-DI domina (1063/385)"
    },
    {
     "label": "0.5 midpoint E1",
     "ok": false,
-    "note": "discount — no short E1"
+    "note": "premium — no long E1"
    },
    {
     "label": "2 SL / 3 ops hoy",
@@ -258,15 +272,15 @@
    {
     "label": "RSI M5 vs dirección",
     "grade": "✓✓",
-    "value": "RSI 52.2 (SHORT: neutral)",
-    "impact": "+4.3 pts",
-    "wr": "esta zona 54% (n=390)",
+    "value": "RSI 26.6 (LONG: con recorrido a favor)",
+    "impact": "+12.9 pts",
+    "wr": "esta zona 55% (n=210)",
     "type": "ponderada"
    },
    {
     "label": "Zona premium/discount",
     "grade": "~",
-    "value": "DISCOUNT (en contra)",
+    "value": "PREMIUM (en contra)",
     "impact": "-0.7 pts",
     "wr": "a favor 55% / en contra 45%",
     "type": "ponderada"
@@ -282,7 +296,7 @@
    {
     "label": "Rango CRT coherente",
     "grade": "~",
-    "value": "Shorts E1 rechazo resistencia (premium)",
+    "value": "No forzar; esperar pending CRT HTF | Mod",
     "impact": "+0.2 pts",
     "wr": "sí 46% / no 45%",
     "type": "ponderada"
@@ -298,7 +312,7 @@
    {
     "label": "Tendencia H1 alineada",
     "grade": "·",
-    "value": "Bajista",
+    "value": "Alcista",
     "impact": "—",
     "wr": "constante en histórico",
     "type": "info"
@@ -318,12 +332,20 @@
   "message": null,
   "lastCandleUtc": null,
   "ageMin": null,
-  "source": "MT5 BTCUSDm (broker, M5/H1)"
+  "source": "MT5 BTCUSD (broker, M5/H1)"
  },
  "chart": {
   "main": null,
-  "annotated": null,
-  "renderJson": null,
-  "archive": null
+  "annotated": "D:\\Danilo\\Trading\\Cursor Trading\\live\\btc_m5_chart_annotated.png",
+  "renderJson": "D:\\Danilo\\Trading\\Cursor Trading\\live\\btc_m5_chart_annotated.render.json",
+  "archive": {
+   "ok": true,
+   "asset": "BTC",
+   "latest_name": "btc_latest_annotated.png",
+   "latest_rel": "live/latest/btc_latest_annotated.png",
+   "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\btc_latest_annotated.png",
+   "archive_rel": "live/archive/btc_20261016_153630_annotated.png",
+   "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\btc_20261016_153630_annotated.png"
+  }
  }
 }

@@ -1,0 +1,348 @@
+{
+ "schemaVersion": 1,
+ "asset": "US30",
+ "symbol": "US30",
+ "mode": "high",
+ "advanced": true,
+ "generatedUtc": "2026-10-16T16:13:00Z",
+ "signalId": "us30-074",
+ "reviewedSignalId": null,
+ "verdict": "NO_OPERAR",
+ "direction": "SHORT",
+ "price": 52175.25,
+ "bias": "BEARISH",
+ "biasH1": "NEUTRAL",
+ "setup": "BREAK (breakout)",
+ "setupGrade": "A+",
+ "winrate": {
+  "value": "~48%",
+  "source": "histórico E1 BTC · SHORT en PREMIUM +2 (zona a favor); CLI BEARISH a favor +2; acuerdo BAJA -8; patron LOSS similar -12; 66% reglas"
+ },
+ "plan": {
+  "entry": 52187.25,
+  "optimalEntry": 52187.25,
+  "sl": 52247.25,
+  "tp": 52067.25,
+  "rr": 2.0,
+  "risk": 60.0,
+  "trigger": "ICT retest FVG BEARISH edge @ 52187.2 + 2 velas M5 rojas en zona",
+  "invalidation": "Cierre M5 > 52235.2 o breakout > 52158.1 sin rechazo",
+  "confirmation": "2 velas M5 rojas consecutivas (zona ref info)",
+  "planB": "Light re-scan ~30 min: si precio no retestea zona → skip trade AM; reservar PM solo si AM=ESPERAR y <2 SL",
+  "slTpSource": null
+ },
+ "probability": {
+  "pct": 51.4,
+  "ci": null,
+  "evR": null,
+  "kellyFrac": null,
+  "calibrated": false,
+  "hasEdge": null,
+  "method": "heuristic_fusion",
+  "n": null,
+  "nEff": null,
+  "legacyPct": null,
+  "layersUsed": []
+ },
+ "fusion": {
+  "score": 51.4,
+  "preAcuerdo": 60.9,
+  "weights": {
+   "rules_e1": 0.295,
+   "rules_ext": 0.126,
+   "crt": 0.126,
+   "neural": 0.263,
+   "ml": 0.189
+  },
+  "layers": {
+   "rules": 66.0,
+   "extended": 80.0,
+   "crt": 100.0,
+   "neural": 64.2,
+   "ml": 0.0,
+   "e2": 0.0
+  }
+ },
+ "confluence": {
+  "pct": 36.0,
+  "label": "BAJA",
+  "detail": "36% · Rules 66%; Neural gated 64% (medium); ML 0% veto suave; 2M5 no listo; Break operable"
+ },
+ "rules": {
+  "e1": {
+   "ok": 4,
+   "total": 6,
+   "pct": 66.0
+  },
+  "extended": {
+   "pct": 80.0
+  }
+ },
+ "ml": {
+  "pct": 0.0,
+  "grade": "C",
+  "conf": "high"
+ },
+ "neural": {
+  "pct": 71.8,
+  "grade": "B",
+  "conf": "medium",
+  "effectivePct": 64.2,
+  "gate": 0.65
+ },
+ "zentinel": {
+  "volume": {
+   "ratio": 0.6952774838895835,
+   "band": "bajo",
+   "confluence": "soft_negative",
+   "note": "vol×0.70 ≤ bajo 0.7",
+   "period": 48,
+   "preset_name": "Zentinel_US30_E1",
+   "role": "confluence_filter",
+   "never_trigger": true
+  },
+  "presets": {
+   "market": "US30",
+   "fvg_volume_preset": "Zentinel_US30_E1",
+   "watchtower_preset": "Watchtower_US30_E1",
+   "role_note": "FVG Multi TF + Volumen = filtro de confluencia, NUNCA trigger. Entrada = H1/CTR + zona + 2M5.\n"
+  },
+  "killzone": "FUERA_NY (Lunch)",
+  "killzoneOn": false,
+  "nyLocal": "2026-10-16 12:13"
+ },
+ "macdQuant": {
+  "role": "confluence_filter",
+  "never_trigger": true,
+  "available": true,
+  "timeframe": "H4",
+  "source": "h1_resample_h4",
+  "macd": 156.25609060328134,
+  "signal_line": 129.78000999978846,
+  "histogram": 26.476080603492875,
+  "trend_ema": 51478.85176820582,
+  "signal": 0,
+  "soft_filter_ok": false,
+  "params": {
+   "fast": 12,
+   "slow": 26,
+   "signal": 9,
+   "trend": 200,
+   "timeframe": "H4"
+  },
+  "strategy": "A_signal_crossover",
+  "strategy_b_note": "zero-line cross = variante; no entrada E1 sola",
+  "bars_h4": 54
+ },
+ "ict": {
+  "refined": true,
+  "source": "FVG BEARISH edge",
+  "note": "Refinada 52175.2→52187.2 (FVG BEARISH edge) · Sweep PDH @ 52261.3 + reclaim · PD PREMIUM · H1 COMPLETED_BEAR",
+  "entryBeforeIct": 52175.25,
+  "summary": "52175.2→52187.2 · Refinada 52175.2→52187.2 (FVG BEARISH edge) · Sweep PDH @ 52261.3 + reclaim · PD PREMIUM · H1 COMPLETED_BEAR",
+  "scan": {
+   "premium_discount": "PREMIUM",
+   "midpoint": 51901.43,
+   "pd_ok": true,
+   "h1_state": "COMPLETED_BEAR",
+   "displacement": false,
+   "killzone": "FUERA_NY (Lunch)",
+   "killzone_ok": false,
+   "price": 52175.25,
+   "zone_level": 52158.06,
+   "zone_type": "soporte_debil",
+   "direction": "SHORT"
+  }
+ },
+ "crt": {
+  "pd_reading": "NEUTRAL",
+  "midpoint": 51901.43,
+  "premium_discount": "PREMIUM",
+  "h1_state": "COMPLETED_BEAR",
+  "h1_detail": "Low H1 52187 alcanzado",
+  "fakeout_pdh": true,
+  "fakeout_pdl": false,
+  "fakeout_note": "Fakeout PDH: NO long E1; CRT invalid bearish | BREAK pendiente: Sin breakout de nivel detectado | Fakeout ≠ Break — no tratar sweep+reclaim como breakout",
+  "crt_action_e1": "No forzar; esperar pending CRT HTF | Modo BREAK: breakout de nivel/estructura (no reversión)",
+  "mode_setup": "break"
+ },
+ "e2": {
+  "score": 0,
+  "max": 6,
+  "eligible": false,
+  "verdict": "E2_NO",
+  "note": "Modo BREAK: breakout de nivel — E2/reversión despriorizada, NO operable",
+  "winrate": null,
+  "mode_setup": "break"
+ },
+ "contingencies": [],
+ "redFlags": [
+  "Fakeout PDH — NO long E1; CRT invalid bearish",
+  "Precio dentro PDH/PDL — contexto NEUTRAL, no forzar"
+ ],
+ "checklists": {
+  "e1": [
+   {
+    "label": "Solo E1",
+    "ok": true,
+    "note": "Operar solo E1"
+   },
+   {
+    "label": "Tendencia H1 alineada",
+    "ok": true,
+    "note": "Bajista"
+   },
+   {
+    "label": "2 velas M5 confirman",
+    "ok": false,
+    "note": "Falta confirmación"
+   },
+   {
+    "label": "R:R mínimo 1:2",
+    "ok": true,
+    "note": "1:2"
+   },
+   {
+    "label": "RSI no contradice",
+    "ok": false,
+    "note": "RSI 17 sobrevendido"
+   },
+   {
+    "label": "Rango coherente",
+    "ok": true,
+    "note": "No forzar; esperar pending CRT HTF | Mod"
+   }
+  ],
+  "extended": [
+   {
+    "label": "Solo E1",
+    "ok": true,
+    "note": "Operar solo E1"
+   },
+   {
+    "label": "Tendencia H1 alineada",
+    "ok": true,
+    "note": "Bajista"
+   },
+   {
+    "label": "2 velas M5 confirman",
+    "ok": false,
+    "note": "Falta confirmación"
+   },
+   {
+    "label": "R:R mínimo 1:2",
+    "ok": true,
+    "note": "1:2"
+   },
+   {
+    "label": "RSI no contradice",
+    "ok": false,
+    "note": "RSI 17 sobrevendido"
+   },
+   {
+    "label": "Rango coherente",
+    "ok": true,
+    "note": "No forzar; esperar pending CRT HTF | Mod"
+   },
+   {
+    "label": "DMI alineado",
+    "ok": true,
+    "note": "-DI domina (307/64)"
+   },
+   {
+    "label": "0.5 midpoint E1",
+    "ok": true,
+    "note": "premium OK"
+   },
+   {
+    "label": "2 SL / 3 ops hoy",
+    "ok": true,
+    "note": "Confirmar trader"
+   },
+   {
+    "label": "SL ~$9 cuenta",
+    "ok": true,
+    "note": "Ajustar lotaje"
+   }
+  ],
+  "rulesReview": [
+   {
+    "label": "RSI M5 vs dirección",
+    "grade": "✗✗",
+    "value": "RSI 17.2 (SHORT: muy extendido)",
+    "impact": "sin calibrar",
+    "wr": "n/d",
+    "type": "ponderada"
+   },
+   {
+    "label": "Zona premium/discount",
+    "grade": "✓",
+    "value": "PREMIUM (a favor)",
+    "impact": "sin calibrar",
+    "wr": "n/d",
+    "type": "ponderada"
+   },
+   {
+    "label": "2 velas M5 confirman",
+    "grade": "✗",
+    "value": "no",
+    "impact": "sin calibrar",
+    "wr": "n/d",
+    "type": "ponderada"
+   },
+   {
+    "label": "Rango CRT coherente",
+    "grade": "✓",
+    "value": "No forzar; esperar pending CRT HTF | Mod",
+    "impact": "sin calibrar",
+    "wr": "n/d",
+    "type": "ponderada"
+   },
+   {
+    "label": "Solo E1",
+    "grade": "·",
+    "value": "Operar solo E1",
+    "impact": "—",
+    "wr": "constante en histórico",
+    "type": "info"
+   },
+   {
+    "label": "Tendencia H1 alineada",
+    "grade": "·",
+    "value": "Bajista",
+    "impact": "—",
+    "wr": "constante en histórico",
+    "type": "info"
+   },
+   {
+    "label": "R:R mínimo 1:2",
+    "grade": "·",
+    "value": "1:2",
+    "impact": "—",
+    "wr": "constante en histórico",
+    "type": "info"
+   }
+  ]
+ },
+ "dataFreshness": {
+  "stale": null,
+  "message": null,
+  "lastCandleUtc": null,
+  "ageMin": null,
+  "source": "MT5 US30.cash (broker, M5/H1)"
+ },
+ "chart": {
+  "main": null,
+  "annotated": "D:\\Danilo\\Trading\\Cursor Trading\\live\\us30_m5_chart_annotated.png",
+  "renderJson": "D:\\Danilo\\Trading\\Cursor Trading\\live\\us30_m5_chart_annotated.render.json",
+  "archive": {
+   "ok": true,
+   "asset": "US30",
+   "latest_name": "us30_latest_annotated.png",
+   "latest_rel": "live/latest/us30_latest_annotated.png",
+   "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\us30_latest_annotated.png",
+   "archive_rel": "live/archive/us30_20261016_161345_annotated.png",
+   "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\us30_20261016_161345_annotated.png"
+  }
+ }
+}
