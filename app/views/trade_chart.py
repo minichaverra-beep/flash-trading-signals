@@ -12,10 +12,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-BG = "#1e1e1e"
-PANEL = "#2d2d30"
-GRID = "#2a2a2e"
-SPINE = "#3e3e42"
+BG = "#07090f"
+PANEL = "#12151c"
+GRID = "#1b2433"
+SPINE = "#2a3344"
 TEXT = "#e0e0e0"
 MUTED = "#808080"
 UP = "#39FF14"  # vela alcista neón
@@ -23,17 +23,23 @@ DOWN = "#FF2BD6"  # vela bajista neón (magenta)
 UP_WICK = "#C6FFB0"
 DOWN_WICK = "#FFB4F2"
 ENTRY_C = "#4fc1ff"
-SL_C = "#f44747"
-TP_C = "#6a9955"
+SL_C = "#FF2BD6"
+TP_C = "#3ecf8e"
 TP_TEXT = "#9fd89f"
 SL_TEXT = "#ff9c9c"
 ZONE_C = "#c586c0"
 WARN_C = "#ffd700"
 STATE_COLORS = {"ENTRAR": "#4ec9b0", "ESPERAR": "#ffd700", "NO_OPERAR": "#f44747"}
 
-HISTORY_CANDLES = 84  # ~7 h de M5
-FUTURE_CANDLES = 32  # ~2.7 h de proyección a la derecha
+HISTORY_CANDLES = 84  # tope histórico que siguen usando los dumps de re-render
+FUTURE_CANDLES = 32
+ZOOM_CAP = 160  # tope del zoom; el piso de 1 h puede superarlo
+ZOOM_LOW = 44  # SL corto: franja más ancha que el piso de 1 h
+ZOOM_MID = 80  # SL moderado, antes de abrir hasta el tope
 BOX_CANDLES = 28
+CHART_FIGSIZE = (14, 11.2)  # pane alto: las velas ocupan más píxeles verticales
+# 80% de transparencia: el águila se ve al 20%. Solo el PNG de fondo; no es opacidad global.
+BG_ALPHA = 0.20
 M5 = timedelta(minutes=5)
 
 
@@ -338,8 +344,19 @@ def _draw_candles(ax, show: list[dict], price: float) -> None:
         ))
 
 
-def _y_limits(show: list[dict], price: float, levels: tuple) -> tuple[float, float]:
-    """Rango Y: velas + niveles de la operación (PDH/PDL solo si ya caben)."""
+def _y_limits(show: list[dict], price: float, levels: tuple, focus: tuple = ()) -> tuple[float, float]:
+    """Rango Y. Con entrada y SL/TP, zoom al rango de esos niveles (con margen).
+
+    Las velas lejanas se recortan para que SL y TP no queden aplastados.
+    Sin al menos dos niveles, se usa el rango de las velas visibles.
+    """
+    focus_vals = [float(v) for v in focus if v is not None]
+    if len(focus_vals) >= 2:
+        lo, hi = min(focus_vals), max(focus_vals)
+        span = hi - lo
+        floor = max(abs(price) * 0.0015, 1e-4)
+        pad = max(span * 0.65, floor)
+        return lo - pad, hi + pad
     y_lo = min(c["low"] for c in show)
     y_hi = max(c["high"] for c in show)
     for v in levels:
@@ -375,7 +392,7 @@ def _draw_position_box(
     ax, tags: list[dict], pos: dict[str, Any], *,
     x0: float, x1: float, active: bool, entry_word: str, fmt: str, dec: int,
 ) -> None:
-    """Caja Long/Short: verde entrada→TP, roja entrada→SL, con distancias y R:R."""
+    """Caja Long/Short: verde entrada→TP, roja entrada→SL. Sin fila de R:R."""
     from matplotlib.patches import Rectangle
 
     e, s_, t_ = pos["entry"], pos["sl"], pos["tp"]
@@ -391,27 +408,18 @@ def _draw_position_box(
             (rx, ry), rw, rh, facecolor="none", edgecolor=col,
             linewidth=1.0, linestyle=edge_ls, alpha=0.9, zorder=2,
         ))
-    ax.hlines(e, x0, x1, color=ENTRY_C, linewidth=1.6, linestyles=edge_ls, zorder=5)
-    ax.hlines(t_, x0, x1, color=TP_C, linewidth=1.3, linestyles=edge_ls, zorder=5)
-    ax.hlines(s_, x0, x1, color=SL_C, linewidth=1.3, linestyles=edge_ls, zorder=5)
+    ax.hlines(e, x0, x1, color=ENTRY_C, linewidth=1.6, linestyles=edge_ls, alpha=1, zorder=6)
+    ax.hlines(t_, x0, x1, color=TP_C, linewidth=1.3, linestyles=edge_ls, alpha=1, zorder=6)
+    ax.hlines(s_, x0, x1, color=SL_C, linewidth=1.3, linestyles=edge_ls, alpha=1, zorder=6)
 
-    unit = pos["unit"]
-    long_ = pos["direction"] == "LONG"
-    tx = x0 + 0.8
-    ax.text(tx, t_, f"TP {t_:{fmt}}   {format_distance(pos['tp_delta'], unit, dec, e)}",
-            color=TP_TEXT, fontsize=9, fontweight="bold",
-            va="top" if long_ else "bottom", ha="left", zorder=6)
-    ax.text(tx, s_, f"SL {s_:{fmt}}   {format_distance(pos['sl_delta'], unit, dec, e)}",
-            color=SL_TEXT, fontsize=9, fontweight="bold",
-            va="bottom" if long_ else "top", ha="left", zorder=6)
-    ax.text(tx, e, f"{entry_word} {e:{fmt}} · {format_rr(pos['rr'])}",
-            color=ENTRY_C, fontsize=9, fontweight="bold",
-            va="bottom" if long_ else "top", ha="left", zorder=6)
+    _level_callout(ax, x1 - 0.6, t_, f"TP {t_:{fmt}}", TP_C)
+    _level_callout(ax, x1 - 0.6, e, f"{entry_word} {e:{fmt}}", ENTRY_C)
+    _level_callout(ax, x1 - 0.6, s_, f"SL {s_:{fmt}}", SL_C)
 
     tags.extend([
-        {"y": t_, "text": f"TP {t_:{fmt}}", "fg": BG, "bg": TP_C, "edge": TP_C, "prio": 1},
-        {"y": e, "text": f"Entrada {e:{fmt}}", "fg": BG, "bg": ENTRY_C, "edge": ENTRY_C, "prio": 1},
-        {"y": s_, "text": f"SL {s_:{fmt}}", "fg": BG, "bg": SL_C, "edge": SL_C, "prio": 1},
+        {"y": t_, "text": f"TP {t_:{fmt}}", "fg": "#101110", "bg": TP_C, "edge": TP_C, "prio": 1, "alpha": 1},
+        {"y": e, "text": f"Entrada {e:{fmt}}", "fg": "#101110", "bg": ENTRY_C, "edge": ENTRY_C, "prio": 1, "alpha": 1},
+        {"y": s_, "text": f"SL {s_:{fmt}}", "fg": "#101110", "bg": SL_C, "edge": SL_C, "prio": 1, "alpha": 1},
     ])
 
 
@@ -441,9 +449,11 @@ def _draw_pending_levels(
                 color=MUTED, fontsize=10, ha="center", va="center", style="italic", zorder=6)
     for v, name, col in ((sys_entry, "Entrada", ENTRY_C), (sl, "SL", SL_C), (tp, "TP", TP_C)):
         if v is not None:
-            ax.hlines(float(v), x0, x1, color=col, linewidth=1.1, linestyles=(0, (4, 3)), zorder=5)
-            tags.append({"y": float(v), "text": f"{name} {float(v):{fmt}}", "fg": BG, "bg": col,
-                         "edge": col, "prio": 1})
+            ax.hlines(float(v), x0, x1, color=col, linewidth=1.1, linestyles=(0, (4, 3)), alpha=1, zorder=6)
+            label = "Entrada" if name == "Entrada" else name
+            _level_callout(ax, x1 - 0.6, float(v), f"{label} {float(v):{fmt}}", col)
+            tags.append({"y": float(v), "text": f"{label} {float(v):{fmt}}", "fg": "#101110", "bg": col,
+                         "edge": col, "prio": 1, "alpha": 1})
 
 
 def _draw_scalps(
@@ -456,6 +466,172 @@ def _draw_scalps(
         ax.hlines(float(sc_e), x0, x1, color="#9cdcfe", linewidth=0.8, linestyles=":", zorder=5)
         tags.append({"y": float(sc_e), "text": f"Scalp{idx + 1} {float(sc_e):{fmt}}",
                      "fg": "#9cdcfe", "bg": PANEL, "edge": "#9cdcfe", "prio": 2})
+
+
+def _level_callout(ax, x: float, y: float, text: str, color: str) -> None:
+    """Caja del nivel real (SL / Entrada / TP). Opaca y encima del águila.
+
+    El texto y la caja van en el eje (zorder 8), después de figimage.
+    Alfa 1 en ambos: no heredan el 0.20 del fondo ni usan relleno translúcido.
+    """
+    ax.text(
+        x, y, text, color="#f4fbf6", fontsize=9, fontweight="bold",
+        va="center", ha="right", zorder=8, alpha=1,
+        bbox={
+            "boxstyle": "round,pad=0.35",
+            "facecolor": "#10141c",
+            "edgecolor": color,
+            "linewidth": 1.4,
+            "alpha": 1,
+        },
+    )
+
+
+def _confirmed_2m5(opt: dict, data: dict) -> bool:
+    """El recuadro 2M5 solo si la señal ya lo confirma. No se dibuja por defecto."""
+    raw = str(opt.get("ahora_2m5") or data.get("two_m5") or "").strip().lower()
+    if not raw:
+        return False
+    return raw.startswith("sí") or raw.startswith("si") or "2m5 ok" in raw or raw in {"yes", "ok", "true", "1"}
+
+
+def _chart_bg_path() -> Path:
+    return Path(__file__).resolve().parent / "assets" / "chart-background.png"
+
+
+def _draw_chart_background(fig, dpi: int) -> None:
+    """Imagen de fondo a todo el lienzo (cover, águila centrada).
+
+    La grilla, el águila, FLASH SIGNALS y BY: SKAYDER ya están en el archivo.
+    BG_ALPHA (0.20) afecta solo a estos píxeles. Velas y callouts se dibujan después, opacos.
+    """
+    path = _chart_bg_path()
+    if not path.is_file():
+        return
+    try:
+        import numpy as np
+        from PIL import Image
+
+        im = Image.open(path).convert("RGB")
+    except Exception:
+        return
+    tw = max(1, int(round(float(fig.get_figwidth()) * max(int(dpi), 1))))
+    th = max(1, int(round(float(fig.get_figheight()) * max(int(dpi), 1))))
+    iw, ih = im.size
+    scale = max(tw / max(iw, 1), th / max(ih, 1))
+    nw = max(1, int(round(iw * scale)))
+    nh = max(1, int(round(ih * scale)))
+    im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+    left = max(0, (nw - tw) // 2)
+    top = max(0, (nh - th) // 2)
+    im = im.crop((left, top, left + tw, top + th))
+    rgb = np.asarray(im).astype(np.float32) / 255.0
+    rgba = np.empty((th, tw, 4), dtype=np.float32)
+    rgba[..., :3] = rgb
+    rgba[..., 3] = BG_ALPHA
+    # figimage coloca la fila 0 abajo: se invierte para dejar el águila de pie.
+    fig.figimage(np.flipud(rgba), xo=0, yo=0, zorder=-1, origin="lower")
+
+
+def hour_candle_floor(bar_minutes: int | None) -> int:
+    """Mínimo de velas = 1 hora. Sin temporalidad conocida, 12 (como M5)."""
+    if not bar_minutes or bar_minutes <= 0:
+        return 12
+    return max(1, (60 + int(bar_minutes) - 1) // int(bar_minutes))
+
+
+_TF_MINUTES = (
+    ("M15", 15),
+    ("M30", 30),
+    ("H4", 240),
+    ("M5", 5),
+    ("M1", 1),
+    ("H1", 60),
+    ("D1", 1440),
+)
+
+
+def bar_minutes_from_signal(data: dict, opt: dict, candles: list[dict]) -> int | None:
+    """Temporalidad real del reporte o del espaciado de las velas. No asume M5."""
+    import re
+
+    parts: list[str] = []
+    for src in (data, opt):
+        if not isinstance(src, dict):
+            continue
+        for key in ("timeframe", "tf", "chart_timeframe", "interval"):
+            if src.get(key):
+                parts.append(str(src.get(key)))
+    for key in ("report", "report_path", "reportPath", "md_path", "chart_path", "chartPath"):
+        if isinstance(data, dict) and data.get(key):
+            parts.append(str(data.get(key)))
+    blob = " ".join(parts).upper().replace("_", " ").replace("-", " ")
+    for token, minutes in _TF_MINUTES:
+        if re.search(rf"(?<![A-Z0-9]){token}(?![A-Z0-9])", blob):
+            return minutes
+    gaps: list[float] = []
+    prev = None
+    for candle in candles:
+        stamp = _to_utc(candle.get("open_time"))
+        if prev is not None and stamp is not None:
+            minutes = (stamp - prev).total_seconds() / 60.0
+            if minutes > 0.4:
+                gaps.append(minutes)
+        if stamp is not None:
+            prev = stamp
+    if len(gaps) < 2:
+        return None
+    gaps.sort()
+    median = gaps[len(gaps) // 2]
+    known = (1, 5, 15, 30, 60, 240, 1440)
+    nearest = min(known, key=lambda step: abs(step - median))
+    if abs(nearest - median) <= max(0.45, nearest * 0.2):
+        return nearest
+    return None
+
+
+def zoom_candle_count(candles: list[dict], entry, sl, bar_minutes: int | None) -> int:
+    """Más velas si el SL es amplio frente al rango reciente; menos si es corto.
+
+    El mínimo habitual es ZOOM_LOW (por encima del piso de 1 h). Un SL moderado
+    llega a ZOOM_MID y uno amplio al tope. Nunca baja del piso de 1 hora.
+    """
+    floor_n = hour_candle_floor(bar_minutes)
+    low = max(floor_n, ZOOM_LOW)
+    mid = max(low, ZOOM_MID)
+    cap = max(ZOOM_CAP, floor_n)
+    if entry is None or sl is None:
+        return low
+    try:
+        dist = abs(float(entry) - float(sl))
+    except (TypeError, ValueError):
+        return low
+    spans: list[float] = []
+    for candle in candles[-40:]:
+        try:
+            span = float(candle["high"]) - float(candle["low"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if span > 0:
+            spans.append(span)
+    if dist <= 0 or not spans:
+        return low
+    spans.sort()
+    typical = spans[len(spans) // 2]
+    if typical <= 0:
+        return low
+    ratio = dist / typical
+    if ratio <= 1.5:
+        count = low
+    elif ratio <= 6.0:
+        t = (ratio - 1.5) / (6.0 - 1.5)
+        count = int(round(low + t * (mid - low)))
+    else:
+        t = (ratio - 6.0) / (16.0 - 6.0)
+        if t > 1:
+            t = 1.0
+        count = int(round(mid + t * (cap - mid)))
+    return max(floor_n, min(cap, count))
 
 
 def _draw_2m5(ax, show: list[dict], span: float) -> None:
@@ -510,12 +686,15 @@ def _draw_axis_tags(ax, tags: list[dict]) -> None:
     tr = blended_transform_factory(ax.transAxes, ax.transData)
     for tag in tags:
         main = tag["prio"] <= 1
+        # Entrada / TP / SL traen alpha 1. El resto no hereda el alfa del águila.
+        box_alpha = tag["alpha"] if "alpha" in tag else (0.95 if main else 0.85)
         ax.text(
             1.004, tag["y_draw"], tag["text"], transform=tr, clip_on=False,
             color=tag["fg"], fontsize=8.5 if main else 7.5,
             fontweight="bold" if main else "normal", va="center", ha="left", zorder=10,
+            alpha=1,
             bbox={"boxstyle": "round,pad=0.25", "facecolor": tag["bg"], "edgecolor": tag["edge"],
-                  "alpha": 0.95 if main else 0.85},
+                  "alpha": box_alpha},
         )
 
 
@@ -576,7 +755,7 @@ def _style_axes(ax, show: list[dict], total: int) -> None:
     ax.yaxis.tick_right()
     ax.tick_params(axis="both", colors=TEXT, labelsize=8)
     ax.tick_params(axis="y", colors=MUTED)
-    ax.grid(True, color=GRID, linewidth=0.6, zorder=0)
+    ax.grid(True, color=GRID, linewidth=0.45, alpha=0.28, zorder=1)
     for spine in ax.spines.values():
         spine.set_color(SPINE)
 
@@ -585,7 +764,7 @@ def _draw_zentinel_note(fig, asset: str, session: dict | None) -> None:
     try:
         from app.models.zentinel_presets import zentinel_chart_note
 
-        fig.text(0.025, 0.012, zentinel_chart_note(asset, session),
+        fig.text(0.2, 0.012, zentinel_chart_note(asset, session),
                  color=MUTED, fontsize=7, ha="left", va="bottom")
     except Exception:
         pass
@@ -621,9 +800,7 @@ def render_trade_chart(
     disable_mathtext()  # "$" de importes/notas ≠ mathtext (ValueError / RecursionError)
 
     m5 = data.get("m5") or []
-    show = m5[-HISTORY_CANDLES:]
-    n = len(show)
-    total = n + FUTURE_CANDLES
+    show = list(m5)
     dec = int(opt.get("dec", data.get("price_decimals", 1)))
     fmt = f".{dec}f"
     direction = opt.get("direction") or (data.get("setup") or {}).get("direction", "")
@@ -632,6 +809,13 @@ def render_trade_chart(
     sys_entry = opt.get("entry")
     entry = user_entry if user_entry is not None else sys_entry
     sl, tp = opt.get("sl"), opt.get("tp")
+    focus_levels = tuple(v for v in (entry, sl, tp) if v is not None)
+    window = zoom_candle_count(show, entry, sl, bar_minutes_from_signal(data, opt, show))
+    if len(show) > window:
+        show = show[-window:]
+    n = len(show)
+    future = max(6, min(20, max(6, window // 4)))
+    total = n + future
     pos = compute_position_levels(direction, entry, sl, tp, asset)
     state = resolve_signal_state(data, opt)
     level = opt.get("level") or (data.get("zone") or {}).get("level")
@@ -647,12 +831,18 @@ def render_trade_chart(
 
     fig = None
     try:
-        fig, ax = plt.subplots(figsize=(14, 7.4), facecolor=BG)
-        ax.set_facecolor(BG)
-        fig.subplots_adjust(left=0.025, right=0.885, top=0.865, bottom=0.12)
+        fig, ax = plt.subplots(figsize=CHART_FIGSIZE, facecolor=BG)
+        fig.patch.set_facecolor(BG)
+        ax.set_facecolor("none")
+        ax.patch.set_visible(False)
+        ax.set_zorder(1)
+        fig.subplots_adjust(left=0.03, right=0.86, top=0.97, bottom=0.08)
+        _draw_chart_background(fig, dpi)
 
         _draw_candles(ax, show, price)
-        ax.set_ylim(*_y_limits(show, price, (entry, sys_entry, sl, tp, level, zone_lo, zone_hi)))
+        ax.set_ylim(*_y_limits(
+            show, price, (entry, sys_entry, sl, tp), focus=focus_levels,
+        ))
         ax.set_xlim(-1, total)
         ymin, ymax = ax.get_ylim()
 
@@ -660,7 +850,7 @@ def render_trade_chart(
         _draw_key_zones(ax, tags, data, level, ztype, zone_edges, fmt)
 
         x0 = n - 0.5
-        x1 = x0 + BOX_CANDLES
+        x1 = x0 + min(BOX_CANDLES, max(8, future - 2))
         ax.axvline(x0, color=MUTED, linewidth=0.7, linestyle=":", alpha=0.5, zorder=2)
         if pos is not None:
             _draw_position_box(ax, tags, pos, x0=x0, x1=x1, active=active,
@@ -679,18 +869,10 @@ def render_trade_chart(
         ax.axhline(price, color=pcol, linewidth=0.8, linestyle=(0, (1, 2)), alpha=0.9, zorder=2)
         tags.insert(0, {"y": price, "text": f"{price:{fmt}}", "fg": BG, "bg": pcol, "edge": pcol, "prio": 0})
 
-        _draw_2m5(ax, show, ymax - ymin)
+        if _confirmed_2m5(opt, data):
+            _draw_2m5(ax, show, ymax - ymin)
         _draw_axis_tags(ax, tags)
-        _draw_state_box(ax, state, _state_lines(
-            state, direction, callout, pos,
-            active=active, relation_txt=relation_text(relation, price, pos, fmt),
-            session=data.get("session") or {}, note=note, order_state=order_state,
-        ))
-        title, title_color = _chart_title(asset, data)
-        fig.suptitle(title, color=title_color, fontsize=13, fontweight="bold", x=0.455, y=0.985)
         _style_axes(ax, show, total)
-        _draw_zentinel_note(fig, asset, data.get("session"))
-        _draw_feed_note(fig, data.get("feed"))
 
         return savefig_png(fig, out_path, dpi=dpi, facecolor=BG)
     finally:

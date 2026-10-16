@@ -101,7 +101,6 @@ def save_annotated_chart(m5: list[dict], path: Path, title: str) -> None:
         color="#ffd700", fontsize=8, ha="center",
     )
 
-    ax.set_title(title, color="#569cd6", fontsize=12, fontweight="bold")
     ax.tick_params(colors="#e0e0e0")
     for spine in ax.spines.values():
         spine.set_color("#3e3e42")

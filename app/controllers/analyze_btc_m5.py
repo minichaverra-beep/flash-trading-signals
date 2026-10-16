@@ -301,7 +301,6 @@ def save_chart(m5: list[dict], path: Path, title: str) -> None:
         ax.set_facecolor("#1e1e1e")
         show = m5[-60:]
         _draw_candles(ax, show, float(show[-1]["close"]) if show else 1.0)
-        ax.set_title(title, color="#569cd6", fontsize=12, fontweight="bold")
         ax.tick_params(colors="#e0e0e0")
         for spine in ax.spines.values():
             spine.set_color("#3e3e42")
