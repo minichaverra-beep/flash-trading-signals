@@ -41,7 +41,11 @@ def savefig_png(
             with os.fdopen(fd, "wb") as fh:
                 fh.write(payload)
                 fh.flush()
-                os.fsync(fh.fileno())
+                try:
+                    os.fsync(fh.fileno())
+                except OSError:
+                    # En el proot de Android fsync puede devolver EINVAL y abortar el PNG.
+                    pass
             os.replace(tmp_name, target)
         except Exception:
             try:
@@ -102,13 +106,77 @@ def write_entry_overlay_charts(
     main_chart_path: Path | str | None = None,
     annotated_path: Path | str | None = None,
     dpi: int | None = None,
+    _free: bool = True,
 ) -> dict:
     """
     Write OPTI/SL/TP/S-R overlays onto the default High chart and/or the -Ilustrate PNG.
 
     - main_chart_path: live/*_m5_chart.png (when chart enabled / not -NoChart)
     - annotated_path: live/*_m5_chart_annotated.png (when -Ilustrate)
+
+    Si Yahoo no dejó velas o la captura falla, se piden las últimas M5 a un
+    endpoint libre (Binance / OKX / Gate.io) y se vuelve a dibujar una vez.
     """
+    if _free and len(data.get("m5") or []) < 2:
+        return _capture_from_free_candles(
+            data, optimal_entry, asset=asset, main_chart_path=main_chart_path,
+            annotated_path=annotated_path, dpi=dpi, reason="Yahoo no dejó velas para la captura",
+        )
+    try:
+        return _paint_entry_charts(
+            data, optimal_entry, asset=asset, main_chart_path=main_chart_path,
+            annotated_path=annotated_path, dpi=dpi,
+        )
+    except Exception as exc:
+        if not _free:
+            raise
+        return _capture_from_free_candles(
+            data, optimal_entry, asset=asset, main_chart_path=main_chart_path,
+            annotated_path=annotated_path, dpi=dpi, reason=str(exc),
+        )
+
+
+def _capture_from_free_candles(
+    data: dict,
+    optimal_entry: dict,
+    *,
+    asset: str,
+    main_chart_path,
+    annotated_path,
+    dpi,
+    reason: str,
+) -> dict:
+    from app.models.free_candles import align_last_close, fetch_free_m5
+
+    try:
+        candles, label = fetch_free_m5(asset, 300)
+    except Exception as exc:
+        print(f"WARN captura: {reason}. Endpoint libre: {exc}", flush=True)
+        if len(data.get("m5") or []) >= 2:
+            raise
+        return _paint_entry_charts(
+            data, optimal_entry, asset=asset, main_chart_path=main_chart_path,
+            annotated_path=annotated_path, dpi=dpi,
+        )
+    print(f"Captura: {label} ({reason})", flush=True)
+    fresh = dict(data)
+    fresh["m5"] = align_last_close(candles, data.get("price"))
+    fresh["feed"] = {"source": "free", "broker": False, "label": label}
+    return write_entry_overlay_charts(
+        fresh, optimal_entry, asset=asset, main_chart_path=main_chart_path,
+        annotated_path=annotated_path, dpi=dpi, _free=False,
+    )
+
+
+def _paint_entry_charts(
+    data: dict,
+    optimal_entry: dict,
+    *,
+    asset: str,
+    main_chart_path,
+    annotated_path,
+    dpi,
+) -> dict:
     out: dict = {}
     chart_dpi = dpi if dpi is not None else CHART_DPI
     if main_chart_path is not None:

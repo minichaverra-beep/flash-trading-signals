@@ -28,6 +28,56 @@ def _mode_setup_label(mode: str) -> str:
     }.get(mode, mode.upper())
 
 
+def lock_forced_direction(data: dict) -> str:
+    """Bajista = venta (SHORT). Alcista = compra (LONG). El H1 no puede cambiar ese lado."""
+    forced = str(data.get("forced_bias") or data.get("mode_bias") or "").strip().lower()
+    if forced == "bearish":
+        direction = "SHORT"
+    elif forced == "bullish":
+        direction = "LONG"
+    else:
+        direction = str((data.get("setup") or {}).get("direction") or "NONE")
+    setup = data.get("setup")
+    if isinstance(setup, dict) and direction in ("LONG", "SHORT"):
+        setup["direction"] = direction
+    return direction
+
+
+def _plan_side_ok(direction: str, entry, sl, tp) -> bool:
+    try:
+        entry, sl, tp = float(entry), float(sl), float(tp)
+    except (TypeError, ValueError):
+        return True
+    if direction == "LONG":
+        return sl < entry < tp
+    if direction == "SHORT":
+        return tp < entry < sl
+    return True
+
+
+def _ensure_plan_side(opt: dict, direction: str, data: dict, zone: dict | None) -> dict:
+    """Si el usuario pidió venta, SL queda arriba y TP abajo. Compra, al revés."""
+    out = dict(opt)
+    out["direction"] = direction if direction in ("LONG", "SHORT") else out.get("direction")
+    entry, sl, tp = out.get("entry"), out.get("sl"), out.get("tp")
+    if direction not in ("LONG", "SHORT") or entry is None or sl is None or tp is None:
+        return out
+    if _plan_side_ok(direction, entry, sl, tp):
+        return out
+    from app.models.market_pips import atr_sl_floor, asset_from_data, clamp_sl_tp, raw_sl_from_zone
+
+    raw = raw_sl_from_zone(float(entry), direction, zone or {})
+    sl, tp, risk, _ = clamp_sl_tp(
+        float(entry), raw, None, direction, asset_from_data(data),
+        min_risk=atr_sl_floor(data.get("m5")),
+    )
+    out["sl"] = sl
+    out["tp"] = tp
+    out["risk_pts"] = risk
+    out["rr"] = 2.0
+    return out
+
+
 def apply_forced_bias(data: dict, bias_mode: str) -> dict:
     """Override setup direction when user forces bullish/bearish bias."""
     if bias_mode not in ("bullish", "bearish"):
@@ -42,20 +92,21 @@ def apply_forced_bias(data: dict, bias_mode: str) -> dict:
     ]
     hint = "Bias forzado CLI: alcista (LONG)" if bias_mode == "bullish" else "Bias forzado CLI: bajista (SHORT)"
     setup["reasons"] = [hint] + [r for r in setup.get("reasons", []) if "Bias" not in r]
-    price = out["price"]
-    zone = out["zone"]
-    if direction == "LONG" and zone.get("level"):
-        sl = min(zone["level"], price) * 0.998 if zone.get("type") == "soporte_debil" else price * 0.997
-        risk = abs(price - sl)
-        setup["sl"], setup["tp"], setup["rr"] = sl, price + 2 * risk, 2.0
-    elif direction == "SHORT" and zone.get("level"):
-        sl = max(zone["level"], price) * 1.002 if zone.get("type") == "resistencia_debil" else price * 1.003
-        risk = abs(sl - price)
-        setup["sl"], setup["tp"], setup["rr"] = sl, price - 2 * risk, 2.0
+    price = float(out["price"])
+    zone = out.get("zone") or {}
+    from app.models.market_pips import atr_sl_floor, clamp_sl_tp, raw_sl_from_zone
+
+    sl = raw_sl_from_zone(price, direction, zone if zone.get("level") else {})
+    sl, tp, _, _ = clamp_sl_tp(
+        price, sl, None, direction, str(out.get("asset_label") or "BTC"),
+        min_risk=atr_sl_floor(out.get("m5")),
+    )
+    setup["entry"], setup["sl"], setup["tp"], setup["rr"] = price, sl, tp, 2.0
     # Sesión NY, distancia a zona y 2M5 no son hard-block para SETUP_A+
     setup["verdict"] = "SETUP_A+"
     out["setup"] = setup
     out["forced_bias"] = bias_mode
+    out["mode_bias"] = bias_mode
     return out
 
 
@@ -1847,6 +1898,8 @@ def compute_optimal_entry(
     - `user_entry` holds the CLI fill; SL/TP optimize for that fill from filtered past.
     """
     _ = crt  # kept for call-site compatibility / future CRT-aware entry
+    # Bajista = SHORT (SL arriba). Alcista = LONG. No dejar el lado que salió del H1.
+    direction = lock_forced_direction(data)
     if entry_override is None and data.get("entry_override") is not None:
         entry_override = data.get("entry_override")
 
@@ -1862,14 +1915,14 @@ def compute_optimal_entry(
         out["m5_entry_touch_index"] = orig_touch
         out["m5_from_entry_len"] = len(filtered.get("m5") or [])
         out["m5_pre_entry_ignored"] = True
-        return out
+        return _ensure_plan_side(out, direction, filtered, zone)
 
     opt = _compute_optimal_entry_core(data, direction, zone)
     from app.services.ict_entry_scan import build_scalp_entry_levels, refine_entry_with_ict
     out = refine_entry_with_ict(opt, data, direction, crt, zone)
     if (data.get("history_mode") or data.get("scalp_mode")) and not out.get("scalp_entries"):
         out["scalp_entries"] = build_scalp_entry_levels(out, data, direction, crt, zone, limit=3)
-    return out
+    return _ensure_plan_side(out, direction, data, zone)
 
 
 def format_optimal_entry_md(opt: dict, data: dict, direction: str, crt: dict) -> list[str]:
@@ -2268,8 +2321,9 @@ def write_high_signal(
 
     # Enrich Categories: Precio, Entrada óptima, Confluencia (+ Advanced rows)
     cats = ctx["categories"]
-    direction = data["setup"]["direction"]
+    direction = lock_forced_direction(data)
     opt = compute_optimal_entry(data, direction, crt, data["zone"])
+    direction = str(opt.get("direction") or direction)
     dec = int(opt.get("dec", data.get("price_decimals", 1)))
     fmt = f".{dec}f"
     cats["precio"] = f"{data['price']:{fmt}}"

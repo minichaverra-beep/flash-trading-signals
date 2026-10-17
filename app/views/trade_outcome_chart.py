@@ -329,8 +329,10 @@ BROKER_MAX_BARS = 5000
 
 def _fetch_broker_since(asset: str, since: datetime, now: datetime, notes: list[str]) -> tuple[list[dict], dict] | None:
     """Velas M5 del símbolo del broker (puente MT5): misma escala que las órdenes reales."""
-    from app.models.broker_feed import bridge_config, fetch_rates, rates_to_candles
+    from app.models.broker_feed import bridge_config, fetch_rates, rates_to_candles, yahoo_only
 
+    if yahoo_only():
+        return None
     bcfg = bridge_config(asset)
     if bcfg is None:
         return None

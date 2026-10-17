@@ -168,6 +168,24 @@ def fetch_yahoo_klines(
         if m5:
             break
 
+    from app.models.free_candles import fetch_free_m5, quotes_are_live
+
+    if m5 and not quotes_are_live(m5):
+        meta["notes"].append("Yahoo sin precio real (velas quietas)")
+        m5 = []
+    if not m5:
+        asset = _free_asset(tickers)
+        if asset:
+            try:
+                rows, label = fetch_free_m5(asset, max(m5_bars, 80))
+                m5 = rows[-m5_bars:]
+                ticker_used = label
+                meta["m5_interval"] = "5m"
+                meta["notes"].append(label)
+                meta["source"] = label
+            except Exception as exc:
+                meta["notes"].append(f"endpoint libre: {exc}")
+
     if not m5:
         raise RuntimeError(
             "No se pudieron obtener velas. "
@@ -199,8 +217,20 @@ def fetch_yahoo_klines(
         meta["notes"].append("H1 resampleado desde velas intraday")
 
     meta["ticker"] = ticker_used
-    meta["source"] = "yfinance/Yahoo Chart API"
+    # El fallback libre ya dejó su rótulo; no volver a llamarlo Yahoo.
+    meta.setdefault("source", "yfinance/Yahoo Chart API")
     return m5, h1, meta
+
+
+def _free_asset(tickers: tuple[str, ...]) -> str | None:
+    blob = " ".join(tickers).upper()
+    if "BTC" in blob:
+        return "BTC"
+    if "GC=F" in blob or "XAU" in blob or "GOLD" in blob:
+        return "XAUUSD"
+    if "YM" in blob or "DJI" in blob or "US30" in blob:
+        return "US30"
+    return None
 
 
 def shift_candles(candles: list[dict], delta: float) -> list[dict]:
