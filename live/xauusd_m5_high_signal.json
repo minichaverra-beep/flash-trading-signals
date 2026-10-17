@@ -4,35 +4,35 @@
  "symbol": "XAUUSD",
  "mode": "high",
  "advanced": true,
- "generatedUtc": "2026-10-16T16:15:00Z",
- "signalId": "xauusd-078",
+ "generatedUtc": "2026-10-16T21:24:00Z",
+ "signalId": "xauusd-081",
  "reviewedSignalId": null,
- "verdict": "NO_OPERAR",
+ "verdict": "ESPERAR",
  "direction": "SHORT",
- "price": 4168.98,
+ "price": 4166.100098,
  "bias": "BEARISH",
  "biasH1": "NEUTRAL",
  "setup": "BREAK (breakout)",
  "setupGrade": "A+",
  "winrate": {
-  "value": "~52%",
-  "source": "histórico E1 BTC · SHORT en PREMIUM +2 (zona a favor); CLI BEARISH a favor +2; acuerdo BAJA -8; patrones mixtos -4; 66% reglas"
+  "value": "~68%",
+  "source": "histórico E1 BTC · SHORT en PREMIUM +2 (zona a favor); CLI BEARISH a favor +2; acuerdo MEDIA -2; 83% reglas; ancla fusión 65%"
  },
  "plan": {
-  "entry": 4172.89,
-  "optimalEntry": 4172.89,
-  "sl": 4178.89,
-  "tp": 4160.89,
+  "entry": 4169.8999026875,
+  "optimalEntry": 4169.8999026875,
+  "sl": 4175.8999026875,
+  "tp": 4157.8999026875,
   "rr": 2.0,
   "risk": 6.0,
-  "trigger": "ICT retest FVG BEARISH edge @ 4172.89 + 2 velas M5 rojas en zona",
-  "invalidation": "Cierre M5 > 4174.98 o breakout > 4171.34 sin rechazo",
+  "trigger": "ICT retest OB BEARISH edge @ 4169.90 + 2 velas M5 rojas en zona",
+  "invalidation": "Cierre M5 > 4172.10 o breakout > 4166.40 sin rechazo",
   "confirmation": "2 velas M5 rojas consecutivas (zona ref info)",
   "planB": "Light re-scan ~30 min: si precio no retestea zona → skip trade AM; reservar PM solo si AM=ESPERAR y <2 SL",
   "slTpSource": null
  },
  "probability": {
-  "pct": 60.5,
+  "pct": 64.6,
   "ci": null,
   "evR": null,
   "kellyFrac": null,
@@ -45,8 +45,8 @@
   "layersUsed": []
  },
  "fusion": {
-  "score": 60.5,
-  "preAcuerdo": 72.5,
+  "score": 64.6,
+  "preAcuerdo": 73.6,
   "weights": {
    "rules_e1": 0.295,
    "rules_ext": 0.126,
@@ -55,47 +55,47 @@
    "ml": 0.189
   },
   "layers": {
-   "rules": 66.0,
-   "extended": 80.0,
+   "rules": 83.0,
+   "extended": 90.0,
    "crt": 100.0,
-   "neural": 62.0,
-   "ml": 66.7,
+   "neural": 80.6,
+   "ml": 9.3,
    "e2": 0.0
   }
  },
  "confluence": {
-  "pct": 41.0,
-  "label": "BAJA",
-  "detail": "41% · Rules 66%; Neural gated 62% (medium); ML 67% (medium); 2M5 no listo; Break operable"
+  "pct": 50.0,
+  "label": "MEDIA",
+  "detail": "50% · Rules 83%; Neural 81%→81% alineado; ML 9% veto suave; 2M5 no listo; Break operable"
  },
  "rules": {
   "e1": {
-   "ok": 4,
+   "ok": 5,
    "total": 6,
-   "pct": 66.0
+   "pct": 83.0
   },
   "extended": {
-   "pct": 80.0
+   "pct": 90.0
   }
  },
  "ml": {
-  "pct": 66.7,
-  "grade": "B",
-  "conf": "medium"
+  "pct": 9.3,
+  "grade": "C",
+  "conf": "high"
  },
  "neural": {
-  "pct": 68.4,
+  "pct": 80.6,
   "grade": "B",
-  "conf": "medium",
-  "effectivePct": 62.0,
-  "gate": 0.65
+  "conf": "high",
+  "effectivePct": 80.6,
+  "gate": 1.0
  },
  "zentinel": {
   "volume": {
-   "ratio": 0.01977131182653969,
+   "ratio": 0.0,
    "band": "muy_bajo",
    "confluence": "negative_filter",
-   "note": "vol×0.02 ≤ muy_bajo 0.4",
+   "note": "vol×0.00 ≤ muy_bajo 0.4",
    "period": 48,
    "preset_name": "Zentinel_US30_E1",
    "role": "confluence_filter",
@@ -107,9 +107,9 @@
    "watchtower_preset": "Watchtower_US30_E1",
    "role_note": "FVG Multi TF + Volumen = filtro de confluencia, NUNCA trigger. Entrada = H1/CTR + zona + 2M5.\n"
   },
-  "killzone": "FUERA_NY (Lunch)",
+  "killzone": "FUERA_NY",
   "killzoneOn": false,
-  "nyLocal": "2026-10-16 12:15"
+  "nyLocal": "2026-10-16 17:24"
  },
  "macdQuant": {
   "role": "confluence_filter",
@@ -117,10 +117,10 @@
   "available": true,
   "timeframe": "H4",
   "source": "h1_resample_h4",
-  "macd": 4.415699357024096,
-  "signal_line": 0.8914692298585641,
-  "histogram": 3.5242301271655316,
-  "trend_ema": 4139.857127364194,
+  "macd": 3.3372446237899567,
+  "signal_line": 0.42367396227037235,
+  "histogram": 2.9135706615195844,
+  "trend_ema": 4152.1522074169025,
   "signal": 0,
   "soft_filter_ok": false,
   "params": {
@@ -136,33 +136,33 @@
  },
  "ict": {
   "refined": true,
-  "source": "FVG BEARISH edge",
-  "note": "Refinada 4169.0→4172.9 (FVG BEARISH edge) · Sweep PDH @ 4177.2 + reclaim · PD PREMIUM · H1 PENDING_BULL",
-  "entryBeforeIct": 4168.98,
-  "summary": "4168.98→4172.89 · Refinada 4169.0→4172.9 (FVG BEARISH edge) · Sweep PDH @ 4177.2 + reclaim · PD PREMIUM · H1 PENDING_BULL",
+  "source": "OB BEARISH edge",
+  "note": "Refinada 4166.1→4169.9 (OB BEARISH edge) · Sweep swing_high @ 4170.0 + reclaim · PD PREMIUM · H1 INSIDE_RANGE",
+  "entryBeforeIct": 4166.100098,
+  "summary": "4166.10→4169.90 · Refinada 4166.1→4169.9 (OB BEARISH edge) · Sweep swing_high @ 4170.0 + reclaim · PD PREMIUM · H1 INSIDE_RANGE",
   "scan": {
    "premium_discount": "PREMIUM",
-   "midpoint": 4144.1849999999995,
+   "midpoint": 4144.25000034375,
    "pd_ok": true,
-   "h1_state": "PENDING_BULL",
+   "h1_state": "INSIDE_RANGE",
    "displacement": false,
-   "killzone": "FUERA_NY (Lunch)",
+   "killzone": "FUERA_NY",
    "killzone_ok": false,
-   "price": 4168.98,
-   "zone_level": 4171.34,
+   "price": 4166.100098,
+   "zone_level": 4166.3999026875,
    "zone_type": "soporte_debil",
    "direction": "SHORT"
   }
  },
  "crt": {
   "pd_reading": "NEUTRAL",
-  "midpoint": 4144.1849999999995,
+  "midpoint": 4144.25000034375,
   "premium_discount": "PREMIUM",
-  "h1_state": "PENDING_BULL",
-  "h1_detail": "Sweep low H1 + reclaim",
-  "fakeout_pdh": true,
+  "h1_state": "INSIDE_RANGE",
+  "h1_detail": "Rango H1 4164-4170; 0.5=4167",
+  "fakeout_pdh": false,
   "fakeout_pdl": false,
-  "fakeout_note": "Fakeout PDH: NO long E1; CRT invalid bearish | BREAK pendiente: Breakout bajista sostenido < 4171 | Fakeout ≠ Break — no tratar sweep+reclaim como breakout",
+  "fakeout_note": "BREAK pendiente: Breakout bajista sostenido < 4166",
   "crt_action_e1": "No forzar; esperar pending CRT HTF | Modo BREAK: breakout de nivel/estructura (no reversión)",
   "mode_setup": "break"
  },
@@ -175,11 +175,15 @@
   "winrate": null,
   "mode_setup": "break"
  },
- "contingencies": [],
+ "contingencies": [
+  "Mantén SHORT sin añadir — Neural 81% y cerca de Entrada óptima; espera trigger (**ESPERAR SHORT**)",
+  "Si Neural ≥70% (ahora 81%) y precio cerca de Entrada óptima → mantener / trail suave",
+  "Rules 83% · Confluencia MEDIA OK — mantén plan; invalida solo si rompe SL",
+  "Si ML win 9% bajo vs SHORT → no añadir / cortar parcial",
+  "Cerca de Entrada óptima (0.091%) — trail o BE; no scales hasta veredicto ENTRAR"
+ ],
  "redFlags": [
-  "Fakeout PDH — NO long E1; CRT invalid bearish",
-  "Precio dentro PDH/PDL — contexto NEUTRAL, no forzar",
-  "CRT H1 pending bull — no entrar short contra invalid reciente"
+  "Precio dentro PDH/PDL — contexto NEUTRAL, no forzar"
  ],
  "checklists": {
   "e1": [
@@ -205,8 +209,8 @@
    },
    {
     "label": "RSI no contradice",
-    "ok": false,
-    "note": "RSI 22 sobrevendido"
+    "ok": true,
+    "note": "RSI 35 OK"
    },
    {
     "label": "Rango coherente",
@@ -237,8 +241,8 @@
    },
    {
     "label": "RSI no contradice",
-    "ok": false,
-    "note": "RSI 22 sobrevendido"
+    "ok": true,
+    "note": "RSI 35 OK"
    },
    {
     "label": "Rango coherente",
@@ -248,7 +252,7 @@
    {
     "label": "DMI alineado",
     "ok": true,
-    "note": "-DI domina (23/7)"
+    "note": "-DI domina (7/4)"
    },
    {
     "label": "0.5 midpoint E1",
@@ -269,8 +273,8 @@
   "rulesReview": [
    {
     "label": "RSI M5 vs dirección",
-    "grade": "✗",
-    "value": "RSI 22.0 (SHORT: extendido)",
+    "grade": "~",
+    "value": "RSI 35.2 (SHORT: con impulso)",
     "impact": "sin calibrar",
     "wr": "n/d",
     "type": "ponderada"
@@ -328,9 +332,9 @@
  "dataFreshness": {
   "stale": false,
   "message": null,
-  "lastCandleUtc": "2026-10-16 16:15",
-  "ageMin": 0,
-  "source": "MT5 XAUUSD (broker, M5/H1)"
+  "lastCandleUtc": "2026-10-16 20:59",
+  "ageMin": 24,
+  "source": "GC=F (solo Yahoo) · sin MT5 (precio puede diferir del broker)"
  },
  "chart": {
   "main": null,
@@ -342,8 +346,8 @@
    "latest_name": "xauusd_latest_annotated.png",
    "latest_rel": "live/latest/xauusd_latest_annotated.png",
    "latest_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\latest\\xauusd_latest_annotated.png",
-   "archive_rel": "live/archive/xauusd_20261016_161517_annotated.png",
-   "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261016_161517_annotated.png"
+   "archive_rel": "live/archive/xauusd_20261016_212503_annotated.png",
+   "archive_abs": "D:\\Danilo\\Trading\\Cursor Trading\\live\\archive\\xauusd_20261016_212503_annotated.png"
   }
  }
 }
