@@ -81,18 +81,14 @@ def _fetch_m5(asset: str) -> list[dict]:
     key = asset.upper()
     from app.models.broker_feed import yahoo_klines, yahoo_only
 
-    if yahoo_only():  # sin MT5 (Android): Yahoo; si no hay captura, endpoint libre
-        try:
-            rows = yahoo_klines(key, m5_bars=300)[0]
-            if len(rows) >= 2:
-                return rows
-        except Exception as exc:
-            print(f"WARN Yahoo velas {key}: {exc}", flush=True)
-        from app.models.free_candles import fetch_free_m5
-
-        rows, label = fetch_free_m5(key, 300)
-        print(f"Captura: {label}", flush=True)
-        return rows
+    if yahoo_only():  # sin MT5: Yahoo y, si falla, el mismo fallback (sin segunda pasada)
+        rows, _h1, meta = yahoo_klines(key, m5_bars=300)
+        provider = (meta or {}).get("provider") or "yahoo"
+        if provider != "yahoo":
+            print(f"Captura: {(meta or {}).get('source') or provider}", flush=True)
+        if len(rows) >= 2:
+            return rows
+        raise RuntimeError(f"sin velas M5 para {key}")
     if key == "US30":
         from app.models.us30_data import fetch_us30_klines
 

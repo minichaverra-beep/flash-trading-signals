@@ -311,7 +311,7 @@ def _fetch_binance_since(symbol: str, since: datetime) -> list[dict]:
     for _ in range(BINANCE_MAX_PAGES):
         url = f"{BINANCE_KLINES}?symbol={symbol}&interval=5m&startTime={start_ms}&limit=1000"
         req = Request(url, headers={"User-Agent": "CursorTrading/1.0"})
-        with urlopen(req, timeout=20) as resp:
+        with urlopen(req, timeout=10) as resp:
             raw = json.loads(resp.read().decode())
         for k in raw:
             rows.append({
@@ -357,7 +357,7 @@ def fetch_m5_since(market: str, since: datetime, now: datetime | None = None) ->
     cfg = MARKETS[market]
     now = now or datetime.now(timezone.utc)
     notes: list[str] = []
-    only_yahoo = yahoo_only()  # Android/sin MT5: ni puente ni Binance, solo Yahoo
+    only_yahoo = yahoo_only()  # Android/sin MT5: ni puente. Yahoo primero; si falla, Binance/OKX/Stooq.
     if only_yahoo:
         notes.append("Modo solo Yahoo (FS_DATA_SOURCE=yahoo): MT5 omitido")
     else:
@@ -379,8 +379,27 @@ def fetch_m5_since(market: str, since: datetime, now: datetime | None = None) ->
             notes.append(f"{ticker}: {exc}")
             continue
         if rows:
-            return rows, {"source": f"{ticker} (Yahoo)", "proxy": True, "notes": notes, "yahoo_only": only_yahoo}
+            meta_out = {
+                "source": f"{ticker} (Yahoo)", "proxy": True, "notes": notes,
+                "yahoo_only": only_yahoo,
+            }
+            if only_yahoo:
+                meta_out["provider"] = "yahoo"
+            return rows, meta_out
         notes.append(f"{ticker}: sin velas desde la señal")
+    if only_yahoo:
+        try:
+            from app.models.free_candles import fetch_public_since
+
+            rows, info = fetch_public_since(cfg["asset"], since, now)
+            notes.extend(info.get("failures") or [])
+            notes.append(info["label"])
+            return rows, {
+                "source": info["label"], "proxy": True, "notes": notes,
+                "yahoo_only": True, "provider": info["provider"],
+            }
+        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+            notes.append(str(exc))
     raise OutcomeDataError("No se pudieron obtener velas M5 reales: " + "; ".join(notes))
 
 
@@ -1099,7 +1118,9 @@ def evaluate_signal(
     real = trades[0] if len(trades) == 1 and not trades[0].label else None
     feed_note = (f"Velas {meta['source']} (sin MT5: pueden no coincidir con los precios del broker)"
                  if meta["proxy"] else None)
-    if meta.get("yahoo_only"):
+    if meta.get("yahoo_only") and meta.get("provider") not in (None, "yahoo"):
+        feed_note = f"Velas {meta['source']} · sin MT5 (pueden no coincidir con los precios del broker)"
+    elif meta.get("yahoo_only"):
         feed_note = f"Velas {meta['source']} (solo Yahoo, sin MT5: pueden no coincidir con los precios del broker)"
     chart = render_with_retry(lambda: render_outcome_chart(
         pre, post, outcome, out_path, asset=cfg["asset"], direction=geo, entry=entry, sl=sl, tp=tp,
@@ -1145,8 +1166,9 @@ def evaluate_signal(
         "exitTime": iso(outcome.exit_index),
         "lastCandle": post[-1]["open_time"].isoformat(),
         "source": meta["source"],
-        "dataSource": ("yahoo" if meta.get("yahoo_only")
-                       else "mt5" if str(meta["source"]).startswith("MT5") else "external"),
+        "dataSource": (meta.get("provider") or (
+            "yahoo" if meta.get("yahoo_only")
+            else "mt5" if str(meta["source"]).startswith("MT5") else "external")),
         "feedNotes": [str(n)[:300] for n in (meta.get("notes") or [])][:8],
         "shift": round(shift, dec),
         "stats": stats_payload(stats, pos["unit"].label),

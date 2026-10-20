@@ -137,9 +137,33 @@ class TestOutcomeChart:
         def down(*_a, **_k):
             raise OSError("sin red")
 
+        def no_public(*_a, **_k):
+            raise RuntimeError("Binance (Yahoo falló) XAUUSDT: timeout; OKX (Yahoo falló) XAU-USDT-SWAP: no")
+
         monkeypatch.setattr("app.models.us30_data.fetch_yahoo_chart", down)
+        monkeypatch.setattr("app.models.free_candles.fetch_public_since", no_public)
         with pytest.raises(toc.OutcomeDataError, match="No se pudieron obtener velas M5 reales.*sin red"):
             toc.fetch_m5_since("xauusd", T0, T0 + toc.M5)
+
+    def test_fetch_m5_since_yahoo_cae_a_okx_sin_mt5(self, sin_mt5, monkeypatch):
+        monkeypatch.setattr(
+            "app.models.us30_data.fetch_yahoo_chart",
+            lambda *_a, **_k: (_ for _ in ()).throw(OSError("yahoo caido")),
+        )
+        rows = _candles(10, 4200.0)
+
+        def ok_public(asset, since, now=None):
+            assert asset == "XAUUSD"
+            return rows, {
+                "provider": "okx", "symbol": "XAU-USDT-SWAP",
+                "label": "OKX (Yahoo falló) XAU-USDT-SWAP",
+                "failures": ["Binance (Yahoo falló) XAUUSDT: HTTP 400"],
+            }
+
+        monkeypatch.setattr("app.models.free_candles.fetch_public_since", ok_public)
+        got, meta = toc.fetch_m5_since("xauusd", T0, T0 + 10 * toc.M5)
+        assert meta["provider"] == "okx" and "OKX (Yahoo falló)" in meta["source"]
+        assert len(got) == 10 and any("HTTP 400" in n for n in meta["notes"])
 
     def test_evaluate_signal_genera_png_con_velas_yahoo(self, sin_mt5, monkeypatch, tmp_path):
         # señal en T0, el precio sube hasta tocar el TP: resultado «tp» con velas de Yahoo
@@ -159,6 +183,11 @@ class TestOutcomeChart:
 
     def test_cli_error_yahoo_json_limpio_y_traceback(self, sin_mt5, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr("app.models.us30_data.fetch_yahoo_chart", lambda *_a, **_k: [])
+
+        def no_public(*_a, **_k):
+            raise RuntimeError("Stooq (Yahoo falló) ^dji: HTML")
+
+        monkeypatch.setattr("app.models.free_candles.fetch_public_since", no_public)
         rc = toc.main(["--market", "us30", "--signal-time", "2026-10-01T16:55:00Z", "--entry", "100",
                        "--sl", "98", "--tp", "104", "--out", str(tmp_path / "x.png")])
         out, err = capsys.readouterr()

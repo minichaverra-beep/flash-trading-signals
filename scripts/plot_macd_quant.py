@@ -46,7 +46,20 @@ from app.models.macd_quant import (
     resample_to_h4,
 )
 
-plt.rcParams["text.parse_math"] = False  # "$" ≠ mathtext (ValueError / RecursionError)
+def _quiet_mathtext() -> None:
+    """Apaga mathtext sin tumbar el proceso si matplotlib es antiguo (Android)."""
+    try:
+        from app.views.mpl_safe import disable_mathtext
+
+        disable_mathtext()
+    except Exception:
+        try:
+            plt.rcParams["text.parse_math"] = False
+        except Exception:
+            pass
+
+
+_quiet_mathtext()
 
 BINANCE = "https://api.binance.com/api/v3/klines"
 # Si el último open_time del parquet tiene más de esto, se refresca solo.
@@ -307,6 +320,39 @@ def refresh_symbol_parquets(
         flush=True,
     )
     return meta
+
+
+_PUBLIC_ASSET = {
+    "btc": "BTC",
+    "us30": "US30",
+    "xau": "XAUUSD",
+    "xauusd": "XAUUSD",
+}
+
+
+def h4_from_public(symbol: str, days: float) -> tuple[pd.DataFrame, str] | None:
+    """H4 desde Binance, OKX, Stooq, Gate o Coinbase. None si ese activo no tiene fuente libre."""
+    asset = _PUBLIC_ASSET.get(normalize_symbol(symbol))
+    if not asset:
+        return None
+    try:
+        from app.models.free_candles import fetch_public_since
+
+        since = datetime.now(timezone.utc) - timedelta(days=max(float(days), 7.0) + 1)
+        rows, info = fetch_public_since(asset, since)
+        if len(rows) < 20:
+            print(f"[refresh] velas libres: solo {len(rows)}", file=sys.stderr)
+            return None
+        h4 = resample_to_h4(candles_to_ohlcv_df(rows))
+        note = f"public_{info.get('provider')}_m5_resample_h4"
+        print(
+            f"[refresh] velas libres {info.get('label')} -> H4 ({len(h4)} barras)",
+            flush=True,
+        )
+        return h4, note
+    except Exception as exc:
+        print(f"[refresh] velas libres: {exc}", file=sys.stderr)
+        return None
 
 
 def resolve_source(symbol: str, path: Path | None) -> tuple[Path, str]:
@@ -595,7 +641,13 @@ def plot_macd_quant(
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=140, bbox_inches="tight", facecolor=BG, edgecolor="none")
+    _quiet_mathtext()
+    try:
+        fig.savefig(out_path, dpi=140, bbox_inches="tight", facecolor=BG, edgecolor="none")
+    except RecursionError:
+        # bbox tight + mathtext viejo: el mismo gráfico sin el recorte ajustado.
+        _quiet_mathtext()
+        fig.savefig(out_path, dpi=140, facecolor=BG, edgecolor="none")
     plt.close(fig)
     return out_path
 
@@ -664,16 +716,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.parquet is None and not args.no_refresh:
         if args.force_refresh or cache_is_stale(sym):
             do_refresh = True
+    public_h4: tuple[pd.DataFrame, str] | None = None
     if do_refresh:
         try:
             refresh_symbol_parquets(sym, lookback_days=max(14, int(args.lookback_days)))
         except Exception as exc:
             print(f"[refresh] ERROR: {exc}", file=sys.stderr)
-            if args.force_refresh:
-                return 1
-            print("[refresh] Continuo con cache local...", file=sys.stderr)
+            public_h4 = h4_from_public(sym, float(args.days))
+            if public_h4 is None and not args.force_refresh:
+                print("[refresh] Continuo con cache local...", file=sys.stderr)
 
-    h4, parquet, source_note = load_h4(sym, args.parquet)
+    if public_h4 is not None:
+        h4, source_note = public_h4
+        parquet = SYMBOL_PARQUET[sym][0]
+    else:
+        try:
+            h4, parquet, source_note = load_h4(sym, args.parquet)
+        except Exception as exc:
+            print(f"[refresh] cache local: {exc}", file=sys.stderr)
+            public_h4 = h4_from_public(sym, float(args.days))
+            if public_h4 is None:
+                print(f"[refresh] ERROR: {exc}", file=sys.stderr)
+                return 1
+            h4, source_note = public_h4
+            parquet = SYMBOL_PARQUET[sym][0]
 
     bars = max(20, int(args.bars)) if args.bars is not None else None
     days = float(args.days)

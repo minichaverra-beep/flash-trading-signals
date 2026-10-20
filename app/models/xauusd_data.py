@@ -89,6 +89,10 @@ def fetch_xauusd_klines(
     meta["proxy_note"] = "GC=F (COMEX) as XAUUSD proxy; not broker spot"
     meta["spot_basis"] = None
 
+    if meta.get("provider") not in (None, "yahoo"):
+        meta["notes"].append(f"Sin ajuste spot: velas de {meta.get('source')}")
+        return m5, h1, meta
+
     if spot_adjust and m5:
         spot, src, notes = fetch_spot_xau()
         meta["notes"].extend(notes)

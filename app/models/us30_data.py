@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import json
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+# Si el fallback (o yfinance) vuelve a entrar aquí, se corta con error. No se reintenta HTTPS.
+_YAHOO_DEPTH: ContextVar[int] = ContextVar("yahoo_klines_depth", default=0)
 
 DEFAULT_TICKERS = ("YM=F", "^DJI")
 CASH_INDEX = "^DJI"
@@ -19,11 +23,22 @@ INTERVAL_RANGE = {
     "60m": "730d",
 }
 
-YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+YAHOO_TIMEOUT = 10
+YAHOO_CHART_HOSTS = (
+    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+    "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}",
+)
+YAHOO_CHART = YAHOO_CHART_HOSTS[0]
 
 
 def _ts_to_utc(ts: int) -> datetime:
     return datetime.fromtimestamp(ts, tz=timezone.utc)
+
+
+def _read_yahoo_chart(url: str) -> dict:
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0 CursorTrading/1.0"})
+    with urlopen(req, timeout=YAHOO_TIMEOUT) as resp:
+        return json.loads(resp.read().decode())
 
 
 def fetch_yahoo_chart(
@@ -31,17 +46,26 @@ def fetch_yahoo_chart(
     interval: str = "5m",
     range_: str | None = None,
 ) -> list[dict]:
-    """Direct Yahoo chart API (no curl) — fallback when yfinance SSL fails."""
+    """Yahoo chart API v8 (query1 y, si falla, query2). No es yfinance."""
     rng = range_ or INTERVAL_RANGE.get(interval, "60d")
-    url = f"{YAHOO_CHART.format(symbol=quote(ticker, safe=''))}?interval={interval}&range={rng}"
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0 CursorTrading/1.0"})
-    with urlopen(req, timeout=25) as resp:
-        payload = json.loads(resp.read().decode())
-
-    result = payload.get("chart", {}).get("result")
-    if not result:
-        err = payload.get("chart", {}).get("error", {})
-        raise RuntimeError(err.get("description", "empty chart result"))
+    last: Exception | None = None
+    payload = None
+    result = None
+    for host in YAHOO_CHART_HOSTS:
+        url = f"{host.format(symbol=quote(ticker, safe=''))}?interval={interval}&range={rng}"
+        try:
+            payload = _read_yahoo_chart(url)
+            result = (payload.get("chart") or {}).get("result")
+            if not result:
+                err = (payload.get("chart") or {}).get("error") or {}
+                raise RuntimeError(err.get("description", "empty chart result"))
+            last = None
+            break
+        except (URLError, HTTPError, TimeoutError, json.JSONDecodeError, OSError, ValueError, RuntimeError) as exc:
+            last = exc
+            result = None
+    if last is not None or not result or payload is None:
+        raise RuntimeError(last or "Yahoo chart sin respuesta")
 
     block = result[0]
     timestamps = block.get("timestamp") or []
@@ -99,16 +123,29 @@ def _df_to_candles(df, limit: int) -> list[dict]:
 
 
 def _download_yfinance(ticker: str, interval: str, period: str, limit: int) -> list[dict]:
+    """yfinance no se usa en el fallback: su ``YfData.get`` llama a ``_get_cookie_and_crumb``
+    y esa ruta (HTTPS de nuevo) es la que agota la pila. Se conserva por compatibilidad
+    con tests que la sustituyen; ``fetch_yahoo_klines`` no la llama.
+    """
+    if _YAHOO_DEPTH.get():
+        raise RuntimeError("recursión en Yahoo: yfinance no puede volver a HTTPS")
+    import socket
+
     import yfinance as yf
 
-    df = yf.download(
-        ticker,
-        period=period,
-        interval=interval,
-        progress=False,
-        auto_adjust=True,
-        threads=False,
-    )
+    old = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(YAHOO_TIMEOUT)
+    try:
+        df = yf.download(
+            ticker,
+            period=period,
+            interval=interval,
+            progress=False,
+            auto_adjust=True,
+            threads=False,
+        )
+    finally:
+        socket.setdefaulttimeout(old)
     if df is None or df.empty:
         return []
     return _df_to_candles(df, limit)
@@ -122,10 +159,35 @@ def fetch_yahoo_klines(
     h1_bars: int = 200,
 ) -> tuple[list[dict], list[dict], dict]:
     """
-    Download OHLCV genérico (sin ajuste spot). Yahoo Chart API, luego yfinance, por ticker/interval.
+    Download OHLCV genérico (sin ajuste spot).
+
+    HTTPS de Yahoo una vez por ticker. Si no hay velas, un solo pase al fallback
+    público (Yahoo HTTP y, si hace falta, el siguiente). No llama a yfinance:
+    ese cliente vuelve a HTTPS y su ``YfData.get`` se reentra hasta agotar la pila.
+    Si el fallback ya respondió, el H1 se arma desde esas velas: no se repite HTTPS.
 
     Returns (m5_proxy, h1, meta).
     """
+    if _YAHOO_DEPTH.get():
+        raise RuntimeError("recursión en Yahoo: el fallback no vuelve a HTTPS")
+    token = _YAHOO_DEPTH.set(_YAHOO_DEPTH.get() + 1)
+    try:
+        return _fetch_yahoo_klines_once(
+            tickers, m5_interval, h1_interval, m5_bars, h1_bars,
+        )
+    except RecursionError as exc:
+        raise RuntimeError("recursión en Yahoo: el fallback no vuelve a HTTPS") from exc
+    finally:
+        _YAHOO_DEPTH.reset(token)
+
+
+def _fetch_yahoo_klines_once(
+    tickers: tuple[str, ...],
+    m5_interval: str,
+    h1_interval: str,
+    m5_bars: int,
+    h1_bars: int,
+) -> tuple[list[dict], list[dict], dict]:
     meta: dict = {"notes": []}
     m5: list[dict] = []
     h1: list[dict] = []
@@ -134,23 +196,15 @@ def fetch_yahoo_klines(
     limit = max(m5_bars, h1_bars) + 50
 
     def _try_download(ticker: str, interval: str) -> list[dict]:
+        """Un pase HTTPS (query1 y, si falla, query2). No llama a yfinance."""
         period = period_map.get(interval, "60d")
-        # 1) Yahoo chart API (SSL-safe via urllib)
         try:
             cand = fetch_yahoo_chart(ticker, interval, period)
             if len(cand) >= 80:
                 meta["notes"].append(f"{ticker} {interval}: Yahoo API OK ({len(cand)} velas)")
                 return cand[-limit:]
-        except (URLError, HTTPError, RuntimeError, json.JSONDecodeError, TimeoutError) as exc:
+        except (URLError, HTTPError, RuntimeError, json.JSONDecodeError, TimeoutError, OSError, RecursionError) as exc:
             meta["notes"].append(f"{ticker} {interval} Yahoo API: {exc}")
-        # 2) yfinance fallback
-        try:
-            cand = _download_yfinance(ticker, interval, period, limit)
-            if len(cand) >= 80:
-                meta["notes"].append(f"{ticker} {interval}: yfinance OK ({len(cand)} velas)")
-                return cand
-        except Exception as exc:
-            meta["notes"].append(f"{ticker} {interval} yfinance: {exc}")
         return []
 
     for ticker in tickers:
@@ -168,7 +222,7 @@ def fetch_yahoo_klines(
         if m5:
             break
 
-    from app.models.free_candles import fetch_free_m5, quotes_are_live
+    from app.models.free_candles import fetch_public_m5, quotes_are_live
 
     if m5 and not quotes_are_live(m5):
         meta["notes"].append("Yahoo sin precio real (velas quietas)")
@@ -177,14 +231,19 @@ def fetch_yahoo_klines(
         asset = _free_asset(tickers)
         if asset:
             try:
-                rows, label = fetch_free_m5(asset, max(m5_bars, 80))
+                rows, info = fetch_public_m5(asset, max(m5_bars, 80))
                 m5 = rows[-m5_bars:]
-                ticker_used = label
+                ticker_used = info["symbol"]
                 meta["m5_interval"] = "5m"
-                meta["notes"].append(label)
-                meta["source"] = label
+                meta["provider"] = info["provider"]
+                meta["public_symbol"] = info["symbol"]
+                meta["source"] = info["label"]
+                meta["notes"].extend(info.get("failures") or [])
+                meta["notes"].append(info["label"])
+            except RecursionError as exc:
+                raise RuntimeError("recursión en el fallback de velas") from exc
             except Exception as exc:
-                meta["notes"].append(f"endpoint libre: {exc}")
+                meta["notes"].append(str(exc))
 
     if not m5:
         raise RuntimeError(
@@ -192,14 +251,16 @@ def fetch_yahoo_klines(
             f"Intentos: {tickers}. Notas: {'; '.join(meta['notes'])}"
         )
 
-    for ticker in tickers:
-        cand = _try_download(ticker, h1_interval)
-        if len(cand) >= 55:
-            h1 = cand[-h1_bars:]
-            if ticker_used is None:
-                ticker_used = ticker
-            meta["h1_interval"] = h1_interval
-            break
+    # El fallback público ya gastó su único pase. Volver a HTTPS aquí reabre el ciclo.
+    if meta.get("provider") in (None, "yahoo"):
+        for ticker in tickers:
+            cand = _try_download(ticker, h1_interval)
+            if len(cand) >= 55:
+                h1 = cand[-h1_bars:]
+                if ticker_used is None:
+                    ticker_used = ticker
+                meta["h1_interval"] = h1_interval
+                break
 
     if not h1:
         bucket: dict = {}
@@ -218,6 +279,7 @@ def fetch_yahoo_klines(
 
     meta["ticker"] = ticker_used
     # El fallback libre ya dejó su rótulo; no volver a llamarlo Yahoo.
+    meta.setdefault("provider", "yahoo")
     meta.setdefault("source", "yfinance/Yahoo Chart API")
     return m5, h1, meta
 
@@ -249,7 +311,7 @@ def fetch_cash_quote(symbol: str = CASH_INDEX) -> tuple[float, datetime]:
     """Última cotización del índice cash (Yahoo meta): (precio, hora UTC)."""
     url = f"{YAHOO_CHART.format(symbol=quote(symbol, safe=''))}?interval=5m&range=1d"
     req = Request(url, headers={"User-Agent": "Mozilla/5.0 CursorTrading/1.0"})
-    with urlopen(req, timeout=15) as resp:
+    with urlopen(req, timeout=YAHOO_TIMEOUT) as resp:
         payload = json.loads(resp.read().decode())
     result = payload.get("chart", {}).get("result")
     if not result:
@@ -293,6 +355,9 @@ def fetch_us30_klines(
         h1_bars=h1_bars,
     )
     meta["spot_basis"] = None
+    if meta.get("provider") not in (None, "yahoo"):
+        meta["notes"].append(f"Sin ajuste spot: velas de {meta.get('source')}")
+        return m5, h1, meta
     if not spot_adjust or not m5 or meta.get("ticker") == CASH_INDEX:
         return m5, h1, meta
     try:

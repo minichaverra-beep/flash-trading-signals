@@ -21,13 +21,39 @@ _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def disable_mathtext() -> None:
-    """``text.parse_math = False``: ``$`` es un carácter normal. Idempotente."""
+    """``text.parse_math = False``: ``$`` es un carácter normal. Idempotente.
+
+    Matplotlib anterior a 3.6 (el de apt en Android) no tiene ese ajuste y trata
+    ``+$572`` como fórmula. Eso revienta el PNG con RecursionError. Ahí se
+    escapa el dólar al poner el texto.
+    """
     import matplotlib
 
     try:
-        matplotlib.rcParams["text.parse_math"] = False
-    except KeyError:  # matplotlib < 3.6 (instalaciones antiguas, p. ej. apt en Android): el rcParam no existe
+        matplotlib.rcParams["text.usetex"] = False
+    except KeyError:
         pass
+    try:
+        matplotlib.rcParams["text.parse_math"] = False
+        return
+    except KeyError:
+        _escape_dollars_on_old_matplotlib()
+
+
+def _escape_dollars_on_old_matplotlib() -> None:
+    from matplotlib import text as mtext
+
+    if getattr(mtext.Text.set_text, "_flash_no_math", False):
+        return
+    original = mtext.Text.set_text
+
+    def set_text(self, s):
+        if isinstance(s, str) and "$" in s:
+            s = s.replace("$", "\\$")
+        return original(self, s)
+
+    set_text._flash_no_math = True  # type: ignore[attr-defined]
+    mtext.Text.set_text = set_text
 
 
 def safe_text(value: Any, *, max_len: int = MAX_TEXT_LEN) -> str:

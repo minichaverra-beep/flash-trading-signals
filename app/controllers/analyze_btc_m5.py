@@ -1,4 +1,4 @@
-﻿"""
+"""
 Fetch live BTCUSDT candles (M5 + H1) and write a snapshot for E1 strategy review.
 
 Usage:
@@ -560,6 +560,7 @@ def main() -> int:
         return 1
 
     price = m5[-1]["close"]
+    print(f"[datos] {data_source} · precio {price:.2f} (cierre de la última vela)", flush=True)
     closes_m5 = [c["close"] for c in m5]
     closes_h1 = [c["close"] for c in h1]
     rsi_m5 = rsi(closes_m5)
@@ -745,7 +746,9 @@ def main() -> int:
                             mode="history_review" if args.history_review else "high",
                         )
             except Exception as e:
-                print(f"WARN chart overlays: {e}")
+                from app.views.illustrate_high_entry import log_chart_failure
+
+                log_chart_failure("BTC", e)
         # Auto-advanced when ML+Neural (PS1 also passes --advanced; keep Python consistent)
         use_advanced = bool(args.advanced) or (use_ml and use_neural)
         high_ctx = _build_report_context(

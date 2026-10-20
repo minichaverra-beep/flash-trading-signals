@@ -288,6 +288,7 @@ def main() -> int:
         from app.models.broker_feed import describe_source
 
         data_source = describe_source(fetch_meta, data_source)
+    print(f"[datos] {data_source} · precio {price:.{PRICE_DECIMALS}f} (cierre de la última vela)", flush=True)
 
     data = {
         "generated": now.strftime("%Y-%m-%d %H:%M"),
@@ -445,7 +446,9 @@ def main() -> int:
                             mode="history_review" if args.history_review else "high",
                         )
             except Exception as e:
-                print(f"WARN chart overlays: {e}")
+                from app.views.illustrate_high_entry import log_chart_failure
+
+                log_chart_failure("XAUUSD", e)
         use_advanced = bool(args.advanced) or (use_ml and use_neural)
         write_high_signal(
             high, high_data, verdict_to_signal,

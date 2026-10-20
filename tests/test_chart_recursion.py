@@ -95,6 +95,27 @@ def test_trades_json_ignores_non_object_items():
     assert toc.trades_from_json(json.dumps([[[]], 5, None, "x", {"entry": 1, "exit": 2}]))[0].entry == 1.0
 
 
+def test_old_matplotlib_without_parse_math_still_disables_dollars(monkeypatch):
+    """Android (matplotlib < 3.6) no tiene text.parse_math: el dólar no entra al parser."""
+    from matplotlib import text as mtext
+    from app.views.mpl_safe import disable_mathtext
+
+    original_set = matplotlib.rcParams.__class__.__setitem__
+    original_text = mtext.Text.set_text
+
+    def guarded(self, key, value):
+        if key == "text.parse_math":
+            raise KeyError(key)
+        return original_set(self, key, value)
+
+    monkeypatch.setattr(matplotlib.rcParams.__class__, "__setitem__", guarded)
+    try:
+        disable_mathtext()
+        assert getattr(mtext.Text.set_text, "_flash_no_math", False) is True
+    finally:
+        mtext.Text.set_text = original_text
+
+
 def test_safe_text_basics():
     assert safe_text(None) == ""
     assert safe_text("a\x00b") == "ab"

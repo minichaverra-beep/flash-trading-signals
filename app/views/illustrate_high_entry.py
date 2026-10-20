@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import io
+import json
 import os
+import re
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 CHART_DPI = 200
@@ -114,8 +117,8 @@ def write_entry_overlay_charts(
     - main_chart_path: live/*_m5_chart.png (when chart enabled / not -NoChart)
     - annotated_path: live/*_m5_chart_annotated.png (when -Ilustrate)
 
-    Si Yahoo no dejó velas o la captura falla, se piden las últimas M5 a un
-    endpoint libre (Binance / OKX / Gate.io) y se vuelve a dibujar una vez.
+    Si no hay velas, se pide el respaldo público una sola vez y se dibuja.
+    Un RecursionError no vuelve a pedir velas: el fallo se convierte en error.
     """
     if _free and len(data.get("m5") or []) < 2:
         return _capture_from_free_candles(
@@ -127,6 +130,8 @@ def write_entry_overlay_charts(
             data, optimal_entry, asset=asset, main_chart_path=main_chart_path,
             annotated_path=annotated_path, dpi=dpi,
         )
+    except RecursionError as exc:
+        raise RuntimeError("recursión al dibujar el gráfico; no se vuelven a pedir velas") from exc
     except Exception as exc:
         if not _free:
             raise
@@ -150,10 +155,11 @@ def _capture_from_free_candles(
 
     try:
         candles, label = fetch_free_m5(asset, 300)
+    except RecursionError as exc:
+        raise RuntimeError("recursión en el fallback de velas") from exc
     except Exception as exc:
         print(f"WARN captura: {reason}. Endpoint libre: {exc}", flush=True)
-        if len(data.get("m5") or []) >= 2:
-            raise
+        # Velas que la señal ya trae, o el aviso «sin velas». No se reintenta la red.
         return _paint_entry_charts(
             data, optimal_entry, asset=asset, main_chart_path=main_chart_path,
             annotated_path=annotated_path, dpi=dpi,
@@ -216,7 +222,9 @@ def create_annotated_entry_chart(
         import matplotlib
 
         matplotlib.use("Agg")
-        matplotlib.rcParams["text.parse_math"] = False
+        from app.views.mpl_safe import disable_mathtext
+
+        disable_mathtext()
         import matplotlib.pyplot as plt
 
         # Minimal placeholder so callers/tests still get a file
@@ -245,6 +253,14 @@ def create_annotated_entry_chart(
     except Exception as e:
         print(f"WARN render inputs: {e}")
     return written
+
+
+def log_chart_failure(asset: str, exc: BaseException) -> None:
+    """Stdout/stderr del job. Sin esta línea la tarjeta omite el PNG y no dice por qué."""
+    from app.views.mpl_safe import print_compact_traceback
+
+    print(f"ERROR chart: no se escribió el PNG de entrada de {asset}: {exc}", flush=True)
+    print_compact_traceback(exc)
 
 
 def format_illustration_md(
@@ -307,3 +323,108 @@ def format_salidas_block(
         return []
     lines.append("")
     return lines
+
+
+_OHLC_RE = re.compile(
+    r"O=([0-9]+(?:\.[0-9]+)?)\s+H=([0-9]+(?:\.[0-9]+)?)\s+"
+    r"L=([0-9]+(?:\.[0-9]+)?)\s+C=([0-9]+(?:\.[0-9]+)?)"
+)
+
+
+def candles_from_report_text(text: str) -> list[dict]:
+    """OHLC ya escrito en el reporte (`O= H= L= C=`). No inventa precios."""
+    rows = []
+    base = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    for i, match in enumerate(_OHLC_RE.finditer(text or "")):
+        o, h, l, c = (float(match.group(k)) for k in range(1, 5))
+        if min(o, h, l, c) <= 0:
+            continue
+        ot = base + timedelta(minutes=5 * i)
+        rows.append({
+            "open_time": ot, "close_time": ot,
+            "open": o, "high": h, "low": l, "close": c, "volume": 0.0,
+        })
+    return rows
+
+
+def _candles_from_render_json(path: Path) -> tuple[list[dict], dict]:
+    from app.views.chart_rerender import load_render_inputs
+
+    payload = load_render_inputs(path)
+    data = payload.get("data") or {}
+    return list(data.get("m5") or []), payload
+
+
+def ensure_local_entry_png(
+    out_path: Path | str,
+    *,
+    asset: str,
+    report_path: Path | str | None = None,
+    decimals: int = 1,
+) -> str | None:
+    """PNG de entrada para la tarjeta, sin red.
+
+    Orden: el PNG que ya existe, el ``*.render.json`` de esa captura, o el OHLC
+    del reporte. Cero velas → None (la tarjeta puede decir que no hay gráfico).
+    """
+    out = Path(out_path)
+    if out.is_file() and out.stat().st_size > 800:
+        return str(out.resolve())
+
+    candles: list[dict] = []
+    opt: dict = {"dec": decimals, "ahora_action": "ESPERAR"}
+    data: dict = {"price_decimals": decimals, "setup": {}}
+    render_path = out.with_name(f"{out.stem}.render.json")
+    if render_path.is_file():
+        try:
+            candles, payload = _candles_from_render_json(render_path)
+            data = dict(payload.get("data") or data)
+            opt = dict(payload.get("opt") or opt)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            candles = []
+    if len(candles) < 2 and report_path:
+        try:
+            candles = candles_from_report_text(Path(report_path).read_text(encoding="utf-8"))
+        except OSError:
+            candles = []
+        if candles:
+            data = {
+                "m5": candles,
+                "price": candles[-1]["close"],
+                "price_decimals": decimals,
+                "setup": {"direction": opt.get("direction") or "LONG"},
+            }
+    if len(candles) < 2:
+        return None
+    data["m5"] = candles
+    written = write_entry_overlay_charts(
+        data, opt, asset=asset, main_chart_path=None, annotated_path=out, dpi=80, _free=False,
+    )
+    path = written.get("annotated_chart")
+    return path if path and Path(path).is_file() else None
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Dibuja el PNG de la tarjeta con velas locales. Una línea JSON en stdout."""
+    import argparse
+    import sys
+
+    ap = argparse.ArgumentParser(description="PNG de velas de la tarjeta, sin red")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--asset", required=True)
+    ap.add_argument("--report", default=None)
+    ap.add_argument("--decimals", type=int, default=1)
+    args = ap.parse_args(argv)
+    try:
+        path = ensure_local_entry_png(
+            args.out, asset=args.asset, report_path=args.report, decimals=args.decimals,
+        )
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), flush=True)
+        return 1
+    print(json.dumps({"ok": bool(path), "path": path}), flush=True)
+    return 0 if path else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

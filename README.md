@@ -71,6 +71,18 @@ Cambia `-Bearish`/`-Bullish` y `-Break`/`-Reverse` según tu plan. Preferí siem
 
 Guía completa (Context / Light / Full / Super High, Categories, reglas de sesión): [how_to_use.txt](how_to_use.txt).
 
+## Velas con `FS_DATA_SOURCE=yahoo`
+
+No se abre el puente MT5. Orden si Yahoo no responde: **Yahoo → Binance → OKX → Stooq** (timeout ~10 s por petición, sin recursión).
+
+| Símbolo | Yahoo | Binance | OKX | Si los cripto no están |
+|---------|-------|---------|-----|------------------------|
+| BTC | BTC-USD | BTCUSDT (spot) | BTC-USDT | Stooq `btcusd` |
+| XAUUSD | GC=F | XAUUSDT (futuros USD-M; el spot no existe) | XAU-USDT-SWAP (el spot XAU-USDT no existe) | Stooq `xauusd` |
+| US30 | YM=F, luego ^DJI | no está listado | no está listado | Stooq `^dji` |
+
+El reporte y el gráfico nombran la fuente que respondió (`Binance (Yahoo falló)`, `OKX (Yahoo falló)`, `Stooq (Yahoo falló)`). Con `mt5` o `auto` el escritorio sigue prefiriendo el puente. Si Stooq no devuelve CSV, BTC prueba Coinbase y el oro/Dow prueban Gate.io; no sustituyen a un símbolo que el exchange no lista.
+
 ## Cursor
 
 Tras el script, en un chat nuevo:

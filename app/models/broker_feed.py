@@ -13,9 +13,10 @@ FS_MT5_BRIDGE_URL / FS_MT5_BRIDGE_TOKEN / FS_MT5_SYMBOL_{US30,XAUUSD,BTC};
 FS_BROKER_FEED=off desactiva el puente.
 
 Modo «solo Yahoo» (Android/Termux, sin MT5): FS_DATA_SOURCE=yahoo (o FS_DISABLE_MT5=1) omite el
-puente por completo (ni se intenta la conexión) y todas las velas salen de Yahoo Finance
-(BTC-USD, YM=F/^DJI, GC=F/spot). Cualquier otro valor (`auto`, `mt5`, vacío) deja el
-comportamiento de arriba.
+puente por completo (ni se intenta la conexión). Las velas salen primero de Yahoo
+(BTC-USD, YM=F/^DJI, GC=F). Si Yahoo falla: Binance, OKX y Stooq (free_candles), sin
+volver a llamar a este loader ni al puente. US30 no se pide a Binance ni a OKX.
+Cualquier otro valor (`auto`, `mt5`, vacío) deja el comportamiento de arriba.
 """
 from __future__ import annotations
 
@@ -172,12 +173,21 @@ def format_offset(asset: str, offset: float) -> str:
     return f"{offset:+.0f} $"
 
 
+PUBLIC_SOURCES = ("binance", "okx", "stooq", "gate", "coinbase", "yahoohttp")
+
+
 def feed_info(source: str, asset: str, symbol: str | None, offset: float | None = None) -> dict:
     """Metadatos de la fuente de velas + rótulo para el chart/reporte."""
     key = asset_key(asset)
     ext = EXTERNAL_LABELS.get(key, key)
     if source == "yahoo":
         label = f"velas Yahoo {YAHOO_LABELS.get(key, key)} (solo Yahoo, sin MT5: precio puede diferir del broker)"
+    elif source in PUBLIC_SOURCES:
+        from app.models.free_candles import PRETTY
+
+        pretty = PRETTY.get(source, source)
+        sym = f" {symbol}" if symbol else ""
+        label = f"velas {pretty}{sym} · sin MT5 (precio puede diferir del broker)"
     elif source == "mt5":
         label = f"velas MT5 {symbol}"
     elif source == "external_shifted":
@@ -186,7 +196,7 @@ def feed_info(source: str, asset: str, symbol: str | None, offset: float | None 
         label = f"velas {ext} (sin MT5: precio puede diferir del broker)"
     return {
         "source": source, "symbol": symbol, "offset": offset, "label": label,
-        "broker": source not in ("external", "yahoo"),
+        "broker": source not in ("external", "yahoo", *PUBLIC_SOURCES),
     }
 
 
@@ -220,14 +230,21 @@ def load_broker_klines(
 
 
 def _load_yahoo_only(key: str, external_fetch: Callable[[], Klines], m5_bars: int, h1_bars: int) -> Klines:
-    """Modo solo Yahoo: sin puente, sin reintentos. BTC pasa de Binance a Yahoo (BTC-USD); US30/XAUUSD ya son Yahoo."""
+    """Sin puente. Yahoo primero (BTC no llama a external_fetch: ese loader se llama a sí mismo).
+
+    Si Yahoo ya cayó a Binance/OKX/Stooq, meta['provider'] nombra esa fuente. No se reintenta aquí.
+    """
     if key == "BTC":
         m5, h1, meta = yahoo_klines(key, m5_bars, h1_bars)
     else:
         m5, h1, meta = external_fetch()
     meta = dict(meta or {})
+    provider = meta.get("provider") or "yahoo"
     meta["notes"] = ["Modo solo Yahoo (FS_DATA_SOURCE=yahoo): MT5 omitido"] + list(meta.get("notes") or [])
-    meta["feed"] = feed_info("yahoo", key, None)
+    if provider == "yahoo":
+        meta["feed"] = feed_info("yahoo", key, None)
+    else:
+        meta["feed"] = feed_info(provider, key, meta.get("public_symbol") or meta.get("ticker"))
     return m5, h1, meta
 
 
@@ -290,6 +307,8 @@ def describe_source(meta: dict, fallback: str) -> str:
         return f"MT5 {feed.get('symbol')} (broker, M5/H1)"
     if feed.get("source") == "yahoo":
         return f"{meta.get('ticker') or fallback} (solo Yahoo) · sin MT5 (precio puede diferir del broker)"
+    if feed.get("source") in PUBLIC_SOURCES:
+        return feed.get("label") or str(feed.get("source"))
     if feed.get("source") == "external_shifted":
         return f"{fallback} · {feed.get('label')}"
     return f"{fallback} · sin MT5 (precio puede diferir del broker)"
