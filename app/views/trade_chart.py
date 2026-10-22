@@ -1,6 +1,6 @@
 """Gráfico M5 estilo "Long/Short Position" (TradingView), compartido por BTC / US30 / XAUUSD.
 
-- Eje X en hora real (UTC + hora Nueva York), ventana intradía + espacio a la derecha.
+- Eje X en hora de Colombia (UTC-5 fijo), ventana intradía + espacio a la derecha.
 - Caja de posición desde la vela actual: verde entrada→TP, roja entrada→SL.
 - Etiquetas de precio en el borde derecho (TP / Entrada / SL / precio actual / zonas).
 - Señal ESPERAR / NO_OPERAR → caja punteada semitransparente (niveles pendientes).
@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from app.latam_time import format_latam, show_clock
+from app.models.quantum_levels import format_price
 
 BG = "#07090f"
 PANEL = "#12151c"
@@ -171,23 +174,13 @@ def _to_utc(t: Any) -> datetime | None:
     return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t.astimezone(timezone.utc)
 
 
-def _ny_tz():
-    try:
-        from zoneinfo import ZoneInfo
-
-        return ZoneInfo("America/New_York")
-    except Exception:
-        return timezone(timedelta(hours=-4), "NY")
-
-
 def _time_ticks(times: list[datetime | None], total: int) -> tuple[list[float], list[str]]:
-    """Ticks horarios 'HH:MM UTC / HH:MM NY' para velas reales y proyección futura."""
+    """Ticks horarios en UTC-5. No mueve las velas: solo el texto del eje."""
     n = len(times)
     if n == 0 or times[-1] is None:
         return [], []
     last = times[-1].replace(second=0, microsecond=0)
     last -= timedelta(minutes=last.minute % 5)
-    ny = _ny_tz()
     span_h = total * 5 / 60
     step_min = 60 if span_h <= 12 else 120
     ticks: list[float] = []
@@ -198,7 +191,7 @@ def _time_ticks(times: list[datetime | None], total: int) -> tuple[list[float], 
             continue
         if t.minute == 0 and (t.hour * 60) % step_min == 0:
             ticks.append(float(i))
-            labels.append(f"{t:%H:%M}\n{t.astimezone(ny):%H:%M} NY")
+            labels.append(format_latam(_to_utc(t)))
     return ticks, labels
 
 
@@ -268,13 +261,13 @@ def relation_text(relation: str | None, price: float, pos: dict[str, Any] | None
     """Frase de estado del plan frente al precio real; None si no aplica."""
     if pos is None or relation is None:
         return None
-    p, e = f"{price:{fmt}}", f"{pos['entry']:{fmt}}"
+    p, e = format_price(price), format_price(pos["entry"])
     above = price > pos["entry"]
     return {
         "limit": f"entrada límite {e} · precio {p}, esperando retroceso",
         "crossed": f"precio {p} ya {'sobre' if above else 'bajo'} la entrada {e} (a mercado entra a mejor precio)",
-        "beyond_sl": f"INVALIDADO · precio {p} más allá del SL {pos['sl']:{fmt}}",
-        "beyond_tp": f"plan vencido · precio {p} ya más allá del TP {pos['tp']:{fmt}}",
+        "beyond_sl": f"INVALIDADO · precio {p} más allá del SL {format_price(pos['sl'])}",
+        "beyond_tp": f"plan vencido · precio {p} ya más allá del TP {format_price(pos['tp'])}",
     }.get(relation)
 
 
@@ -378,13 +371,13 @@ def _draw_key_zones(
         if 1e-12 < band <= (ymax - ymin) * 0.05:
             ax.axhspan(zone_lo, zone_hi, color=ZONE_C, alpha=0.09, zorder=1, linewidth=0)
         ax.axhline(level, color=ZONE_C, linewidth=0.8, linestyle=":", alpha=0.7, zorder=2)
-        tags.append({"y": float(level), "text": f"{_zone_short(ztype)} {level:{fmt}}",
+        tags.append({"y": float(level), "text": f"{_zone_short(ztype)} {format_price(level)}",
                      "fg": ZONE_C, "bg": PANEL, "edge": ZONE_C, "prio": 3})
     for key, name in (("pdh", "PDH"), ("pdl", "PDL")):
         v = data.get(key)
         if v is not None and ymin < float(v) < ymax:
             ax.axhline(float(v), color=MUTED, linewidth=0.7, linestyle="--", alpha=0.45, zorder=2)
-            tags.append({"y": float(v), "text": f"{name} {float(v):{fmt}}",
+            tags.append({"y": float(v), "text": f"{name} {format_price(float(v))}",
                          "fg": MUTED, "bg": PANEL, "edge": MUTED, "prio": 4})
 
 
@@ -412,14 +405,14 @@ def _draw_position_box(
     ax.hlines(t_, x0, x1, color=TP_C, linewidth=1.3, linestyles=edge_ls, alpha=1, zorder=6)
     ax.hlines(s_, x0, x1, color=SL_C, linewidth=1.3, linestyles=edge_ls, alpha=1, zorder=6)
 
-    _level_callout(ax, x1 - 0.6, t_, f"TP {t_:{fmt}}", TP_C)
-    _level_callout(ax, x1 - 0.6, e, f"{entry_word} {e:{fmt}}", ENTRY_C)
-    _level_callout(ax, x1 - 0.6, s_, f"SL {s_:{fmt}}", SL_C)
+    _level_callout(ax, x1 - 0.6, t_, f"TP {format_price(t_)}", TP_C)
+    _level_callout(ax, x1 - 0.6, e, f"{entry_word} {format_price(e)}", ENTRY_C)
+    _level_callout(ax, x1 - 0.6, s_, f"SL {format_price(s_)}", SL_C)
 
     tags.extend([
-        {"y": t_, "text": f"TP {t_:{fmt}}", "fg": "#101110", "bg": TP_C, "edge": TP_C, "prio": 1, "alpha": 1},
-        {"y": e, "text": f"Entrada {e:{fmt}}", "fg": "#101110", "bg": ENTRY_C, "edge": ENTRY_C, "prio": 1, "alpha": 1},
-        {"y": s_, "text": f"SL {s_:{fmt}}", "fg": "#101110", "bg": SL_C, "edge": SL_C, "prio": 1, "alpha": 1},
+        {"y": t_, "text": f"TP {format_price(t_)}", "fg": "#101110", "bg": TP_C, "edge": TP_C, "prio": 1, "alpha": 1},
+        {"y": e, "text": f"Entrada {format_price(e)}", "fg": "#101110", "bg": ENTRY_C, "edge": ENTRY_C, "prio": 1, "alpha": 1},
+        {"y": s_, "text": f"SL {format_price(s_)}", "fg": "#101110", "bg": SL_C, "edge": SL_C, "prio": 1, "alpha": 1},
     ])
 
 
@@ -431,7 +424,7 @@ def _draw_opti_entry(
     if user_entry is None or sys_entry is None or abs(float(sys_entry) - entry) < 10 ** (-dec):
         return
     ax.hlines(float(sys_entry), x0, x1, color="#9cdcfe", linewidth=0.9, linestyles=":", zorder=5)
-    tags.append({"y": float(sys_entry), "text": f"OPTI {float(sys_entry):{fmt}}",
+    tags.append({"y": float(sys_entry), "text": f"OPTI {format_price(float(sys_entry))}",
                  "fg": "#9cdcfe", "bg": PANEL, "edge": "#9cdcfe", "prio": 2})
 
 
@@ -451,8 +444,8 @@ def _draw_pending_levels(
         if v is not None:
             ax.hlines(float(v), x0, x1, color=col, linewidth=1.1, linestyles=(0, (4, 3)), alpha=1, zorder=6)
             label = "Entrada" if name == "Entrada" else name
-            _level_callout(ax, x1 - 0.6, float(v), f"{label} {float(v):{fmt}}", col)
-            tags.append({"y": float(v), "text": f"{label} {float(v):{fmt}}", "fg": "#101110", "bg": col,
+            _level_callout(ax, x1 - 0.6, float(v), f"{label} {format_price(float(v))}", col)
+            tags.append({"y": float(v), "text": f"{label} {format_price(float(v))}", "fg": "#101110", "bg": col,
                          "edge": col, "prio": 1, "alpha": 1})
 
 
@@ -464,7 +457,7 @@ def _draw_scalps(
         if entry is not None and abs(float(sc_e) - float(entry)) < 10 ** (-dec):
             continue
         ax.hlines(float(sc_e), x0, x1, color="#9cdcfe", linewidth=0.8, linestyles=":", zorder=5)
-        tags.append({"y": float(sc_e), "text": f"Scalp{idx + 1} {float(sc_e):{fmt}}",
+        tags.append({"y": float(sc_e), "text": f"Scalp{idx + 1} {format_price(float(sc_e))}",
                      "fg": "#9cdcfe", "bg": PANEL, "edge": "#9cdcfe", "prio": 2})
 
 
@@ -655,8 +648,8 @@ def _draw_2m5(ax, show: list[dict], span: float) -> None:
 TAG_GAP_FRAC = 0.042  # alto de una etiqueta (8.5 pt + padding) / alto del eje
 
 
-def _tick_label(v: float, dec: int) -> str:
-    return f"{v:.{dec}f}"
+def _tick_label(v: float, _dec: int) -> str:
+    return format_price(v)
 
 
 def visible_ticks(ticks: list[float], tag_ys: list[float], min_gap: float) -> list[bool]:
@@ -734,24 +727,24 @@ def _draw_state_box(ax, state: str, lines: list[str]) -> None:
 
 def _chart_title(asset: str, data: dict) -> tuple[str, str]:
     """Título con la frescura de datos (última vela) y su color."""
-    gen = data.get("generated", "")
-    title = f"{asset} M5 · {gen} UTC · 2M5 + entrada óptima"
+    gen = show_clock(str(data.get("generated") or ""))
+    title = f"{asset} M5 · {gen} · 2M5 + entrada óptima"
     fresh = data.get("data_freshness") or {}
     if fresh.get("last_candle_utc"):
-        title = f"{asset} M5 · vela {fresh['last_candle_utc']} UTC · 2M5 + entrada óptima"
+        title = f"{asset} M5 · vela {show_clock(str(fresh['last_candle_utc']))} · 2M5 + entrada óptima"
         if fresh.get("stale"):
             title += " · DATOS DESACTUALIZADOS"
     return title, SL_C if fresh.get("stale") else "#569cd6"
 
 
 def _style_axes(ax, show: list[dict], total: int) -> None:
-    """Eje X en hora real (UTC / NY), eje Y a la derecha, grid y bordes."""
+    """Eje X en hora Colombia (UTC-5), eje Y a la derecha, grid y bordes."""
     times = [_to_utc(c.get("open_time")) for c in show]
     ticks, labels = _time_ticks(times, total)
     if ticks:
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels, fontsize=8)
-        ax.set_xlabel("Hora UTC (arriba) · Nueva York (abajo) · velas M5", color=MUTED, fontsize=8)
+        ax.set_xlabel("Hora Colombia (UTC-5) · velas M5", color=MUTED, fontsize=8)
     ax.yaxis.tick_right()
     ax.tick_params(axis="both", colors=TEXT, labelsize=8)
     ax.tick_params(axis="y", colors=MUTED)
@@ -867,7 +860,7 @@ def render_trade_chart(
         last = show[-1]
         pcol = UP if last["close"] >= last["open"] else DOWN
         ax.axhline(price, color=pcol, linewidth=0.8, linestyle=(0, (1, 2)), alpha=0.9, zorder=2)
-        tags.insert(0, {"y": price, "text": f"{price:{fmt}}", "fg": BG, "bg": pcol, "edge": pcol, "prio": 0})
+        tags.insert(0, {"y": price, "text": format_price(price), "fg": BG, "bg": pcol, "edge": pcol, "prio": 0})
 
         if _confirmed_2m5(opt, data):
             _draw_2m5(ax, show, ymax - ymin)

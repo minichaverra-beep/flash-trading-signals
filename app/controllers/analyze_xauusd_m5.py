@@ -35,6 +35,7 @@ from app.models.market_analysis_core import (
 from app.models.market_data_freshness import assess_freshness, freshness_md_lines, log_freshness
 
 from app.config import LIVE_DIR
+from app.latam_time import show_clock
 
 OUT_DIR = LIVE_DIR
 
@@ -93,7 +94,7 @@ def _resolve_chart_for_neural(
     if chart_ok and chart_path.is_file():
         return chart_path, chart_ok
     try:
-        save_chart(m5, chart_path, f"{label} M5 · vela {last_label} UTC · Bias {bias}")
+        save_chart(m5, chart_path, f"{label} M5 · vela {show_clock(last_label)} · Bias {bias}")
         return chart_path, True if not no_chart else chart_ok
     except Exception as e:
         print(f"WARN neural chart: {e}")
@@ -271,7 +272,7 @@ def main() -> int:
     want_chart = not args.no_chart and args.mode in ("full", "both", "high", "all")
     if want_chart:
         try:
-            save_chart(m5, chart_path, f"{SYMBOL_LABEL} M5 · vela {last_label} UTC · Bias {bias}{stale_suffix}")
+            save_chart(m5, chart_path, f"{SYMBOL_LABEL} M5 · vela {show_clock(last_label)} · Bias {bias}{stale_suffix}")
             chart_ok = True
         except Exception as e:
             print(f"WARN chart: {e}")

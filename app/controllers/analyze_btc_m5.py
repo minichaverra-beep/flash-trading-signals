@@ -28,6 +28,7 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
 from app.config import PROJECT_ROOT, LIVE_DIR, DATA_DIR, MODELS_DIR, TRAINING_NEURAL_DIR
+from app.latam_time import show_clock
 
 BASE = PROJECT_ROOT
 OUT_DIR = LIVE_DIR
@@ -338,7 +339,7 @@ def _resolve_chart_for_neural(
     try:
         save_chart(
             m5, chart_path,
-            f"{symbol} M5 · {now.strftime('%Y-%m-%d %H:%M')} UTC · Bias {bias}",
+            f"{symbol} M5 · {show_clock(now)} · Bias {bias}",
         )
         return chart_path, True if not no_chart else chart_ok
     except Exception as e:
@@ -582,7 +583,7 @@ def main() -> int:
     want_chart = not args.no_chart and args.mode in ("full", "both", "high", "all")
     if want_chart:
         try:
-            save_chart(m5, chart_path, f"{args.symbol} M5 · {now.strftime('%Y-%m-%d %H:%M')} UTC · Bias {bias}")
+            save_chart(m5, chart_path, f"{args.symbol} M5 · {show_clock(now)} · Bias {bias}")
             chart_ok = True
         except Exception as e:
             print(f"WARN chart: {e}")

@@ -113,7 +113,7 @@ class TestHelpers:
         times = [c["open_time"] for c in m5]
         ticks, labels = _time_ticks(times, len(m5) + 30)
         assert ticks[:2] == [0.0, 12.0]
-        assert labels[0] == "12:00\n08:00 NY"
+        assert labels[0] == "30/09/2026 07:00"
         assert any(t >= len(m5) for t in ticks), "debe haber horas en la zona futura"
 
     def test_stack_tags_no_overlap_inside_bounds(self):

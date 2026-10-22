@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from app.config import DATA_DIR, LIVE_DIR, PROJECT_ROOT
+from app.latam_time import format_latam
 from app.models.macd_quant import (
     MACD_FAST,
     MACD_SIGNAL,
@@ -45,6 +46,16 @@ from app.models.macd_quant import (
     generate_signals,
     resample_to_h4,
 )
+from app.models.quantum_levels import (
+    chart_level_tags,
+    format_price,
+    interest_band_lines,
+    mean_true_range,
+    previous_completed_day,
+    previous_day_tip,
+    select_interest_points,
+)
+from app.models.timesfm_quantum import forecast_closes
 
 def _quiet_mathtext() -> None:
     """Apaga mathtext sin tumbar el proceso si matplotlib es antiguo (Android)."""
@@ -98,7 +109,7 @@ PANEL = "#14141a"
 TEXT = "#c8c8d0"
 GRID = "#2a2a36"
 ACCENT = "#7aa2ff"
-EMA_C = "#c586c0"
+EMA_C = "#e7b0e4"
 GOLD = "#dcdcaa"
 # Nube TradingView-like
 BLUE_TOP = "#2962FF"
@@ -462,6 +473,241 @@ def _fill_macd_cloud(ax, x: np.ndarray, macd: np.ndarray) -> None:
     ax.fill_between(x, neg, 0, color=PURPLE_BASE, alpha=0.22, interpolate=True, zorder=1)
 
 
+SUPPORT_LINE = "#3dd68c"
+RESIST_LINE = "#f07178"
+FORECAST_LINE = "#dcdcaa"
+
+
+def _interest_points(show: pd.DataFrame, forecast_level: float | None):
+    """Niveles de la ventana visible. Si faltan columnas, la banda queda vacía."""
+    needed = ("high", "low", "close")
+    if any(name not in show.columns for name in needed):
+        return select_interest_points([], [], [], forecast_level=forecast_level)
+    try:
+        return select_interest_points(
+            show["high"].astype(float).tolist(),
+            show["low"].astype(float).tolist(),
+            show["close"].astype(float).tolist(),
+            forecast_level=forecast_level,
+        )
+    except Exception as exc:
+        print(f"[poi] sin niveles: {exc}", file=sys.stderr)
+        return []
+
+
+def _yesterday_tip(show: pd.DataFrame) -> str | None:
+    """Aviso si el último cierre está cerca del OHLC del día ya cerrado."""
+    needed = ("open_time", "open", "high", "low", "close")
+    if any(name not in show.columns for name in needed) or show.empty:
+        return None
+    days = []
+    for ts in show["open_time"]:
+        try:
+            stamp = pd.Timestamp(ts)
+        except (TypeError, ValueError):
+            return None
+        if pd.isna(stamp):
+            return None
+        if stamp.tzinfo is None:
+            stamp = stamp.tz_localize("UTC")
+        else:
+            stamp = stamp.tz_convert("UTC")
+        days.append(stamp.date())
+    try:
+        prior = previous_completed_day(
+            days,
+            show["open"].astype(float).tolist(),
+            show["high"].astype(float).tolist(),
+            show["low"].astype(float).tolist(),
+            show["close"].astype(float).tolist(),
+        )
+        atr = mean_true_range(
+            show["high"].astype(float).tolist(),
+            show["low"].astype(float).tolist(),
+            show["close"].astype(float).tolist(),
+        )
+        return previous_day_tip(float(show["close"].astype(float).iloc[-1]), prior, atr)
+    except Exception as exc:
+        print(f"[ayer] sin aviso: {exc}", file=sys.stderr)
+        return None
+
+
+def _draw_level_lines(ax, points, y_min: float, y_max: float) -> None:
+    """Líneas finas detrás del precio. Un nivel fuera de escala no aplasta las velas."""
+    colors = {
+        ("support", "fuerte"): SUPPORT_LINE,
+        ("resistance", "fuerte"): RESIST_LINE,
+        ("forecast", "horizonte"): FORECAST_LINE,
+    }
+    for point in points:
+        if not (y_min <= point.price <= y_max):
+            continue
+        color = colors.get((point.kind, point.role))
+        if color is None:
+            continue
+        style = ":" if point.kind == "forecast" else "--"
+        ax.axhline(
+            point.price,
+            color=color,
+            linewidth=1.05,
+            linestyle=style,
+            alpha=0.9,
+            zorder=1,
+        )
+
+
+def _draw_chart_tags(ax, points, last_close: float) -> None:
+    """Resistencia macro y soporte macro al inicio de la línea, lejos del último precio."""
+    y0, y1 = ax.get_ylim()
+    span = max(y1 - y0, 1e-9)
+    for tag in chart_level_tags(points, last_close):
+        if tag.kind == "price":
+            continue
+        color = RESIST_LINE if tag.kind == "resistance" else SUPPORT_LINE
+        if tag.kind == "resistance":
+            va = "top" if tag.price > y1 - 0.14 * span else "bottom"
+        else:
+            va = "bottom" if tag.price < y0 + 0.14 * span else "top"
+        x_pos = 0.30 if tag.price > y1 - 0.22 * span else 0.012
+        ax.annotate(
+            tag.text,
+            xy=(x_pos, tag.price),
+            xycoords=ax.get_yaxis_transform(),
+            ha="left",
+            va=va,
+            fontsize=8,
+            fontweight="bold",
+            color=color,
+            zorder=7,
+            annotation_clip=False,
+        )
+
+
+def _draw_price_marker(ax, x_last: float, last_close: float, label: str, tip: str | None) -> None:
+    ax.scatter(
+        [x_last],
+        [last_close],
+        marker="o",
+        s=42,
+        color=DOT_DOWN,
+        zorder=6,
+        edgecolors="#fff",
+        linewidths=0.4,
+    )
+    y0, y1 = ax.get_ylim()
+    near_top = last_close > y1 - 0.16 * max(y1 - y0, 1e-9)
+    ax.annotate(
+        label,
+        xy=(x_last, last_close),
+        textcoords="offset points",
+        xytext=(-8, -12 if near_top else 9),
+        ha="right",
+        va="top" if near_top else "bottom",
+        fontsize=8,
+        fontweight="bold",
+        color=DOT_DOWN,
+        zorder=7,
+    )
+    if tip:
+        ax.annotate(
+            tip,
+            xy=(x_last, last_close),
+            textcoords="offset points",
+            xytext=(-8, 8 if near_top else -11),
+            ha="right",
+            va="bottom" if near_top else "top",
+            fontsize=7.5,
+            color="#f2d38a",
+            zorder=7,
+        )
+
+
+def _histogram_colors(macd: np.ndarray) -> list[str]:
+    """Verde si el MACD sube o es positivo; rojo si baja o es negativo."""
+    colors: list[str] = []
+    for i, value in enumerate(macd):
+        prev = float(macd[i - 1]) if i else float(value)
+        current = float(value)
+        if not np.isfinite(current):
+            colors.append("#3a3a46")
+        elif current >= 0 and current >= prev:
+            colors.append("#3dd68c")
+        elif current >= 0:
+            colors.append("#1f7a45")
+        elif current <= prev:
+            colors.append("#f07178")
+        else:
+            colors.append("#a33b48")
+    return colors
+
+
+def _signal_tag(ax, index: int, y: float, text: str, color: str) -> None:
+    ax.scatter(
+        [index],
+        [y],
+        marker="o",
+        s=26,
+        color=color,
+        zorder=6,
+        edgecolors="#1a1a1a",
+        linewidths=0.4,
+    )
+    right = ax.get_xlim()[1]
+    if index >= right - 2:
+        xytext, ha = (-8, 0), "right"
+    else:
+        xytext, ha = (8, 0), "left"
+    ax.annotate(
+        text,
+        (index, y),
+        textcoords="offset points",
+        xytext=xytext,
+        ha=ha,
+        va="center",
+        fontsize=7,
+        fontweight="bold",
+        color=color,
+        zorder=7,
+        bbox={"boxstyle": "round,pad=0.12", "facecolor": BG, "edgecolor": "none", "alpha": 0.92},
+        annotation_clip=False,
+    )
+
+
+def _draw_interest_band(ax, points, source_note: str, extra_note: str = "") -> None:
+    ax.set_facecolor("#101018")
+    ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+    for spine in ax.spines.values():
+        spine.set_color("#2a2a36")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.text(
+        0.02,
+        0.84,
+        "Puntos de interés",
+        color=GOLD,
+        fontsize=8,
+        fontweight="bold",
+        va="top",
+        ha="left",
+    )
+    y = 0.56
+    for line in interest_band_lines(points):
+        ax.text(0.02, y, line, color=TEXT, fontsize=8, va="top", ha="left")
+        y -= 0.22
+    footer = f"H4 ({source_note}) · soft-filter only (nunca trigger solo) · WR/PF PENDING"
+    if extra_note:
+        footer = f"{footer} · {extra_note}"
+    ax.text(
+        0.02,
+        0.06,
+        footer,
+        color="#7a7a88",
+        fontsize=7,
+        va="bottom",
+        ha="left",
+    )
+
+
 def plot_macd_quant(
     df: pd.DataFrame,
     *,
@@ -471,6 +717,7 @@ def plot_macd_quant(
     days: float = 7.0,
     end: pd.Timestamp | None = None,
     source_note: str = "m5_resample_h4",
+    forecast_level: float | None = None,
 ) -> Path:
     """Dibuja panel precio+EMA200 y panel nube MACD+signal; marca últimos BUY/SELL.
 
@@ -494,14 +741,12 @@ def plot_macd_quant(
     macd = show["macd"].astype(float).to_numpy()
     signal = show["signal_line"].astype(float).to_numpy()
 
-    fig, (ax1, ax2) = plt.subplots(
-        2,
-        1,
-        figsize=(11, 6.5),
-        sharex=True,
-        gridspec_kw={"height_ratios": [1.85, 1.35], "hspace": 0.06},
-        facecolor=BG,
-    )
+    fig = plt.figure(figsize=(11, 7.8), facecolor=BG)
+    outer = fig.add_gridspec(2, 1, height_ratios=[10, 1.45], hspace=0.16)
+    inner = outer[0].subgridspec(2, 1, height_ratios=[7, 3], hspace=0.04)
+    ax1 = fig.add_subplot(inner[0])
+    ax2 = fig.add_subplot(inner[1], sharex=ax1)
+    ax_poi = fig.add_subplot(outer[1])
     for ax in (ax1, ax2):
         ax.set_facecolor(PANEL)
         ax.tick_params(colors=TEXT, labelsize=8)
@@ -509,8 +754,39 @@ def plot_macd_quant(
         for spine in ax.spines.values():
             spine.set_color(GRID)
 
-    ax1.plot(x, show["close"].astype(float), color=ACCENT, linewidth=1.15, label="Close H4")
-    ax1.plot(x, show["trend_ema"].astype(float), color=EMA_C, linewidth=1.0, label="EMA200")
+    if {"high", "low"}.issubset(show.columns):
+        price_high = float(show["high"].astype(float).max())
+        price_low = float(show["low"].astype(float).min())
+    else:
+        closes = show["close"].astype(float)
+        price_high = float(closes.max())
+        price_low = float(closes.min())
+    ema = show["trend_ema"].astype(float) if "trend_ema" in show.columns else None
+    if ema is not None:
+        finite_ema = ema[np.isfinite(ema.to_numpy())]
+        span = price_high - price_low
+        if len(finite_ema) and span > 0:
+            ema_hi = float(finite_ema.max())
+            ema_lo = float(finite_ema.min())
+            if price_low - span <= ema_lo and ema_hi <= price_high + span:
+                price_high = max(price_high, ema_hi)
+                price_low = min(price_low, ema_lo)
+    price_pad = max((price_high - price_low) * 0.08, abs(price_high) * 0.002, 1e-6)
+    ax1.set_ylim(price_low - price_pad, price_high + price_pad)
+    ax1.ticklabel_format(axis="y", useOffset=False, style="plain")
+    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda value, _pos: format_price(value)))
+
+    ax1.plot(x, show["close"].astype(float), color=ACCENT, linewidth=1.25, label="Close H4", zorder=4)
+    if ema is not None:
+        ax1.plot(
+            x,
+            ema,
+            color=EMA_C,
+            linewidth=1.85,
+            label="EMA 200",
+            zorder=3,
+            solid_capstyle="round",
+        )
     ax1.set_ylabel("Precio", color=TEXT, fontsize=9)
     ax1.legend(
         loc="upper left",
@@ -528,21 +804,30 @@ def plot_macd_quant(
         pad=8,
     )
 
-    _fill_macd_cloud(ax2, x, macd)
+    ax2.bar(x, macd, color=_histogram_colors(macd), width=0.72, zorder=2, linewidth=0)
+    ax2.plot(
+        x,
+        macd,
+        color=ACCENT,
+        linewidth=1.2,
+        label="MACD",
+        zorder=4,
+        solid_capstyle="round",
+    )
     ax2.plot(
         x,
         signal,
         color=SIGNAL_C,
-        linewidth=1.35,
-        label="Signal",
-        zorder=4,
+        linewidth=1.25,
+        label="Señal",
+        zorder=5,
         solid_capstyle="round",
     )
-    ax2.axhline(0, color="#6b7280", linewidth=0.9, zorder=5)
+    ax2.axhline(0, color="#6b7280", linewidth=0.9, zorder=3)
     ax2.set_ylabel("MACD", color=TEXT, fontsize=9)
     ax2.legend(
         loc="upper left",
-        fontsize=8,
+        fontsize=7,
         facecolor=BG,
         edgecolor=GRID,
         labelcolor=TEXT,
@@ -553,66 +838,10 @@ def plot_macd_quant(
     sells = show.index[show["signal"] == -1].tolist()
     if buys:
         i = buys[-1]
-        ax1.scatter(
-            [i],
-            [show.loc[i, "close"]],
-            marker="o",
-            s=55,
-            color=DOT_UP,
-            zorder=6,
-            edgecolors="#fff",
-            linewidths=0.4,
-        )
-        ax2.scatter(
-            [i],
-            [macd[i]],
-            marker="o",
-            s=48,
-            color=DOT_UP,
-            zorder=6,
-            edgecolors="#1a1a1a",
-            linewidths=0.5,
-        )
-        ax2.annotate(
-            "BUY",
-            (i, macd[i]),
-            textcoords="offset points",
-            xytext=(5, 10),
-            color=DOT_UP,
-            fontsize=8,
-            fontweight="bold",
-        )
+        _signal_tag(ax2, i, float(macd[i]), "BUY", DOT_UP)
     if sells:
         i = sells[-1]
-        ax1.scatter(
-            [i],
-            [show.loc[i, "close"]],
-            marker="o",
-            s=55,
-            color=DOT_DOWN,
-            zorder=6,
-            edgecolors="#fff",
-            linewidths=0.4,
-        )
-        ax2.scatter(
-            [i],
-            [macd[i]],
-            marker="o",
-            s=48,
-            color=DOT_DOWN,
-            zorder=6,
-            edgecolors="#1a1a1a",
-            linewidths=0.5,
-        )
-        ax2.annotate(
-            "SELL",
-            (i, macd[i]),
-            textcoords="offset points",
-            xytext=(5, -14),
-            color=DOT_DOWN,
-            fontsize=8,
-            fontweight="bold",
-        )
+        _signal_tag(ax2, i, float(macd[i]), "SELL", DOT_DOWN)
 
     if "open_time" in show.columns:
         step = max(1, n // 6)
@@ -623,31 +852,46 @@ def plot_macd_quant(
         for i in ticks:
             t = show.loc[i, "open_time"]
             try:
-                labels.append(pd.Timestamp(t).strftime("%m-%d %H:%M"))
+                labels.append(format_latam(pd.Timestamp(t).to_pydatetime()))
             except (TypeError, ValueError):
                 labels.append(str(i))
         ax2.set_xticks(ticks)
-        ax2.set_xticklabels(labels, rotation=20, ha="right", color=TEXT)
+        ax2.set_xticklabels(labels, rotation=0, ha="center", color=TEXT)
+    ax1.tick_params(axis="x", labelbottom=False)
 
-    fig.text(
-        0.5,
-        0.01,
-        f"H4 ({source_note}) · nube MACD · Signal blanca · soft-filter only "
-        f"(nunca trigger solo) · WR/PF PENDING",
-        ha="center",
-        va="bottom",
-        fontsize=8,
-        color="#7a7a88",
+    points = _interest_points(show, forecast_level)
+    _draw_level_lines(ax1, points, price_low - price_pad, price_high + price_pad)
+    last_close = float(show["close"].astype(float).iloc[-1])
+    _draw_chart_tags(ax1, points, last_close)
+    tip = _yesterday_tip(show)
+    price_label = next(
+        (tag.text for tag in chart_level_tags(points, last_close) if tag.kind == "price"),
+        "Precio",
     )
+    _draw_price_marker(ax1, float(x[-1]), last_close, price_label, tip)
+    ema_bars = (
+        int(pd.to_numeric(df["close"], errors="coerce").notna().sum())
+        if "close" in df.columns
+        else 0
+    )
+    ema_note = (
+        f"EMA 200 parcial ({ema_bars} velas, semilla con cierres reales)"
+        if 0 < ema_bars < 200
+        else ""
+    )
+    _draw_interest_band(ax_poi, points, source_note, ema_note)
+    print("POI: " + " · ".join(interest_band_lines(points)), flush=True)
+    if tip:
+        print(f"AYER: {tip}", flush=True)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _quiet_mathtext()
     try:
-        fig.savefig(out_path, dpi=140, bbox_inches="tight", facecolor=BG, edgecolor="none")
+        fig.savefig(out_path, dpi=140, bbox_inches="tight", pad_inches=0.28, facecolor=BG, edgecolor="none")
     except RecursionError:
         # bbox tight + mathtext viejo: el mismo gráfico sin el recorte ajustado.
         _quiet_mathtext()
-        fig.savefig(out_path, dpi=140, facecolor=BG, edgecolor="none")
+        fig.savefig(out_path, dpi=140, pad_inches=0.28, facecolor=BG, edgecolor="none")
     plt.close(fig)
     return out_path
 
@@ -751,6 +995,8 @@ def main(argv: list[str] | None = None) -> int:
         out = PROJECT_ROOT / out
 
     title = SYMBOL_TITLE.get(sym, sym.upper())
+    note = forecast_closes(h4["close"].astype(float).tolist())
+    print(f"TIMESFM: {note.summary}", flush=True)
     path = plot_macd_quant(
         h4,
         title=title,
@@ -759,6 +1005,7 @@ def main(argv: list[str] | None = None) -> int:
         days=days,
         end=end_ts,
         source_note=source_note,
+        forecast_level=note.horizon_level if note.status == "ok" else None,
     )
 
     # Timestamps para smoke / UI

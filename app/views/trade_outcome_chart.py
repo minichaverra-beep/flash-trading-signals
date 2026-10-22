@@ -41,6 +41,9 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.latam_time import format_latam
+from app.models.quantum_levels import format_price
+
 from app.views.mpl_safe import print_compact_traceback, safe_text
 from app.views.trade_chart import (
     BG,
@@ -59,7 +62,6 @@ from app.views.trade_chart import (
     _draw_candles,
     _draw_position_box,
     _is_limit_entry,
-    _ny_tz,
     _style_axes,
     _y_limits,
     compute_position_levels,
@@ -442,13 +444,11 @@ def _display_index(i: int | None, factor: int, offset: int) -> int | None:
 
 
 def _outcome_ticks(times: list[datetime]) -> tuple[list[float], list[str]]:
-    """Ticks horarios UTC/NY; con más de un día añade la fecha."""
+    """Ticks del eje en UTC-5. La elección de velas no cambia; solo el texto."""
     if not times:
         return [], []
     span_h = (times[-1] - times[0]).total_seconds() / 3600
     step = next((h for h in (1, 2, 3, 6, 12, 24) if span_h / h <= 12), 48)
-    multi_day = span_h > 20
-    ny = _ny_tz()
     ticks, labels, last_key = [], [], None
     for i, t in enumerate(times):
         key = (t.date(), t.hour // step) if step < 24 else (t.date().toordinal() // (step // 24),)
@@ -457,20 +457,17 @@ def _outcome_ticks(times: list[datetime]) -> tuple[list[float], list[str]]:
         last_key = key
         if i == 0 and t.minute != 0:
             continue
-        top = f"{t:%d/%m %H:%M}" if multi_day else f"{t:%H:%M}"
         ticks.append(float(i))
-        labels.append(f"{top}\n{t.astimezone(ny):%H:%M} NY")
+        labels.append(format_latam(t))
     return ticks, labels
 
 
 def _fmt_hm(t: datetime | None) -> str:
-    return f"{t:%H:%M}" if t else "—"
+    return format_latam(t) if t else "—"
 
 
-def _fmt_when(t: datetime | None, signal_time: datetime) -> str:
-    if t is None:
-        return "—"
-    return f"{t:%H:%M}" if t.date() == signal_time.date() else f"{t:%d/%m %H:%M}"
+def _fmt_when(t: datetime | None, _signal_time: datetime) -> str:
+    return _fmt_hm(t)
 
 
 def outcome_message(outcome: TradeOutcome, post: list[dict], signal_time: datetime) -> str:
@@ -480,15 +477,15 @@ def outcome_message(outcome: TradeOutcome, post: list[dict], signal_time: dateti
 
     exit_t = _fmt_when(at(outcome.exit_index), signal_time)
     if outcome.status == "tp":
-        return f"✓ TP alcanzado {exit_t} UTC"
+        return f"✓ TP alcanzado {exit_t}"
     if outcome.status == "sl":
-        return f"✗ SL alcanzado {exit_t} UTC"
+        return f"✗ SL alcanzado {exit_t}"
     if outcome.status == "ambiguous":
-        return f"? Ambiguo {exit_t} UTC: {outcome.reason} (M5 no muestra el orden)"
+        return f"? Ambiguo {exit_t}: {outcome.reason} (M5 no muestra el orden)"
     if outcome.status == "not_filled":
         return f"Entrada no ejecutada: {outcome.reason}"
     last = _fmt_when(post[-1]["open_time"], signal_time) if post else "—"
-    return f"Sin resolver: ni TP ni SL hasta {last} UTC"
+    return f"Sin resolver: ni TP ni SL hasta {last}"
 
 
 @dataclass(frozen=True)
@@ -677,9 +674,9 @@ def stats_lines(
     if stats.exit_price is not None:
         word = "Actual" if stats.in_progress else "Salida"
         tail = f"{sep}{exit_note}" if exit_note else ""
-        lines.append(f"Entrada {entry:{fmt}} → {word} {stats.exit_price:{fmt}}{tail}")
+        lines.append(f"Entrada {format_price(entry)} → {word} {format_price(stats.exit_price)}{tail}")
     elif outcome.status == "ambiguous":
-        lines.append(f"Entrada {entry:{fmt}}{sep}TP y SL en la misma vela M5")
+        lines.append(f"Entrada {format_price(entry)}{sep}TP y SL en la misma vela M5")
     return lines
 
 
@@ -769,7 +766,7 @@ def real_message(real: RealExecution, direction: str, signal_time: datetime) -> 
     """«✓ Ganada en MT5: salida 84610.17 a las 20:54 UTC»."""
     move = real_move(real, direction)
     mark = "✓" if move > 0 else "✗"
-    return f"{mark} {real_title(move)}: salida {real.exit} a las {_fmt_when(real.close_time, signal_time)} UTC"
+    return f"{mark} {real_title(move)}: salida {real.exit} a las {_fmt_when(real.close_time, signal_time)}"
 
 
 def real_title(move: float) -> str:
@@ -790,7 +787,7 @@ def _draw_plan_levels(ax, tags: list[dict], plan: dict[str, float], drawn: dict[
         if key != "tp" and abs(drawn[key] - v) < tick:
             continue
         ax.hlines(v, x0, x1, color=col, linewidth=0.8, linestyles=PLAN_LINESTYLE, alpha=0.6, zorder=2)
-        tags.append({"y": v, "text": f"{name} {v:{fmt}}", "fg": col, "bg": PANEL, "edge": col, "prio": 2})
+        tags.append({"y": v, "text": f"{name} {format_price(v)}", "fg": col, "bg": PANEL, "edge": col, "prio": 2})
 
 
 def trade_gain(real: RealExecution, direction: str) -> float:
@@ -870,11 +867,11 @@ def _draw_trade(ax, tags: list[dict], fr: "_Frame", real: RealExecution, span: T
     entry_name = "Dup" if dup else "Entrada"
     exit_name = "Cierre Dup" if dup else "Cierre"
     tags.extend([
-        {"y": x, "text": f"{exit_name} {x:{fmt}}", "fg": color, "bg": PANEL, "edge": color, "prio": 2},
-        {"y": e, "text": f"{entry_name} {e:{fmt}}", "fg": BG, "bg": entry_c, "edge": entry_c, "prio": 1},
+        {"y": x, "text": f"{exit_name} {format_price(x)}", "fg": color, "bg": PANEL, "edge": color, "prio": 2},
+        {"y": e, "text": f"{entry_name} {format_price(e)}", "fg": BG, "bg": entry_c, "edge": entry_c, "prio": 1},
     ])
     if not dup:
-        tags.append({"y": sl, "text": f"SL {sl:{fmt}}", "fg": BG, "bg": SL_C, "edge": SL_C, "prio": 1})
+        tags.append({"y": sl, "text": f"SL {format_price(sl)}", "fg": BG, "bg": SL_C, "edge": SL_C, "prio": 1})
 
 
 @dataclass(frozen=True)
@@ -971,8 +968,8 @@ def multi_lines(trades: list[RealExecution], spans: list[TradeSpan], *, directio
     for t, s in zip(trades, spans):
         minutes = int((_as_utc(s.close_time) - _as_utc(s.open_time)).total_seconds() // 60)
         dur = fmt_duration_label(minutes, estimated=s.open_estimated or s.close_estimated)
-        hours = f"{_hm_mark(s.open_time, s.open_estimated)}→{_hm_mark(s.close_time, s.close_estimated)} UTC"
-        parts = [f"{TRADE_NAMES.get(t.label, t.label or 'Operación')}: {t.entry:{fmt}} → {t.exit:{fmt}}",
+        hours = f"{_hm_mark(s.open_time, s.open_estimated)}→{_hm_mark(s.close_time, s.close_estimated)}"
+        parts = [f"{TRADE_NAMES.get(t.label, t.label or 'Operación')}: {format_price(t.entry)} → {format_price(t.exit)}",
                  f"{hours} ({dur})", trade_result_text(t, direction, unit)]
         reason = REASON_WORDS.get(t.close_reason or "")
         if reason:
@@ -1025,7 +1022,7 @@ def render_outcome_chart(
         x0 = fr.offset - 0.5
         ax.axvline(x0, color=MUTED, linewidth=0.8, linestyle=":", alpha=0.7, zorder=2)
         ymin, ymax = ax.get_ylim()
-        ax.text(x0 - 0.4, ymax - (ymax - ymin) * 0.015, f"Señal {_fmt_hm(signal_time)} UTC",
+        ax.text(x0 - 0.4, ymax - (ymax - ymin) * 0.015, f"Señal {_fmt_hm(signal_time)}",
                 color=MUTED, fontsize=8.5, ha="right", va="top", zorder=6)
         tags: list[dict] = []
         lines: list[str] | None = None
@@ -1039,7 +1036,7 @@ def render_outcome_chart(
         elif trades:
             one, span = trades[0], spans[0]
             exit_note = (f"cierre estimado {_fmt_hm(span.close_time)}" if span.close_estimated
-                         else f"MT5 {_fmt_hm(_as_utc(span.close_time))} UTC")
+                         else f"MT5 {_fmt_hm(_as_utc(span.close_time))}")
             move = real_move(one, direction)
             color, result = _result_color(move), real_title(move)
             stats = compute_real_stats(one, post, direction=direction, sl=one.sl or sl, unit_size=pos["unit"].size)
@@ -1054,7 +1051,7 @@ def render_outcome_chart(
 
         pcol = UP if show[-1]["close"] >= show[-1]["open"] else DOWN
         ax.axhline(price, color=pcol, linewidth=0.8, linestyle=(0, (1, 2)), alpha=0.9, zorder=2)
-        tags.insert(0, {"y": price, "text": f"{price:{fmt}}", "fg": BG, "bg": pcol, "edge": pcol, "prio": 0})
+        tags.insert(0, {"y": price, "text": format_price(price), "fg": BG, "bg": pcol, "edge": pcol, "prio": 0})
         _draw_axis_tags(ax, tags)
 
         if lines is None:
@@ -1065,7 +1062,7 @@ def render_outcome_chart(
         ax.text(0.0, 1.012, "\n".join(lines), transform=ax.transAxes, color=color, fontsize=9.5,
                 fontweight="bold", va="bottom", ha="left",
                 bbox={"boxstyle": "round,pad=0.35", "facecolor": PANEL, "edgecolor": color, "alpha": 0.95})
-        title = (f"{asset} {interval} · señal {signal_time:%Y-%m-%d %H:%M} UTC · "
+        title = (f"{asset} {interval} · señal {format_latam(signal_time)} · "
                  f"Resultado: {result}")
         fig.suptitle(title, color=color, fontsize=13, fontweight="bold", x=0.455, y=0.985)
 
@@ -1073,7 +1070,7 @@ def render_outcome_chart(
         ticks, labels = _outcome_ticks([_as_utc(c["open_time"]) for c in show])
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels, fontsize=8, color=TEXT)
-        ax.set_xlabel(f"Hora UTC (arriba) · Nueva York (abajo) · velas {interval}", color=MUTED, fontsize=8)
+        ax.set_xlabel(f"Hora Colombia (UTC-5) · velas {interval}", color=MUTED, fontsize=8)
         return savefig_png(fig, out_path, dpi=dpi, facecolor=BG)
     finally:
         if fig is not None:

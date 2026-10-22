@@ -122,7 +122,7 @@ def test_old_signal_reports_yahoo_limit():
 
 def test_outcome_message_spanish():
     post = _seq((99, 101), (102, 104.2))
-    assert outcome_message(TradeOutcome("tp", 0, 1), post, T0) == "✓ TP alcanzado 17:00 UTC"
+    assert outcome_message(TradeOutcome("tp", 0, 1), post, T0) == "✓ TP alcanzado 01/10/2026 12:00"
     assert outcome_message(TradeOutcome("sl", 0, 1), post, T0).startswith("✗ SL alcanzado")
     assert "no ejecutada" in outcome_message(TradeOutcome("not_filled", reason="x"), post, T0)
 
@@ -217,7 +217,7 @@ class TestStatsLines:
                                 entry=4163.9, unit_label="pips", fmt=".2f")
         assert lines[0] == "LONG  ·  Duración 50m"
         assert lines[1] == "−1.0R · −60.0 pips  ·  MFE +0.4R · MAE −1.0R"
-        assert lines[2] == "Entrada 4163.90 → Salida 4157.90"
+        assert lines[2] == "Entrada 4163.9 → Salida 4157.9"
 
     def test_not_filled(self):
         lines = toc.stats_lines(toc.TradeStats(filled=False),
@@ -292,27 +292,27 @@ class TestRealExecution:
         assert rect.get_x() == pytest.approx(35.5)
         assert rect.get_width() == pytest.approx(toc.MIN_BOX_CANDLES)
         texts = seen["texts"]
-        assert "✓ +33.0 pips · 17:07" in texts
-        assert "Compra 16:56" in texts
-        assert "TP plan 104.00" in texts and "SL plan 98.00" in texts and "Entrada plan 100.00" in texts
-        assert "Cierre 103.50" in texts and "Entrada 100.20" in texts
+        assert "✓ +33.0 pips · 01/10/2026 12:07" in texts
+        assert "Compra 01/10/2026 11:56" in texts
+        assert "TP plan 104" in texts and "SL plan 98" in texts and "Entrada plan 100" in texts
+        assert "Cierre 103.5" in texts and "Entrada 100.2" in texts
         assert seen["title"].endswith("Resultado: Ganada en MT5") and "(" not in seen["title"]
         box = next(t for t in texts if t.startswith("LONG"))
-        assert "Entrada 100.20 → Salida 103.50  ·  MT5 17:07 UTC" in box
+        assert "Entrada 100.2 → Salida 103.5  ·  MT5 01/10/2026 12:07" in box
         assert "+1.4R" in box  # (103.5 − 100.2) / (100.2 − 97.8)
 
     def test_loss_closed_before_sl_shows_real_exit(self, tmp_path, monkeypatch):
         real = toc.RealExecution(entry=100.0, exit=99.1, close_time=T0 + timedelta(minutes=22))
         seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("open", 0, None), real=real)
-        assert "✗ −9.0 pips · 17:17" in seen["texts"]
-        assert "SL plan 98.00" not in seen["texts"]  # sin SL real se dibuja el del plan (no se duplica)
+        assert "✗ −9.0 pips · 01/10/2026 12:17" in seen["texts"]
+        assert "SL plan 98" not in seen["texts"]  # sin SL real se dibuja el del plan (no se duplica)
         assert seen["title"].endswith("Resultado: Perdida en MT5")
 
     def test_without_mt5_box_ends_at_detected_exit_labelled_estimated(self, tmp_path, monkeypatch):
         seen = _render_capture(tmp_path, monkeypatch, TradeOutcome("tp", 0, 2))
-        assert "✓ TP alcanzado ≈17:05" in seen["texts"]
+        assert "✓ TP alcanzado ≈01/10/2026 12:05" in seen["texts"]
         box = next(t for t in seen["texts"] if t.startswith("LONG"))
-        assert "cierre estimado 17:05" in box
+        assert "cierre estimado 01/10/2026 12:05" in box
 
     def test_zero_duration_detected_trade_does_not_collapse_to_one_candle(self, tmp_path, monkeypatch):
         # entrada y SL en la primera vela tras la señal (duración 0): la caja no se queda en una vela
@@ -321,7 +321,7 @@ class TestRealExecution:
         assert widths and min(widths) >= toc.MIN_BOX_CANDLES
         box = next(t for t in seen["texts"] if t.startswith("LONG"))
         assert "Duración <5m" in box and "Duración 0m" not in box
-        assert "✗ SL alcanzado ≈16:55" in seen["texts"]
+        assert "✗ SL alcanzado ≈01/10/2026 11:55" in seen["texts"]
 
     def test_zero_duration_real_trade_keeps_minimum_box(self, tmp_path, monkeypatch):
         real = toc.RealExecution(entry=100.2, exit=99.0, open_time=T0 + timedelta(minutes=1),
@@ -344,13 +344,13 @@ class TestRealExecution:
         assert seen["title"].endswith("Resultado: +9.32 $ (original −2.42 $ · duplicada TP +11.74 $)")
         assert "SL alcanzado" not in seen["title"]
         texts = seen["texts"]
-        assert "✗ Orig −2.42 $ · 16:58" in texts and "✓ Dup TP +11.74 $ · 17:19" in texts
-        assert "Orig compra 16:56" in texts and "Dup compra 17:01" in texts
-        assert "Dup 100.50" in texts and "Cierre Dup 102.90" in texts
+        assert "✗ Orig −2.42 $ · 01/10/2026 11:58" in texts and "✓ Dup TP +11.74 $ · 01/10/2026 12:19" in texts
+        assert "Orig compra 01/10/2026 11:56" in texts and "Dup compra 01/10/2026 12:01" in texts
+        assert "Dup 100.5" in texts and "Cierre Dup 102.9" in texts
         box = next(t for t in texts if t.startswith("LONG"))
         assert "2 operaciones  ·  Total +9.32 $" in box
-        assert "Original: 100.20 → 99.40  ·  16:56→16:58 UTC (2m)  ·  −2.42 $  ·  manual" in box
-        assert "Duplicada: 100.50 → 102.90  ·  17:01→17:19 UTC (18m)  ·  +11.74 $  ·  TP" in box
+        assert "Original: 100.2 → 99.4  ·  01/10/2026 11:56→01/10/2026 11:58 (2m)  ·  −2.42 $  ·  manual" in box
+        assert "Duplicada: 100.5 → 102.9  ·  01/10/2026 12:01→01/10/2026 12:19 (18m)  ·  +11.74 $  ·  TP" in box
 
     def test_duplicate_without_times_estimates_them_from_candles(self):
         post = _seq((99.5, 101), (102, 103), (102.2, 103.8), (101, 102))
@@ -398,7 +398,7 @@ class TestRealExecution:
             pytest.approx(-0.4)
 
     def test_real_message(self):
-        assert toc.real_message(REAL_WIN, "LONG", T0) == "✓ Ganada en MT5: salida 103.5 a las 17:07 UTC"
+        assert toc.real_message(REAL_WIN, "LONG", T0) == "✓ Ganada en MT5: salida 103.5 a las 01/10/2026 12:07"
         loss = toc.RealExecution(entry=100.0, exit=100.8, close_time=T0 + timedelta(days=1))
         assert toc.real_message(loss, "SHORT", T0).startswith("✗ Perdida en MT5: salida 100.8 a las 02/10")
         btc = toc.RealExecution(entry=84792.7, exit=84610.17, close_time=T0)
